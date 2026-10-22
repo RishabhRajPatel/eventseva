@@ -27,8 +27,8 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   - Media come as Cloudinary `publicId` with `width`, `height` and `blurhash`. Build URLs with
     `cardImage / wideImage / zoomImage / videoPoster / videoStream` from app-shared.
   - Cards must use `cardImage`, which fits the whole photo with a blurred fill and never crops.
-  - Uploading (signed Cloudinary upload) is being built by the owner. Apps show an "Add photos" button
-    that calls a stub `uploadMedia()` with a clear TODO.
+  - Uploading is a signed direct upload to Cloudinary (see "Photos, videos and documents" under Partner app).
+    The API secret stays on the server.
 
 ## Auth (both apps)
 
@@ -157,6 +157,30 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/partner/earnings?month=` | `Earnings` (Kamai screen) |
 | `GET /v1/partner/reviews` · `POST /v1/partner/reviews/:id/reply` | `{reply}` |
 
+**Photos, videos and documents (signed Cloudinary upload)**
+
+| Route | Notes |
+|---|---|
+| `POST /v1/partner/uploads/sign` | `{kind: 'photo'\|'video'\|'document'}` → `UploadSignature`. `UPLOAD_NOT_CONFIGURED` 503 when the server has no `CLOUDINARY_URL` |
+| `GET /v1/partner/media` | `{items: Media[], limits: {photos: 30, videos: 5}}` |
+| `POST /v1/partner/media` | `{publicId, version, signature, type, width, height, bytes, etag, durationSec?, blurhash?}` (from Cloudinary's response) → `Media` (pending) |
+| `DELETE /v1/partner/media/:id` · `POST /v1/partner/media/:id/cover` · `PUT /v1/partner/media/order {ids}` | |
+| `GET /v1/partner/documents` · `POST /v1/partner/documents` | `{publicId, version, signature, docType: aadhaar\|pan\|gst\|shop_photo, format, last4?}`; Aadhaar needs `last4` |
+
+- **Upload steps:**
+  1. Call `sign`.
+  2. POST multipart to `uploadUrl` with `file`, `api_key` = `apiKey`, `signature`, and every key/value in
+     `params` unchanged.
+  3. Send Cloudinary's `public_id`, `version`, `signature`, `width`, `height`, `bytes`, `etag` (and `duration`
+     for video) to `POST /v1/partner/media`.
+- **Server checks:** the server verifies Cloudinary's response signature and that the file is in the vendor's
+  own folder.
+- **Errors:** `UPLOAD_INVALID`, `MEDIA_DUPLICATE` 409 (same file again), `FILE_TOO_BIG` (photo 15 MB, video
+  100 MB, document 10 MB), `VIDEO_TOO_LONG` (2 min), `LIMIT_REACHED`.
+- **Moderation:** new media is `pending` until an admin approves it. The first photo becomes the cover.
+  At least one photo (not rejected) is needed before Submit (`missingForReview` has `photos`).
+- **Documents** are private files. Only the server can make a 10-minute link, for admin verifiers.
+
 - **Vendor statuses:**
   - `draft`: fill the profile, then Submit.
   - `pending`: "Under review", nothing editable.
@@ -184,7 +208,8 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/me` | all | |
 | `GET /v1/admin/dashboard` | all | counts, `monthGmvPaise`, `monthCommissionPaise`, `bookingsByStatus`, `last14Days[{day, bookings}]`, `topCategories` |
 | `GET /v1/admin/vendors?status=pending&page=` | verifier, support | approval queue (oldest first) |
-| `GET /v1/admin/vendors/:id` | verifier, support | full vendor + `owner{phone}` + `history[]` + all media |
+| `GET /v1/admin/vendors/:id` | verifier, support | full vendor + `owner{phone}` + `history[]` + all media + `documents[]` (`viewUrl` for verifier/super only, valid 10 min) |
+| `POST /v1/admin/documents/:id/approve` · `/reject {reason}` | verifier | ID document review |
 | `POST /v1/admin/vendors/:id/approve` · `/reject {reason}` · `/hold {reason}` | verifier | `VENDOR_BAD_STATUS` 409 |
 | `GET /v1/admin/bookings?status=&q=&page=` · `GET /v1/admin/bookings/:id` | support, finance | `q` matches vendor name, phone or booking id; detail has `payments[]` and `payout` |
 | `GET /v1/admin/payouts?status=&due=true&page=` | finance | |

@@ -10,6 +10,7 @@ import { loadVendor } from '../vendors/vendor.queries';
 import { Admin, AdminContext, AdminGuard, AdminRoles, ADMIN_TTL_SEC, signAdminToken } from './admin-auth';
 import { hashPassword, verifyPassword } from './password';
 import { verifyTotp } from './totp';
+import { CloudinaryService } from '../media/cloudinary.service';
 
 class AdminLoginDto {
   @IsEmail() @MaxLength(120) email: string;
@@ -62,6 +63,7 @@ export class AdminController {
   constructor(
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   @Throttle({ default: { limit: () => Number(process.env.AUTH_RATE_LIMIT_PER_MIN || 10), ttl: 60_000 } })
@@ -119,7 +121,7 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @AdminRoles('verifier', 'support')
   @Get('vendors/:id')
-  async vendor(@Param('id', ParseUUIDPipe) id: string) {
+  async vendor(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
     const v = await loadVendor(this.db, id, 'en', 'admin');
     if (!v) throw new AppError('VENDOR_NOT_FOUND', 'Vendor not found.', HttpStatus.NOT_FOUND);
     const owner = await this.db.one(
@@ -133,7 +135,52 @@ export class AdminController {
         WHERE l.target_type = 'vendor' AND l.target_id = $1 ORDER BY l.created_at DESC`,
       [id],
     );
-    return { ...v, owner, history: history.rows };
+    // ID documents are private files; only verifiers get a link, and it expires in 10 minutes.
+    const canSeeDocs = admin.role === 'super' || admin.role === 'verifier';
+    const docs = await this.db.query<{ id: string; docType: string; last4: string | null; status: string; rejectReason: string | null; createdAt: Date; storage_key: string; format: string }>(
+      `SELECT DISTINCT ON (doc_type) id, doc_type AS "docType", last4, status, reject_reason AS "rejectReason",
+              created_at AS "createdAt", storage_key, format
+         FROM vendor_documents WHERE vendor_id = $1 ORDER BY doc_type, created_at DESC`,
+      [id],
+    );
+    const documents = docs.rows.map(({ storage_key, format, ...d }) => ({
+      ...d,
+      viewUrl: canSeeDocs && this.config.cloudinary ? this.cloudinary.privateDownloadUrl(storage_key, format) : null,
+    }));
+    return { ...v, owner, history: history.rows, documents };
+  }
+
+  @UseGuards(AdminGuard)
+  @AdminRoles('verifier')
+  @Post('documents/:id/approve')
+  @HttpCode(HttpStatus.OK)
+  approveDocument(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.reviewDocument(admin, id, 'approved', null);
+  }
+
+  @UseGuards(AdminGuard)
+  @AdminRoles('verifier')
+  @Post('documents/:id/reject')
+  @HttpCode(HttpStatus.OK)
+  rejectDocument(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
+    return this.reviewDocument(admin, id, 'rejected', body.reason.trim());
+  }
+
+  private async reviewDocument(admin: AdminContext, id: string, status: 'approved' | 'rejected', reason: string | null) {
+    return this.db.tx(async (client) => {
+      const d = await this.db.one<{ status: string; vendor_id: string; doc_type: string }>(
+        client,
+        'SELECT status, vendor_id, doc_type FROM vendor_documents WHERE id = $1 FOR UPDATE',
+        [id],
+      );
+      if (!d) throw new AppError('NOT_FOUND', 'Document not found.', HttpStatus.NOT_FOUND);
+      await client.query('UPDATE vendor_documents SET status = $2, reject_reason = $3, reviewed_by = $4 WHERE id = $1', [id, status, reason, admin.adminId]);
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, $2, 'vendor', $3, $4, $5)`,
+        [admin.adminId, `document.${status === 'approved' ? 'approve' : 'reject'}`, d.vendor_id, { docType: d.doc_type, status: d.status }, { docType: d.doc_type, status, reason }],
+      );
+      return { id, status, rejectReason: reason };
+    });
   }
 
   @UseGuards(AdminGuard)

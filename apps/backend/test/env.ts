@@ -13,4 +13,5 @@ export function useTestEnv() {
   process.env.AUTH_RATE_LIMIT_PER_MIN = '10000';
   process.env.PAYMENT_PROVIDER = 'fake';
   process.env.BOOKING_SWEEP_SEC = '0';
+  process.env.CLOUDINARY_URL = 'cloudinary://111222333:test-secret@testcloud';
 }

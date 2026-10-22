@@ -11,6 +11,16 @@ import { OTP_SENDER, OtpSender } from '../src/auth/otp-sender';
 import { Db } from '../src/db/db.service';
 import { hashPassword } from '../src/admin/password';
 import { newTotpSecret, totpAt } from '../src/admin/totp';
+import { CloudinaryService } from '../src/media/cloudinary.service';
+import { loadConfig } from '../src/config';
+
+/** Records deletes instead of calling Cloudinary. */
+export class FakeCloudinary extends CloudinaryService {
+  readonly destroyed: string[] = [];
+  async destroy(publicId: string) {
+    this.destroyed.push(publicId);
+  }
+}
 
 /** Captures codes instead of sending SMS, so tests can log in. */
 export class FakeOtpSender implements OtpSender {
@@ -27,6 +37,7 @@ export interface TestApp {
   app: INestApplication;
   db: Db;
   sms: FakeOtpSender;
+  cloudinary: FakeCloudinary;
   http: () => ReturnType<typeof request>;
   reset: () => Promise<void>;
   /** Full send → verify; fails the test unless verify returns `status`. */
@@ -37,9 +48,12 @@ export interface TestApp {
 
 export async function createTestApp(): Promise<TestApp> {
   const sms = new FakeOtpSender();
+  const cloudinary = new FakeCloudinary(loadConfig());
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(OTP_SENDER)
     .useValue(sms)
+    .overrideProvider(CloudinaryService)
+    .useValue(cloudinary)
     .compile();
   const app = configureApp(moduleRef.createNestApplication({ logger: false, rawBody: true }));
   await app.init();
@@ -50,13 +64,15 @@ export async function createTestApp(): Promise<TestApp> {
     app,
     db,
     sms,
+    cloudinary,
     http,
     reset: async () => {
       sms.sent.length = 0;
       await db.query('TRUNCATE otp_requests, sessions, users, admin_users CASCADE');
     },
     login: async (phone, appName = 'customer', status = 200) => {
-      await http().post('/v1/auth/otp/send').send({ phone }).expect(200);
+      const sent = await http().post('/v1/auth/otp/send').send({ phone });
+      if (sent.status !== 200) throw new Error(`otp/send ${sent.status}: ${JSON.stringify(sent.body)}`);
       return http()
         .post('/v1/auth/otp/verify')
         .send({ phone, code: sms.lastCode(`+91${phone.slice(-10)}`), app: appName })

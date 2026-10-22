@@ -110,5 +110,6 @@ export function missingForReview(v: VendorDetail): string[] {
   if (!v.area) missing.push('area');
   if (!v.about || v.about.trim().length < 20) missing.push('about');
   if (v.services.length + v.packages.length === 0) missing.push('services_or_packages');
+  if (!v.media.some((m) => m.type === 'photo' && m.status !== 'rejected')) missing.push('photos');
   return missing;
 }

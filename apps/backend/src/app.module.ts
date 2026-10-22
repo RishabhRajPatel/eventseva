@@ -24,6 +24,8 @@ import { PublicReviewsController, SocialController } from './social/social.contr
 import { ChatController } from './chat/chat.controller';
 import { PartnerHomeController } from './partner/partner-home.controller';
 import { AdminOpsController } from './admin/admin-ops.controller';
+import { MediaController } from './media/media.controller';
+import { CloudinaryService } from './media/cloudinary.service';
 import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
 
 @Controller()
@@ -69,6 +71,7 @@ class ConfigModule {}
     ChatController,
     PartnerHomeController,
     AdminOpsController,
+    MediaController,
   ],
   providers: [
     { provide: OTP_SENDER, useClass: ConsoleOtpSender },
@@ -80,6 +83,7 @@ class ConfigModule {}
     PartnerAppGuard,
     AdminGuard,
     BookingsService,
+    CloudinaryService,
     { provide: PAYMENT_GATEWAY, inject: [CONFIG], useFactory: createGateway },
   ],
 })

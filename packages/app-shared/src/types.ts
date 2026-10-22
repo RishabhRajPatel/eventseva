@@ -154,7 +154,7 @@ export interface VendorDetail {
 /** GET /v1/partner/vendor */
 export interface OwnVendor extends VendorDetail {
   status: VendorStatus;
-  missingForReview: Array<'area' | 'about' | 'services_or_packages'>;
+  missingForReview: Array<'area' | 'about' | 'services_or_packages' | 'photos'>;
 }
 
 export interface Review {
@@ -166,6 +166,46 @@ export interface Review {
   customerName: string;
   eventType?: EventType;
   day?: string;
+}
+
+// ---- uploads (Cloudinary signed upload) ----
+
+export type UploadKind = 'photo' | 'video' | 'document';
+
+/** POST /v1/partner/uploads/sign — send `params` exactly as given, plus file, api_key and signature. */
+export interface UploadSignature {
+  uploadUrl: string;
+  cloudName: string;
+  apiKey: string;
+  params: Record<string, string | number>;
+  signature: string;
+  maxBytes: number;
+}
+
+/** The parts of Cloudinary's upload response the API needs. */
+export interface CloudinaryUploadResult {
+  public_id: string;
+  version: number;
+  signature: string;
+  width?: number;
+  height?: number;
+  bytes: number;
+  etag: string;
+  format: string;
+  duration?: number;
+}
+
+export type DocType = 'aadhaar' | 'pan' | 'gst' | 'shop_photo';
+
+export interface VendorDocument {
+  id: string;
+  docType: DocType;
+  last4: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectReason: string | null;
+  createdAt: string;
+  /** Admin (verifier) only: a link that works for 10 minutes. */
+  viewUrl?: string | null;
 }
 
 // ---- events & bookings ----

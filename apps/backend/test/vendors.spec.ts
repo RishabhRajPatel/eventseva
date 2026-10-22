@@ -35,11 +35,17 @@ describe('vendor onboarding and approval', () => {
 
   /** A complete profile, ready to send for review. */
   const readyVendor = async () => {
-    await createVendor();
+    const { id } = (await createVendor()).body;
     await as(partner)
       .patch('/v1/partner/vendor', { area: 'Civil Lines', about: 'DJ, lights and sound for weddings and parties since 2015.' })
       .expect(200);
     await as(partner).post('/v1/partner/services', { title: 'Wedding DJ (5 hours)', pricePaise: 1_500_000, unit: 'per_event' }).expect(201);
+    // One photo; the upload flow itself is covered in media.spec.ts.
+    await t.db.query(
+      `INSERT INTO media (vendor_id, type, public_id, width, height, bytes, file_hash, status)
+       VALUES ($1::uuid, 'photo', 'p/' || $1::text, 1200, 900, 1000, 'h-' || $1::text, 'pending')`,
+      [id],
+    );
     return (await as(partner).get('/v1/partner/vendor').expect(200)).body;
   };
 
@@ -61,7 +67,7 @@ describe('vendor onboarding and approval', () => {
         status: 'draft',
         category: { slug: 'dj' },
         city: { name: 'Prayagraj' },
-        missingForReview: ['area', 'about', 'services_or_packages'],
+        missingForReview: ['area', 'about', 'services_or_packages', 'photos'],
       });
       const again = await as(partner).post('/v1/partner/vendor', { businessName: 'Second', categoryId: djId, cityId }).expect(409);
       expect(again.body.error.code).toBe('VENDOR_EXISTS');
@@ -122,7 +128,7 @@ describe('vendor onboarding and approval', () => {
     it('cannot submit an incomplete profile', async () => {
       await createVendor();
       const res = await as(partner).post('/v1/partner/vendor/submit').expect(400);
-      expect(res.body.error).toMatchObject({ code: 'VENDOR_INCOMPLETE', missing: ['area', 'about', 'services_or_packages'] });
+      expect(res.body.error).toMatchObject({ code: 'VENDOR_INCOMPLETE', missing: ['area', 'about', 'services_or_packages', 'photos'] });
     });
 
     it('submit → pending, and the profile is locked during review', async () => {
