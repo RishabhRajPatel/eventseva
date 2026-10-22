@@ -10,12 +10,13 @@ import { CITY } from '../../lib/config';
 import { keys } from '../../lib/queryClient';
 import { useMe } from '../../lib/session';
 import { c, radius, space } from '../../lib/theme';
-import { useCategories, useNotificationsBadge } from '../../hooks/useCatalog';
+import { useCategories, useNotificationsBadge, useOffers } from '../../hooks/useCatalog';
 import { useLayout } from '../../hooks/useLayout';
 import { AppText } from '../../components/AppText';
 import { Pill, SectionTitle } from '../../components/Bits';
 import { Button, IconButton } from '../../components/Button';
 import { CategoryTile, useCategoryLabel } from '../../components/CategoryTile';
+import { OfferBanners } from '../../components/OfferBanners';
 import { Icon } from '../../components/Icon';
 import { ErrorState, isOffline, Loading } from '../../components/States';
 import { VendorCard, VendorRow } from '../../components/VendorCards';
@@ -29,10 +30,11 @@ export default function HomeScreen() {
   const categories = useCategories();
   const top = useQuery({ queryKey: [...keys.vendors(), 'top'], queryFn: () => api.vendors({ limit: isTablet ? 8 : 5 }) });
   const unread = useNotificationsBadge();
+  const offers = useOffers();
   const label = useCategoryLabel();
   const [showAll, setShowAll] = useState(false);
 
-  const refresh = () => Promise.all([categories.refetch(), top.refetch()]);
+  const refresh = () => Promise.all([categories.refetch(), top.refetch(), offers.refetch()]);
   if (isOffline(categories.error) && isOffline(top.error)) {
     return (
       <SafeAreaView style={styles.flex} edges={['top']}>
@@ -120,15 +122,19 @@ export default function HomeScreen() {
             )}
           </View>
 
-          <View style={[styles.banner, isTablet && styles.bannerTablet]}>
-            <View style={[styles.bannerText, isTablet && styles.flex]}>
-              <Pill label={t('home.bannerTag')} tone="peach" />
-              <AppText variant="display" size={22}>
-                {t('home.bannerTitle')}
-              </AppText>
+          {offers.data && offers.data.items.length > 0 ? (
+            <OfferBanners offers={offers.data.items} width={contentWidth} gutter={gutter} isTablet={isTablet} />
+          ) : (
+            <View style={[styles.banner, isTablet && styles.bannerTablet]}>
+              <View style={[styles.bannerText, isTablet && styles.flex]}>
+                <Pill label={t('home.bannerTag')} tone="peach" />
+                <AppText variant="display" size={22}>
+                  {t('home.bannerTitle')}
+                </AppText>
+              </View>
+              <Button label={t('home.bannerAction')} variant="dark" size="md" onPress={() => router.push('/event/new')} style={styles.bannerButton} />
             </View>
-            <Button label={t('home.bannerAction')} variant="dark" size="md" onPress={() => router.push('/event/new')} style={styles.bannerButton} />
-          </View>
+          )}
 
           <View style={styles.section}>
             <SectionTitle title={t('home.topVendors')} action={t('home.seeAll')} onAction={() => openSearch()} />

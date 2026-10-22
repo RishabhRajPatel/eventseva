@@ -36,6 +36,7 @@ interface VendorRow {
   rating_avg: string;
   rating_count: number;
   approved_at: Date | null;
+  featured_until: Date | null;
   created_at: Date;
 }
 
@@ -99,7 +100,13 @@ export async function loadVendor(
     // Review state is private to the owner and admins.
     ...(audience === 'public'
       ? {}
-      : { status: v.status, rejectReason: v.reject_reason, approvedAt: v.approved_at, createdAt: v.created_at }),
+      : {
+          status: v.status,
+          rejectReason: v.reject_reason,
+          approvedAt: v.approved_at,
+          createdAt: v.created_at,
+          featuredUntil: v.featured_until && v.featured_until > new Date() ? v.featured_until : null,
+        }),
   };
 }
 

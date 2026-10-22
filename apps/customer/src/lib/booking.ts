@@ -59,13 +59,16 @@ export interface RefundPreview {
   daysBefore: number;
 }
 
-/** What the customer would get back if they cancelled today; null when the booking cannot be cancelled. */
-export function refundPreview(b: Pick<Booking, 'status' | 'day' | 'advancePaise'>, today = todayIst()): RefundPreview | null {
+/**
+ * What the customer would get back if they cancelled today; null when the booking cannot be cancelled.
+ * Worked out on what was actually paid (`payNowPaise`: the advance minus any coupon discount).
+ */
+export function refundPreview(b: Pick<Booking, 'status' | 'day' | 'payNowPaise'>, today = todayIst()): RefundPreview | null {
   if (!canCancel(b, today)) return null;
   const daysBefore = daysBetween(today, b.day);
   if (b.status !== 'confirmed') return { paid: false, percent: 0, refundPaise: 0, daysBefore };
   const percent = refundPercent(daysBefore);
-  return { paid: true, percent, refundPaise: Math.round((b.advancePaise * percent) / 100), daysBefore };
+  return { paid: true, percent, refundPaise: Math.round((b.payNowPaise * percent) / 100), daysBefore };
 }
 
 export type StatusTone = 'lavender' | 'peach' | 'mint' | 'ink' | 'muted';

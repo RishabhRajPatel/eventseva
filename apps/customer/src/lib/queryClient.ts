@@ -19,6 +19,7 @@ export const keys = {
   messages: (id: string) => ['messages', id] as const,
   notifications: ['notifications'] as const,
   complaints: ['complaints'] as const,
+  offers: ['offers'] as const,
 };
 
 export function makeQueryClient() {

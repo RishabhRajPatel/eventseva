@@ -84,6 +84,7 @@ function AppStack() {
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="chat/[id]" />
         <Stack.Screen name="earnings" />
+        <Stack.Screen name="featured" />
         <Stack.Screen name="service/[id]" />
         <Stack.Screen name="package/[id]" />
         <Stack.Screen name="business" />

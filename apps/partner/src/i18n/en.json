@@ -114,7 +114,11 @@
     "rating": "Rating",
     "unreadChats": "Unread chats",
     "upcoming": "Upcoming bookings",
-    "noUpcoming": "No confirmed bookings coming up yet."
+    "noUpcoming": "No confirmed bookings coming up yet.",
+    "featuredTitle": "Get more bookings",
+    "featuredBody": "Get featured: show at the top of search with a Featured badge.",
+    "featuredActive": "Featured until {{day}}",
+    "featuredCta": "Get featured"
   },
   "requests": {
     "title": "Bookings",
@@ -179,7 +183,9 @@
     "collectAtEvent": "Collect at the event",
     "bookingTotal": "Booking total",
     "feeNote": "Advance {{advance}} paid in the app, minus EventSeva fee {{fee}}.",
-    "refunded": "{{amount}} refunded to the customer."
+    "refunded": "{{amount}} refunded to the customer.",
+    "deduction": "Deducted by EventSeva",
+    "deductionNote": "Taken off your payout because of a refund to the customer."
   },
   "reason": {
     "alreadyBooked": "Already booked that day",
@@ -323,7 +329,9 @@
     "logoutTitle": "Log out?",
     "logoutBody": "You will stop getting booking requests on this phone until you log in again.",
     "underReviewNote": "Your profile is under review, so editing is paused for now.",
-    "languageValue": "English · हिंदी"
+    "languageValue": "English · हिंदी",
+    "featured": "Get featured",
+    "featuredUntil": "Until {{day}}"
   },
   "catalog": {
     "title": "Services & packages",
@@ -493,6 +501,32 @@
     "sent": "Sent to your bank",
     "payoutRule": "Payouts reach your bank the day after the event (3 days for new vendors)."
   },
+  "featured": {
+    "title": "Get featured",
+    "headline": "Show at the top of search with a Featured badge",
+    "explain": "Customers looking for your service see featured vendors first. More views mean more booking requests.",
+    "until": "Featured until {{day}}",
+    "activeNote": "You are at the top of search with a Featured badge.",
+    "notFeatured": "Not featured",
+    "notFeaturedNote": "Your profile shows in the normal search order.",
+    "plans": "Choose a plan",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "perDay": "{{amount}}/day",
+    "buy": "Buy for {{amount}}",
+    "devButton": "Test payment (development)",
+    "devNote": "Development build: no real money is charged.",
+    "stackNote": "Days add on top of your current featured period.",
+    "noPlans": "No plans are available right now. Please check again later.",
+    "history": "Purchase history",
+    "noHistory": "No purchases yet.",
+    "paid": "Paid",
+    "granted": "Free from EventSeva",
+    "success": "Payment done. You are featured until {{day}}.",
+    "successNoDate": "Payment done. Thank you!",
+    "notLive": "Your profile must be live to get featured. Finish the review first, or contact EventSeva support.",
+    "paymentFailed": "Payment failed. No money was taken; please try again."
+  },
   "reviews": {
     "title": "Reviews",
     "count": "{{n}} reviews",
@@ -571,7 +605,9 @@
     "mediaDuplicate": "You have already added this file.",
     "videoTooLong": "Videos can be up to 2 minutes long.",
     "fileTooBig": "This file is too big.",
-    "fileTooBigMax": "This file is too big. The limit is {{mb}} MB."
+    "fileTooBigMax": "This file is too big. The limit is {{mb}} MB.",
+    "planNotFound": "This plan is no longer available. Please pick another one.",
+    "paymentInvalid": "We could not verify this payment. If money was taken, it will be refunded automatically."
   },
   "deleteAccount": {
     "menu": "Delete account",

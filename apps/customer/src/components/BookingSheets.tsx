@@ -16,7 +16,8 @@ import { TextField } from './Form';
 import { Icon } from './Icon';
 import { Sheet } from './Sheet';
 
-function useBookingUpdated() {
+/** Put a booking the server returned into the cache, and refresh the lists that show it. */
+export function useBookingUpdated() {
   const qc = useQueryClient();
   return (b: Booking) => {
     qc.setQueryData(keys.booking(b.id), b);
@@ -34,7 +35,11 @@ export function RefundText({ booking }: { booking: Booking }) {
   return (
     <Notice icon="alert" tone={p.percent > 0 ? 'mintLight' : 'peach'}>
       <AppText variant="bold" size="md">
-        {p.percent > 0 ? t('cancel.refund', { amount: rupees(p.refundPaise), percent: p.percent }) : t('cancel.noRefund')}
+        {p.percent === 0
+          ? t('cancel.noRefund')
+          : booking.discountPaise > 0
+            ? t('cancel.refundPaid', { amount: rupees(p.refundPaise), percent: p.percent, paid: rupees(booking.payNowPaise) })
+            : t('cancel.refund', { amount: rupees(p.refundPaise), percent: p.percent })}
       </AppText>
       <AppText size="sm">{t('cancel.daysBefore', { count: p.daysBefore })}</AppText>
       <AppText size="xs">{t('cancel.estimateNote')}</AppText>

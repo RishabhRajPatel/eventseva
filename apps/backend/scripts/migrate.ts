@@ -4,7 +4,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 
-const MIGRATIONS_DIR = join(__dirname, '..', 'db', 'migrations');
+// Migrations live in the top-level database/ folder, next to the generated schema and table docs.
+const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'database', 'migrations');
 
 export function upSection(sql: string): string {
   const start = sql.indexOf('-- migrate:up');

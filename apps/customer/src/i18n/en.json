@@ -319,7 +319,8 @@
     "reason": "Why are you cancelling?",
     "reasonPlaceholder": "e.g. Our dates changed",
     "confirm": "Yes, cancel booking",
-    "keep": "Keep booking"
+    "keep": "Keep booking",
+    "refundPaid": "You will get about {{amount}} back ({{percent}}% of the {{paid}} you paid)."
   },
   "review": {
     "title": "Review {{name}}",
@@ -489,7 +490,12 @@
     "PAYMENT_TIME_OVER": "The time to pay has run out.",
     "PAYMENT_INVALID": "We could not verify this payment. If money was taken, it will be refunded.",
     "REVIEW_NOT_ALLOWED": "You can review after the event is over.",
-    "REVIEW_EXISTS": "You have already reviewed this booking."
+    "REVIEW_EXISTS": "You have already reviewed this booking.",
+    "COUPON_INVALID": "This coupon code is not valid or has expired.",
+    "COUPON_NOT_APPLICABLE": "This coupon cannot be used on this booking.",
+    "COUPON_ALREADY_USED": "You have already used this coupon.",
+    "COUPON_USED_UP": "This coupon has been fully used. Try another offer.",
+    "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -504,5 +510,40 @@
     "button": "Delete my account",
     "doneTitle": "Account deleted",
     "doneBody": "Your account has been deleted. You can sign up again any time."
+  },
+  "coupon": {
+    "have": "Have a coupon?",
+    "inputLabel": "Coupon code",
+    "placeholder": "e.g. SHAADI10",
+    "hint": "3–20 letters or numbers",
+    "apply": "Apply",
+    "available": "Available offers",
+    "applyOffer": "Apply {{code}}: {{summary}}",
+    "applied": "{{code}} applied: −{{amount}}",
+    "remove": "Remove",
+    "line": "Coupon {{code}}",
+    "advance": "Advance",
+    "payNow": "Pay now",
+    "paidInApp": "Paid in the app",
+    "note": "EventSeva pays the discount. The balance you pay the vendor does not change.",
+    "reasons": {
+      "minAmount": "This coupon is for bookings of {{amount}} or more.",
+      "category": "This coupon is not for this kind of service.",
+      "firstBooking": "This coupon is only for your first booking.",
+      "zero": "This coupon gives no discount on this booking."
+    }
+  },
+  "offers": {
+    "title": "Offers",
+    "subtitle": "Coupons you can use when you pay the advance",
+    "view": "View offer",
+    "cardLabel": "{{title}}. {{summary}}. Code {{code}}",
+    "useAtPayment": "Use this code at payment",
+    "minAmount": "On bookings of {{amount}} or more",
+    "category": "Only for {{category}}",
+    "firstBooking": "First booking only",
+    "validTill": "Valid till {{date}}",
+    "emptyTitle": "No offers right now",
+    "emptyBody": "Check again soon for wedding season deals."
   }
 }

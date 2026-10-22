@@ -10,6 +10,7 @@ approves vendors and handles money and complaints from an admin panel.
 | `apps/customer` | Customer app (Android first) | Expo SDK 58, expo-router |
 | `apps/partner` | Partner app for vendors | Expo SDK 58, expo-router |
 | `apps/admin` | Admin panel | Next.js 16 |
+| `database/` | All tables explained (`tables.md`), the whole schema (`schema.sql`), migrations | PostgreSQL 16 |
 | `packages/app-shared` | API client, types, theme, formatting, Cloudinary URLs | TypeScript |
 | `packages/core` | Shared constants | TypeScript |
 | `docs/API.md` | Every API route, error code and status | |
@@ -25,7 +26,7 @@ pnpm install
 # API (http://localhost:3000)
 cd apps/backend
 cp .env.example .env          # set DATABASE_URL; CLOUDINARY_URL for photo uploads
-pnpm migrate
+pnpm migrate                  # applies database/migrations
 ADMIN_PASSWORD='a-long-password' pnpm create-admin you@example.com super   # prints the 2FA secret
 pnpm build && pnpm start      # OTP codes are printed in this log while OTP_PROVIDER=console
 

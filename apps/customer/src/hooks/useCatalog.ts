@@ -13,3 +13,9 @@ export function useNotificationsBadge() {
   const q = useQuery({ queryKey: keys.notifications, queryFn: api.notifications, refetchInterval: 60_000 });
   return q.data?.unreadCount ?? 0;
 }
+
+/** Public coupons (home banner, Offers page, payment screen). Titles come in the app language. */
+export function useOffers() {
+  const { i18n } = useTranslation();
+  return useQuery({ queryKey: [...keys.offers, i18n.language], queryFn: api.offers, staleTime: 10 * 60_000 });
+}

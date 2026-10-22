@@ -30,6 +30,8 @@ const KNOWN: Record<string, string> = {
   UPLOAD_FAILED: 'errors.uploadFailed',
   MEDIA_DUPLICATE: 'errors.mediaDuplicate',
   VIDEO_TOO_LONG: 'errors.videoTooLong',
+  PLAN_NOT_FOUND: 'errors.planNotFound',
+  PAYMENT_INVALID: 'errors.paymentInvalid',
 };
 
 /** The message to show for a failed call: our translation when we know the code, else the server's text. */

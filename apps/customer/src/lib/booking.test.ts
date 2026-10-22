@@ -46,7 +46,7 @@ describe('booking form estimate', () => {
 
 describe('cancel refund preview', () => {
   const today = '2026-11-01';
-  const confirmed = { status: 'confirmed' as const, advancePaise: 1_000_000 };
+  const confirmed = { status: 'confirmed' as const, payNowPaise: 1_000_000 };
 
   test('days between two India dates', () => {
     expect(daysBetween(today, '2026-11-01')).toBe(0);
@@ -75,14 +75,20 @@ describe('cancel refund preview', () => {
     expect(refundPreview({ ...confirmed, day: '2026-11-04' }, today)).toMatchObject({ paid: true, percent: 0, refundPaise: 0 });
   });
 
+  test('with a coupon, the refund is a share of what was paid, not of the advance', () => {
+    // Advance ₹3,750, coupon −₹500: ₹3,250 was paid; 20 days away gives 90% of that.
+    const paid = { status: 'confirmed' as const, day: '2026-11-21', advancePaise: 375_000, discountPaise: 50_000, payNowPaise: 325_000 };
+    expect(refundPreview(paid, today)).toEqual({ paid: true, percent: 90, refundPaise: 292_500, daysBefore: 20 });
+  });
+
   test('nothing to refund before payment', () => {
-    expect(refundPreview({ status: 'requested', advancePaise: 1_000_000, day: '2026-12-01' }, today)).toMatchObject({ paid: false, refundPaise: 0 });
-    expect(refundPreview({ status: 'accepted', advancePaise: 1_000_000, day: '2026-12-01' }, today)).toMatchObject({ paid: false, refundPaise: 0 });
+    expect(refundPreview({ status: 'requested', payNowPaise: 1_000_000, day: '2026-12-01' }, today)).toMatchObject({ paid: false, refundPaise: 0 });
+    expect(refundPreview({ status: 'accepted', payNowPaise: 1_000_000, day: '2026-12-01' }, today)).toMatchObject({ paid: false, refundPaise: 0 });
   });
 
   test('finished, cancelled or past bookings cannot be cancelled', () => {
-    expect(refundPreview({ status: 'completed', advancePaise: 1, day: '2026-12-01' }, today)).toBeNull();
-    expect(refundPreview({ status: 'cancelled_by_vendor', advancePaise: 1, day: '2026-12-01' }, today)).toBeNull();
+    expect(refundPreview({ status: 'completed', payNowPaise: 1, day: '2026-12-01' }, today)).toBeNull();
+    expect(refundPreview({ status: 'cancelled_by_vendor', payNowPaise: 1, day: '2026-12-01' }, today)).toBeNull();
     expect(refundPreview({ ...confirmed, day: '2026-10-30' }, today)).toBeNull();
     expect(canCancel({ status: 'confirmed', day: today }, today)).toBe(true);
   });

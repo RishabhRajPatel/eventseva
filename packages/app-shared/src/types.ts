@@ -149,6 +149,8 @@ export interface VendorDetail {
   rejectReason?: string | null;
   approvedAt?: string | null;
   createdAt?: string;
+  /** Owner and admin views: end of the current featured period, or null. */
+  featuredUntil?: string | null;
 }
 
 /** GET /v1/partner/vendor */

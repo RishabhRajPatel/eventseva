@@ -35,6 +35,8 @@ export const event: EventSummary = {
 };
 
 export function booking(over: Partial<Booking> = {}): Booking {
+  const advancePaise = over.advancePaise ?? 3_375_000;
+  const discountPaise = over.discountPaise ?? 0;
   return {
     id: 'b1',
     status: 'requested',
@@ -49,6 +51,9 @@ export function booking(over: Partial<Booking> = {}): Booking {
     advancePaise: 3_375_000,
     balancePaise: 10_125_000,
     refundPaise: 0,
+    discountPaise: 0,
+    couponCode: null,
+    payNowPaise: advancePaise - discountPaise,
     respondBy: new Date(Date.now() + 5 * 3600_000 + 20 * 60_000).toISOString(),
     payBy: null,
     cancelReason: null,

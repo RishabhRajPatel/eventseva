@@ -31,7 +31,7 @@ export function BookingRow({ booking: b }: { booking: Booking }) {
       {b.status === 'accepted' ? (
         <Button
           size="md"
-          label={t('bookings.payAdvance', { amount: rupees(b.advancePaise) })}
+          label={t('bookings.payAdvance', { amount: rupees(b.payNowPaise) })}
           onPress={() => router.push({ pathname: '/pay/[id]', params: { id: b.id } })}
         />
       ) : null}

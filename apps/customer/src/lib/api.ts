@@ -12,6 +12,7 @@ import {
   type Language,
   type Me,
   type Message,
+  type Offer,
   type Paged,
   type PaymentOrder,
   type Review,
@@ -107,6 +108,13 @@ export const api = {
   devPay: (id: string) => client.post<Booking>(`/v1/bookings/${id}/pay/dev`),
   cancelBooking: (id: string, reason: string) => client.post<Booking>(`/v1/bookings/${id}/cancel`, { reason }),
   review: (id: string, rating: number, comment?: string) => client.post<Review>(`/v1/bookings/${id}/review`, { rating, comment }),
+
+  // ---- coupons & offers ----
+  /** Public coupons (no login), in the app language. */
+  offers: () => client.get<{ items: Offer[] }>('/v1/offers', undefined, { auth: false }),
+  /** Only before paying; the server checks the code and returns the booking with the new pay-now amount. */
+  applyCoupon: (id: string, code: string) => client.post<Booking>(`/v1/bookings/${id}/coupon`, { code }),
+  removeCoupon: (id: string) => client.delete<Booking>(`/v1/bookings/${id}/coupon`),
 
   // ---- saved vendors ----
   shortlist: () => client.get<{ items: SavedVendor[] }>('/v1/shortlist'),

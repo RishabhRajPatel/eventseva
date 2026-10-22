@@ -7,10 +7,11 @@ import { canEdit, isCategoryLocked } from '../../lib/routing';
 import { coverOf, remainingSlots, thumbUrl } from '../../lib/media';
 import { useDashboard, useVendor } from '../../lib/queries';
 import { useSession } from '../../lib/session';
-import { vendorStatus } from '../../lib/labels';
+import { istDay, vendorStatus } from '../../lib/labels';
 import { c, radius, space } from '../../lib/theme';
 import { usePhotoUpload } from '../../hooks/usePhotoUpload';
 import { useIsTablet } from '../../hooks/useIsTablet';
+import { useLang } from '../../hooks/useLang';
 import { BankCard } from '../../components/Banners';
 import { LinkButton } from '../../components/Button';
 import { Card, CardHeader, Row } from '../../components/Card';
@@ -39,6 +40,7 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
   const { signOut } = useSession();
   const dashboard = useDashboard();
   const tablet = useIsTablet();
+  const lang = useLang();
   const editable = canEdit(vendor.status);
   const upload = usePhotoUpload({ limit: remainingSlots(vendor.media) });
   const cover = coverOf(vendor.media);
@@ -47,6 +49,13 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
 
   const menu: Array<{ icon: IconName; label: string; value?: string; onPress: () => void; testID: string }> = [
     { icon: 'rupee', label: t('profile.earnings'), value: dashboard.data ? t('profile.thisMonth', { amount: rupees(dashboard.data.monthEarningsPaise) }) : undefined, onPress: () => router.push('/earnings'), testID: 'menu-earnings' },
+    {
+      icon: 'search',
+      label: t('profile.featured'),
+      value: vendor.featuredUntil ? t('profile.featuredUntil', { day: istDay(vendor.featuredUntil, lang) }) : undefined,
+      onPress: () => router.push('/featured'),
+      testID: 'menu-featured',
+    },
     { icon: 'star', label: t('profile.reviews'), value: vendor.rating.count ? `★ ${vendor.rating.avg.toFixed(1)}` : undefined, onPress: () => router.push('/reviews'), testID: 'menu-reviews' },
     { icon: 'bell', label: t('notifications.title'), onPress: () => router.push('/notifications'), testID: 'menu-notifications' },
     { icon: 'lock', label: t('profile.documents'), onPress: () => router.push('/documents'), testID: 'menu-documents' },

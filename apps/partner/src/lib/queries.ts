@@ -11,6 +11,7 @@ import type {
   Complaint,
   Conversation,
   Earnings,
+  FeaturedOverview,
   Media,
   Message,
   VendorDocument,
@@ -39,6 +40,7 @@ export const keys = {
   media: ['media'] as const,
   documents: ['documents'] as const,
   bank: ['bank'] as const,
+  featured: ['featured'] as const,
 };
 
 /** The vendor's own profile; null when they have not created one yet (start onboarding). */
@@ -175,6 +177,11 @@ export function useDocuments() {
 export function invalidateMedia(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: keys.media });
   void qc.invalidateQueries({ queryKey: keys.vendor });
+}
+
+/** "Get featured": current end date, plans and past purchases. */
+export function useFeatured() {
+  return useQuery({ queryKey: keys.featured, queryFn: () => api.get<FeaturedOverview>('/v1/partner/featured') });
 }
 
 export function useComplaints() {

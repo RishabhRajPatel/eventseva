@@ -16,6 +16,7 @@ import { useNow } from '../../hooks/useNow';
 import { AppText } from '../../components/AppText';
 import { Card, Divider, MoneyRow, Notice } from '../../components/Bits';
 import { Button } from '../../components/Button';
+import { CouponBox, CouponMoneyRows } from '../../components/Coupons';
 import { OptionTile } from '../../components/Form';
 import { Icon } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
@@ -64,6 +65,7 @@ export default function PayScreen() {
   return (
     <Screen
       scroll
+      keyboard
       footer={
         payable ? (
           <>
@@ -81,7 +83,7 @@ export default function PayScreen() {
               </>
             ) : (
               <>
-                <Button label={t('payment.pay', { amount: rupees(b.advancePaise) })} onPress={() => pay.mutate()} loading={pay.isPending} />
+                <Button label={t('payment.pay', { amount: rupees(b.payNowPaise) })} onPress={() => pay.mutate()} loading={pay.isPending} />
                 <View style={styles.secure}>
                   <Icon name="lock" size={14} />
                   <AppText size="xs">{t('payment.secure')}</AppText>
@@ -119,9 +121,11 @@ export default function PayScreen() {
         </View>
         <MoneyRow label={b.quantity > 1 ? `${b.item.title} × ${b.quantity}` : b.item.title} value={rupees(b.amountPaise)} />
         <Divider />
-        <MoneyRow label={t('payment.advanceNow')} value={rupees(b.advancePaise)} strong accent />
+        {b.discountPaise > 0 ? <CouponMoneyRows booking={b} /> : <MoneyRow label={t('payment.advanceNow')} value={rupees(b.advancePaise)} strong accent />}
         <MoneyRow label={t('payment.balanceAfter')} value={rupees(b.balancePaise)} small />
       </Card>
+
+      {payable ? <CouponBox booking={b} /> : null}
 
       {payable && time ? (
         <AppText size="sm" accessibilityLiveRegion="polite">

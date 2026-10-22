@@ -88,6 +88,7 @@ function RootNavigator() {
         <Stack.Screen name="event/new" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="saved" />
+        <Stack.Screen name="offers" />
         <Stack.Screen name="help" />
         <Stack.Screen name="language" />
         <Stack.Screen name="edit-profile" />

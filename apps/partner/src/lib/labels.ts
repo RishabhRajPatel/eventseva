@@ -1,6 +1,6 @@
 // Turning API values into words in the current language.
 import type { TFunction } from 'i18next';
-import type { BookingStatus, EventType, PricingUnit, Slot, VendorStatus } from '@eventseva/app-shared';
+import { formatDay, todayIst, type BookingStatus, type EventType, type Language, type PricingUnit, type Slot, type VendorStatus } from '@eventseva/app-shared';
 import type { Tone } from '../components/Chip';
 import type { Remaining } from './bookings';
 
@@ -32,3 +32,9 @@ export function vendorStatus(t: TFunction, status: VendorStatus): { label: strin
 export function timeLeftLabel(t: TFunction, r: Remaining): string {
   return r.hours ? t('time.hoursLeft', { h: r.hours, m: r.minutes }) : t('time.minutesLeft', { m: r.minutes });
 }
+
+/** A timestamp (featured until, payout date) as an India-time day: "21 Nov 2026". */
+export const istDay = (iso: string, lang: Language) => formatDay(todayIst(new Date(iso)), lang);
+
+/** Rupees per day for a featured plan, rounded to whole rupees: "₹50/day". */
+export const perDayPaise = (pricePaise: number, days: number) => Math.round(pricePaise / days / 100) * 100;

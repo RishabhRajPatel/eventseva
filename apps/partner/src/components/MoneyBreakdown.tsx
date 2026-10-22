@@ -7,7 +7,8 @@ import { Txt } from './Txt';
 
 /**
  * What the vendor gets: the payout from EventSeva and what to collect at the event.
- * The EventSeva fee is shown plainly, in small muted text, never as a red deduction.
+ * The EventSeva fee is shown plainly, in small muted text, never as a red deduction. An admin refund
+ * that came out of the payout is listed as its own line (the payout already has it taken off).
  */
 export function MoneyBreakdown({ booking, full }: { booking: Booking; full?: boolean }) {
   const { t } = useTranslation();
@@ -20,6 +21,19 @@ export function MoneyBreakdown({ booking, full }: { booking: Booking; full?: boo
           {rupees(vendorPayout(booking))}
         </Txt>
       </View>
+      {booking.payoutDeductionPaise ? (
+        <View testID="payout-deduction" style={{ gap: 2 }}>
+          <View style={styles.line}>
+            <Txt size="sm">{t('money.deduction')}</Txt>
+            <Txt variant="bold" size="sm">
+              −{rupees(booking.payoutDeductionPaise)}
+            </Txt>
+          </View>
+          <Txt size="xs" color={c.textMuted}>
+            {t('money.deductionNote')}
+          </Txt>
+        </View>
+      ) : null}
       <View style={styles.line}>
         <Txt size="md">{t('money.collectAtEvent')}</Txt>
         <Txt variant="bold" size="md">

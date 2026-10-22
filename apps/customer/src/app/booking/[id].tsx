@@ -6,7 +6,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime, formatDay, formatPhone, rupees, timeLeft, type Booking } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
-import { canCancel } from '../../lib/booking';
+import { canCancel, isConfirmed, isPending } from '../../lib/booking';
 import { errorText } from '../../lib/errors';
 import { keys } from '../../lib/queryClient';
 import { c, radius, space } from '../../lib/theme';
@@ -16,6 +16,7 @@ import { AppText } from '../../components/AppText';
 import { Card, Divider, MoneyRow, Notice, StatusPill } from '../../components/Bits';
 import { CancelSheet, ReviewSheet } from '../../components/BookingSheets';
 import { Button } from '../../components/Button';
+import { CouponBox, CouponMoneyRows, minus } from '../../components/Coupons';
 import { Icon, type IconName } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
 import { ErrorState, Loading } from '../../components/States';
@@ -47,7 +48,7 @@ export default function BookingScreen() {
   const qtyText = b.quantity > 1 ? ` × ${b.quantity}` : '';
 
   return (
-    <Screen scroll>
+    <Screen scroll keyboard>
       <ScreenHeader title={b.vendor.businessName} subtitle={b.event.title} right={<StatusPill status={b.status} />} />
       {sent === '1' && b.status === 'requested' ? (
         <Notice icon="checkCircle" tone="mint">
@@ -68,11 +69,14 @@ export default function BookingScreen() {
 
       <Card style={styles.card}>
         <MoneyRow label={t('booking.total')} value={rupees(b.amountPaise)} />
-        <MoneyRow
-          label={b.status === 'confirmed' || b.status === 'completed' ? t('booking.advancePaid') : t('booking.advance')}
-          value={rupees(b.advancePaise)}
-          accent
-        />
+        {b.discountPaise > 0 && (isPending(b.status) || isConfirmed(b.status)) ? (
+          <CouponMoneyRows booking={b} paid={isConfirmed(b.status)} />
+        ) : (
+          <>
+            <MoneyRow label={isConfirmed(b.status) ? t('booking.advancePaid') : t('booking.advance')} value={rupees(b.advancePaise)} accent />
+            {b.discountPaise > 0 ? <MoneyRow label={t('coupon.line', { code: b.couponCode ?? '' })} value={minus(b.discountPaise)} /> : null}
+          </>
+        )}
         <MoneyRow label={t('booking.balance')} value={rupees(b.balancePaise)} />
         {b.refundPaise > 0 ? (
           <>
@@ -81,6 +85,8 @@ export default function BookingScreen() {
           </>
         ) : null}
       </Card>
+
+      {isPending(b.status) ? <CouponBox booking={b} /> : null}
 
       <View style={styles.actions}>
         {b.status !== 'expired' ? (
@@ -147,12 +153,12 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
       const time = left(b.payBy);
       return (
         <View style={[styles.status, { backgroundColor: c.peach }]}>
-          <AppText variant="bold" size="lg">{t('status.accepted.title', { amount: rupees(b.advancePaise) })}</AppText>
+          <AppText variant="bold" size="lg">{t('status.accepted.title', { amount: rupees(b.payNowPaise) })}</AppText>
           <AppText size="md" accessibilityLiveRegion="polite">
             {time ? t('booking.payWithin', { time }) : t('booking.payLate')}
           </AppText>
           {b.payBy ? <AppText size="sm">{t('booking.payBy', { when: formatDateTime(b.payBy, lang) })}</AppText> : null}
-          {time ? <Button label={t('booking.pay', { amount: rupees(b.advancePaise) })} onPress={onPay} /> : null}
+          {time ? <Button label={t('booking.pay', { amount: rupees(b.payNowPaise) })} onPress={onPay} /> : null}
         </View>
       );
     }

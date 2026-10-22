@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { rupees, type PartnerDashboard } from '@eventseva/app-shared';
 import { useBookings, useDashboard, useNotifications, useVendor } from '../../lib/queries';
-import { slotLabel, vendorStatus } from '../../lib/labels';
+import { istDay, slotLabel, vendorStatus } from '../../lib/labels';
 import { c, radius, space } from '../../lib/theme';
 import { useIsTablet } from '../../hooks/useIsTablet';
 import { useLang } from '../../hooks/useLang';
@@ -48,7 +48,7 @@ export default function Home() {
           refreshControl={<RefreshControl refreshing={dashboard.isRefetching} onRefresh={refresh} colors={[c.royal]} />}
         >
           <HomeHeader d={d} name={vendor.data?.businessName ?? ''} unread={notifications.data?.unreadCount ?? 0} />
-          <HomeBody d={d} />
+          <HomeBody d={d} featuredUntil={vendor.data?.featuredUntil ?? null} />
         </ScrollView>
       )}
     </QueryView>
@@ -90,7 +90,7 @@ function Tile({ value, label, bg, valueColor = c.ink, onPress, testID }: { value
   );
 }
 
-function HomeBody({ d }: { d: PartnerDashboard }) {
+function HomeBody({ d, featuredUntil }: { d: PartnerDashboard; featuredUntil: string | null }) {
   const { t } = useTranslation();
   const lang = useLang();
   const now = useNow();
@@ -142,6 +142,8 @@ function HomeBody({ d }: { d: PartnerDashboard }) {
         ))}
       </View>
 
+      {d.status === 'approved' || featuredUntil ? <FeaturedCard until={featuredUntil} /> : null}
+
       <Section title={t('home.upcoming')}>
         <Card style={{ paddingVertical: space.xs }}>
           {d.upcoming.length ? (
@@ -178,6 +180,37 @@ function HomeBody({ d }: { d: PartnerDashboard }) {
   );
 }
 
+/** "Get more bookings: Get featured", or how long the vendor is still featured. */
+function FeaturedCard({ until }: { until: string | null }) {
+  const { t } = useTranslation();
+  const lang = useLang();
+  const active = until ? t('home.featuredActive', { day: istDay(until, lang) }) : null;
+  return (
+    <Card
+      testID="featured-cta"
+      onPress={() => router.push('/featured')}
+      style={[styles.featured, { backgroundColor: active ? c.mint : c.white }]}
+      accessibilityLabel={`${t('home.featuredTitle')}: ${active ?? t('home.featuredCta')}`}
+    >
+      <View style={styles.featuredIcon}>
+        <Icon name="star" size={20} color={c.white} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Txt variant="bold" size="md">
+          {t('home.featuredTitle')}
+        </Txt>
+        <Txt size="sm">{active ?? t('home.featuredBody')}</Txt>
+      </View>
+      <View style={styles.featuredGo}>
+        <Txt variant="bold" size="sm" color={c.royal}>
+          {t('home.featuredCta')}
+        </Txt>
+        <Icon name="next" size={16} color={c.royal} />
+      </View>
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
   header: { backgroundColor: c.indigo, paddingHorizontal: space.xl, paddingBottom: space.xxl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl, gap: space.lg },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, width: '100%', maxWidth: 760, alignSelf: 'center' },
@@ -190,4 +223,7 @@ const styles = StyleSheet.create({
   stat: { gap: 2, padding: space.md, minHeight: 88 },
   twoCol: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -space.xs },
   dateBlock: { width: 48, alignItems: 'center' },
+  featured: { flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 72 },
+  featuredIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: c.indigo, alignItems: 'center', justifyContent: 'center' },
+  featuredGo: { flexDirection: 'row', alignItems: 'center', gap: 2, minHeight: 48 },
 });
