@@ -15,6 +15,7 @@ import { historyLabel, humanize, MEDIA_STATUS, UNIT_LABELS, VENDOR_STATUS, vendo
 import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
 import { VendorDocuments } from './VendorDocuments';
+import { VendorBank } from './VendorBank';
 import styles from './vendor.module.css';
 
 const VENDOR_REJECT_PRESETS = [
@@ -107,6 +108,8 @@ function VendorDetail({
           </section>
 
           <VendorDocuments vendor={v} receivedAt={receivedAt} onDone={reload} />
+
+          {can(role, 'payout.manage') ? <VendorBank vendorId={v.id} businessName={v.businessName} /> : null}
 
           <Services vendor={v} />
 

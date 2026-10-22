@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Length, MaxLength, Min } from 'class-validator';
 import { BOOKING_STATUSES, type BookingStatus } from '@eventseva/core';
@@ -7,6 +7,9 @@ import { Db, Queryable } from '../db/db.service';
 import { todayIst } from '../bookings/booking.rules';
 import { notify } from '../notifications/notify';
 import { refreshRating } from '../social/social.controller';
+import { AppConfig, CONFIG } from '../config';
+import { decrypt } from '../common/crypto';
+import { BANK_COLUMNS } from '../partner/partner-home.controller';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from './admin-auth';
 
 const PAGE_SIZE = 20;
@@ -65,7 +68,10 @@ async function audit(q: Queryable, adminId: string, action: string, targetType: 
 @UseGuards(AdminGuard)
 @Controller('v1/admin')
 export class AdminOpsController {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {}
 
   @Get('dashboard')
   async dashboard() {
@@ -184,13 +190,58 @@ export class AdminOpsController {
     const { rows } = await this.db.query(
       `SELECT po.id, po.amount_paise AS "amountPaise", po.status, po.release_after AS "releaseAfter",
               po.razorpay_transfer_id AS reference, po.booking_id AS "bookingId", b.day,
-              v.id AS "vendorId", v.business_name AS "vendorName", v.razorpay_account_id IS NOT NULL AS "hasBankAccount"
+              v.id AS "vendorId", v.business_name AS "vendorName", ba.status AS "bankStatus"
          FROM payouts po JOIN bookings b ON b.id = po.booking_id JOIN vendors v ON v.id = po.vendor_id
+         LEFT JOIN vendor_bank_accounts ba ON ba.vendor_id = v.id
         WHERE ($1::payout_status IS NULL OR po.status = $1) AND ($2::boolean IS NOT TRUE OR po.release_after <= now())
         ORDER BY po.release_after LIMIT $3 OFFSET $4`,
       [query.status ?? null, query.due === undefined ? null : query.due === 'true', PAGE_SIZE + 1, (p - 1) * PAGE_SIZE],
     );
     return paged(rows, p);
+  }
+
+  /** Full account number for paying a vendor by bank transfer. Every view is written to the audit log. */
+  @AdminRoles('finance')
+  @Get('vendors/:id/bank-account')
+  async vendorBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
+    const row = await this.db.one(this.db, `SELECT ${BANK_COLUMNS}, account_enc FROM vendor_bank_accounts WHERE vendor_id = $1`, [id]);
+    if (!row) throw new AppError('NOT_FOUND', 'This vendor has not added a bank account yet.', HttpStatus.NOT_FOUND);
+    await audit(this.db, admin.adminId, 'bank.view', 'vendor', id, null, null);
+    const { account_enc, ...rest } = row;
+    return { ...rest, accountNumber: decrypt(account_enc, this.config.bankDetailsKey) };
+  }
+
+  @AdminRoles('finance')
+  @Post('vendors/:id/bank-account/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.reviewBank(admin, id, 'verified', null);
+  }
+
+  @AdminRoles('finance')
+  @Post('vendors/:id/bank-account/reject')
+  @HttpCode(HttpStatus.OK)
+  rejectBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
+    return this.reviewBank(admin, id, 'rejected', body.reason.trim());
+  }
+
+  private async reviewBank(admin: AdminContext, vendorId: string, status: 'verified' | 'rejected', reason: string | null) {
+    return this.db.tx(async (client) => {
+      const ba = await this.db.one<{ status: string; vendor_user_id: string }>(
+        client,
+        `SELECT ba.status, v.user_id AS vendor_user_id FROM vendor_bank_accounts ba JOIN vendors v ON v.id = ba.vendor_id
+          WHERE ba.vendor_id = $1 FOR UPDATE OF ba`,
+        [vendorId],
+      );
+      if (!ba) throw new AppError('NOT_FOUND', 'This vendor has not added a bank account yet.', HttpStatus.NOT_FOUND);
+      await client.query('UPDATE vendor_bank_accounts SET status = $2, reject_reason = $3, verified_by = $4 WHERE vendor_id = $1', [vendorId, status, reason, admin.adminId]);
+      await audit(client, admin.adminId, `bank.${status === 'verified' ? 'verify' : 'reject'}`, 'vendor', vendorId, { status: ba.status }, { status, reason });
+      await notify(client, ba.vendor_user_id, `bank_${status}`, status === 'verified'
+        ? { en: { title: 'Bank account verified', body: 'Your payouts will be sent to this account.' }, hi: { title: 'बैंक खाता सत्यापित', body: 'आपका पेमेंट इसी खाते में भेजा जाएगा।' } }
+        : { en: { title: 'Please check your bank details', body: reason! }, hi: { title: 'कृपया बैंक विवरण जाँचें', body: reason! } },
+        {});
+      return { vendorId, status, rejectReason: reason };
+    });
   }
 
   /**

@@ -26,6 +26,8 @@ const SELECT = `
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toView(r: any, viewer: 'customer' | 'vendor') {
   const share = SHARES_PHONE.includes(r.status);
+  // A deleted account keeps its bookings, but not its phone number.
+  const phone = (p: string) => (share && !p.startsWith('deleted:') ? p : null);
   return {
     id: r.id,
     status: r.status,
@@ -56,11 +58,11 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
       id: r.vendor_id,
       businessName: r.business_name,
       categorySlug: r.category_slug,
-      phone: viewer === 'customer' && share ? r.vendor_phone : null,
+      phone: viewer === 'customer' ? phone(r.vendor_phone) : null,
     },
     /** Completed bookings: whether the customer has already written a review. */
     reviewed: r.reviewed,
-    customer: viewer === 'vendor' ? { name: r.customer_name, phone: share ? r.customer_phone : null } : undefined,
+    customer: viewer === 'vendor' ? { name: r.customer_name, phone: phone(r.customer_phone) } : undefined,
     createdAt: r.created_at,
   };
 }

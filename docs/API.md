@@ -62,6 +62,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 |---|---|
 | `GET /v1/me` | `Me` |
 | `PATCH /v1/me` | `{name?, language?: 'en'\|'hi', cityId?}` → `Me`. `CITY_NOT_FOUND` |
+| `DELETE /v1/me` | `{confirm: 'DELETE'}` → 204. Deletes the account (Google Play requirement). `ACCOUNT_HAS_ACTIVE_BOOKINGS` 409 (with `bookings` count), `ACCOUNT_HAS_PENDING_PAYOUT` 409 |
 | `GET /v1/cities` | `{items: City[]}` (only Prayagraj for now) |
 | `GET /v1/categories` | `{items: Category[], language}`, 12 items, icons by `slug`: hall, dj, camera, halwai, catering, band, car, decor, hotel, bartender, makeup, other |
 
@@ -160,6 +161,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/partner/calendar/block` · `DELETE …/block` | `{day, slot}` → 204. `SLOT_TAKEN`, `DATE_IN_PAST` |
 | `GET /v1/partner/earnings?month=` | `Earnings` (Kamai screen) |
 | `GET /v1/partner/reviews` · `POST /v1/partner/reviews/:id/reply` | `{reply}` |
+| `GET /v1/partner/bank-account` · `PUT /v1/partner/bank-account` | `{holderName, accountNumber (9–18 digits), ifsc, upiId?}` → `{account: BankAccount}`. Only the last 4 digits come back; saving resets `status` to `pending` |
 
 **Photos, videos and documents (signed Cloudinary upload)**
 
@@ -218,7 +220,9 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/admin/documents/:id/approve` · `/reject {reason}` | verifier | ID document review |
 | `POST /v1/admin/vendors/:id/approve` · `/reject {reason}` · `/hold {reason}` | verifier | `VENDOR_BAD_STATUS` 409 |
 | `GET /v1/admin/bookings?status=&q=&page=` · `GET /v1/admin/bookings/:id` | support, finance | `q` matches vendor name, phone or booking id; detail has `payments[]` and `payout` |
-| `GET /v1/admin/payouts?status=&due=true&page=` | finance | |
+| `GET /v1/admin/payouts?status=&due=true&page=` | finance | each payout has `bankStatus` (`null` = no bank account) |
+| `GET /v1/admin/vendors/:id/bank-account` | finance | full account number; each view is audit-logged |
+| `POST /v1/admin/vendors/:id/bank-account/verify` · `/reject {reason}` | finance | the vendor is notified |
 | `POST /v1/admin/payouts/:id/mark-paid {reference}` · `/hold {reason}` | finance | records the bank UTR |
 | `GET /v1/admin/complaints?status=&page=` · `POST /v1/admin/complaints/:id {status, resolution?}` | support | resolving requires `resolution` |
 | `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere |

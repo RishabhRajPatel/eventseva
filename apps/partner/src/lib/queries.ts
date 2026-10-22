@@ -2,6 +2,7 @@
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type {
   AppNotification,
+  BankAccount,
   Booking,
   BookingStatus,
   CalendarEntry,
@@ -37,6 +38,7 @@ export const keys = {
   complaints: ['complaints'] as const,
   media: ['media'] as const,
   documents: ['documents'] as const,
+  bank: ['bank'] as const,
 };
 
 /** The vendor's own profile; null when they have not created one yet (start onboarding). */
@@ -153,6 +155,13 @@ export interface MediaPage {
 /** All of the vendor's photos and videos with review status, and how many are allowed. */
 export function useMedia() {
   return useQuery({ queryKey: keys.media, queryFn: () => api.get<MediaPage>('/v1/partner/media') });
+}
+
+export function useBankAccount() {
+  return useQuery({
+    queryKey: keys.bank,
+    queryFn: async () => (await api.get<{ account: BankAccount | null }>('/v1/partner/bank-account')).account,
+  });
 }
 
 export function useDocuments() {

@@ -9,7 +9,8 @@ import { useApiQuery } from '@/hooks/useApiQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
 import type { AdminPayout } from '@/lib/admin-types';
-import { canHoldPayout, canMarkPaid, pageFrom, PAYOUT_STATUS, PAYOUT_STATUSES, shortId } from '@/lib/labels';
+import { BANK_STATUS, canHoldPayout, canMarkPaid, pageFrom, PAYOUT_STATUS, PAYOUT_STATUSES, shortId } from '@/lib/labels';
+import { VendorBank } from '../vendors/[id]/VendorBank';
 import { can, canView } from '@/lib/roles';
 import { REASON_LIMITS, REFERENCE_LIMITS } from '@/lib/validate';
 
@@ -24,6 +25,7 @@ export function PayoutsView() {
   const page = pageFrom(params.get('page'));
   const state = useApiQuery<Paged<AdminPayout>>('/v1/admin/payouts', { status, due: due ? 'true' : undefined, page });
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [bankFor, setBankFor] = useState<{ vendorId: string; vendorName: string } | null>(null);
   const manage = can(role, 'payout.manage');
 
   return (
@@ -95,7 +97,13 @@ export function PayoutsView() {
                       </td>
                       <td>
                         <span className="cell-main">{p.vendorName}</span>
-                        {!p.hasBankAccount ? <span className="cell-sub">No linked payout account</span> : null}
+                        {p.bankStatus ? (
+                          <span className="cell-sub">
+                            Bank: <StatusPill map={BANK_STATUS} status={p.bankStatus} />
+                          </span>
+                        ) : (
+                          <span className="cell-sub">No bank account added yet</span>
+                        )}
                       </td>
                       <td className="nowrap">{formatDay(p.day)}</td>
                       <td className="num">{rupees(p.amountPaise)}</td>
@@ -107,6 +115,11 @@ export function PayoutsView() {
                       {manage ? (
                         <td>
                           <div className="btn-row" style={{ flexWrap: 'nowrap', gap: '0.5rem' }}>
+                            {p.bankStatus ? (
+                              <button type="button" className="btn btn-small btn-outline-royal" onClick={() => setBankFor({ vendorId: p.vendorId, vendorName: p.vendorName })}>
+                                Bank details
+                              </button>
+                            ) : null}
                             {canHoldPayout(p.status) ? (
                               <button type="button" className="btn btn-small" onClick={() => setDialog({ kind: 'hold', payout: p })}>
                                 Hold
@@ -126,6 +139,17 @@ export function PayoutsView() {
               </table>
             </div>
             <Pager page={data.page} hasMore={data.hasMore} count={data.items.length} hrefFor={(p) => hrefWith({ page: p })} />
+            {bankFor ? (
+              <div className="stack">
+                <p className="small muted">
+                  Bank details for <b>{bankFor.vendorName}</b> ·{' '}
+                  <button type="button" className="btn btn-small" onClick={() => setBankFor(null)}>
+                    Close
+                  </button>
+                </p>
+                <VendorBank key={bankFor.vendorId} vendorId={bankFor.vendorId} businessName={bankFor.vendorName} />
+              </div>
+            ) : null}
           </>
         )}
       </QueryView>

@@ -87,6 +87,8 @@ function AppStack() {
         <Stack.Screen name="business" />
         <Stack.Screen name="photos" />
         <Stack.Screen name="documents" />
+        <Stack.Screen name="bank" />
+        <Stack.Screen name="delete-account" />
         <Stack.Screen name="language" />
         <Stack.Screen name="reviews" />
         <Stack.Screen name="notifications" />

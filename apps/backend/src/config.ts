@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const CONFIG = Symbol('CONFIG');
 
 export interface AppConfig {
@@ -22,6 +24,8 @@ export interface AppConfig {
   bookingSweepSec: number;
   /** From CLOUDINARY_URL (cloudinary://key:secret@cloud); unset = uploads switched off. */
   cloudinary?: { cloudName: string; apiKey: string; apiSecret: string };
+  /** 32-byte key for bank account numbers (BANK_DETAILS_KEY, base64). */
+  bankDetailsKey: Buffer;
   isProduction: boolean;
 }
 
@@ -64,6 +68,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required');
   }
 
+  let bankDetailsKey = env.BANK_DETAILS_KEY ? Buffer.from(env.BANK_DETAILS_KEY, 'base64') : undefined;
+  if (bankDetailsKey && bankDetailsKey.length !== 32) throw new Error('BANK_DETAILS_KEY must be 32 bytes, base64 (openssl rand -base64 32)');
+  if (!bankDetailsKey) {
+    if (isProduction) throw new Error('BANK_DETAILS_KEY is required in production');
+    bankDetailsKey = createHash('sha256').update('eventseva-dev-bank-key').digest();
+  }
+
   return {
     port: Number(env.PORT || 3000),
     databaseUrl,
@@ -82,6 +93,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET || undefined,
     bookingSweepSec: Number(env.BOOKING_SWEEP_SEC ?? 60),
     cloudinary: parseCloudinaryUrl(env.CLOUDINARY_URL),
+    bankDetailsKey,
     isProduction,
   };
 }

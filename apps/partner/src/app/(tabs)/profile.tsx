@@ -52,6 +52,7 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
     { icon: 'lock', label: t('profile.documents'), onPress: () => router.push('/documents'), testID: 'menu-documents' },
     { icon: 'globe', label: t('profile.language'), value: t('profile.languageValue'), onPress: () => router.push('/language'), testID: 'menu-language' },
     { icon: 'help', label: t('profile.help'), onPress: () => router.push('/help'), testID: 'menu-help' },
+    { icon: 'trash', label: t('deleteAccount.menu'), onPress: () => router.push('/delete-account'), testID: 'menu-delete-account' },
     {
       icon: 'logout',
       label: t('profile.logout'),

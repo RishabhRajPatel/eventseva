@@ -235,7 +235,7 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
       const support = await t.adminLogin('support');
       await as(support).get('/v1/admin/payouts').expect(403);
       const payouts = (await as(finance).get('/v1/admin/payouts?status=scheduled').expect(200)).body.items;
-      expect(payouts).toEqual([expect.objectContaining({ bookingId: id, amountPaise: 225_000, hasBankAccount: false })]);
+      expect(payouts).toEqual([expect.objectContaining({ bookingId: id, amountPaise: 225_000, bankStatus: null })]);
       await as(finance).post(`/v1/admin/payouts/${payouts[0].id}/mark-paid`, { reference: 'UTR123456789' }).expect(200);
       expect((await as(finance).post(`/v1/admin/payouts/${payouts[0].id}/mark-paid`, { reference: 'UTR123456789' }).expect(409)).body.error.code).toBe('PAYOUT_BAD_STATUS');
       const earn = (await as(vendorToken).get(`/v1/partner/earnings?month=${inDays(-1).slice(0, 7)}`)).body;

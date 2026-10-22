@@ -85,7 +85,8 @@ export default function ProfileScreen() {
 
         <View style={styles.group}>
           <ListRow label={t('profile.logout')} onPress={() => confirmLogout(false)} />
-          <ListRow last label={t('profile.logoutAll')} onPress={() => confirmLogout(true)} />
+          <ListRow label={t('profile.logoutAll')} onPress={() => confirmLogout(true)} />
+          <ListRow last label={t('deleteAccount.menu')} onPress={() => router.push('/delete-account')} />
         </View>
       </ScrollView>
     </SafeAreaView>

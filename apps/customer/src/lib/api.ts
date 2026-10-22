@@ -82,6 +82,8 @@ export const api = {
   // ---- profile & catalog ----
   me: () => client.get<Me>('/v1/me'),
   updateMe: (body: { name?: string; language?: Language }) => client.patch<Me>('/v1/me', body),
+  /** Google Play requires in-app account deletion; the API refuses while bookings are open. */
+  deleteAccount: () => client.delete<void>('/v1/me', { confirm: 'DELETE' }),
   categories: () => client.get<{ items: Category[] }>('/v1/categories', undefined, { auth: false }),
 
   // ---- vendors ----

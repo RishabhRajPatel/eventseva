@@ -89,6 +89,7 @@ function RootNavigator() {
         <Stack.Screen name="help" />
         <Stack.Screen name="language" />
         <Stack.Screen name="edit-profile" />
+        <Stack.Screen name="delete-account" />
       </Stack.Protected>
     </Stack>
   );

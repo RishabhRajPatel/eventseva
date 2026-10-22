@@ -47,9 +47,32 @@ pnpm -r lint     # type checks (and eslint for admin)
 pnpm -r test     # backend e2e tests need PostgreSQL on localhost (postgres/postgres)
 ```
 
+## Play Store
+
+- **Public pages** (served by the admin app; link them in the Play Console):
+  - Privacy policy: `https://<admin-domain>/privacy`
+  - Account deletion: `https://<admin-domain>/account-deletion`
+  - Have the privacy text reviewed before launch, and set `NEXT_PUBLIC_SUPPORT_EMAIL`.
+- **In-app account deletion:** Profile → Delete account, in both apps.
+- **Builds** (`apps/customer` or `apps/partner`):
+
+  ```bash
+  npx eas-cli@latest login
+  npx eas-cli@latest build --platform android --profile development   # APK for testing, incl. Razorpay
+  npx eas-cli@latest build --platform android --profile preview       # APK to share with testers
+  npx eas-cli@latest build --platform android --profile production    # .aab for the Play Store
+  npx eas-cli@latest submit --platform android --profile production   # uploads to the internal testing track
+  ```
+
+  The first `eas build` links the app to an Expo project and creates the signing key. Keep that key
+  (EAS stores it).
+- **API URLs:** set `EXPO_PUBLIC_API_URL` in `eas.json` to the real HTTPS API before the preview and production
+  builds. Release builds do not allow plain `http`.
+
 ## Before going live
 
-- `NODE_ENV=production` refuses development settings. Set long random `JWT_SECRET` and `OTP_PEPPER`, a real
+- `NODE_ENV=production` refuses development settings. Set `BANK_DETAILS_KEY` (`openssl rand -base64 32`, never change it),
+  long random `JWT_SECRET` and `OTP_PEPPER`, a real
   `OTP_PROVIDER` (SMS provider still to choose), and `PAYMENT_PROVIDER=razorpay` with the keys and webhook secret.
 - Razorpay webhook: `POST /v1/payments/webhook`, event `payment.captured`.
 - Secrets (Cloudinary, Razorpay, JWT) live only in the server's environment, never in the apps or in git.

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpStatus, Inject, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { AppConfig, CONFIG } from '../config';
+import { encrypt } from '../common/crypto';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
 import { Auth, AuthGuard } from '../auth/auth.guard';
@@ -11,6 +13,17 @@ class MonthQuery {
   @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must look like 2026-11' }) month?: string;
 }
 
+class BankAccountDto {
+  @IsString() @Length(2, 80) holderName: string;
+  /** Indian bank account numbers are 9–18 digits. */
+  @Matches(/^\d{9,18}$/, { message: 'Account number must be 9 to 18 digits' }) accountNumber: string;
+  @Matches(/^[A-Za-z]{4}0[A-Za-z0-9]{6}$/, { message: 'IFSC looks like SBIN0001234' }) ifsc: string;
+  @IsOptional() @Matches(/^[\w.-]{2,64}@[A-Za-z]{2,64}$/, { message: 'UPI ID looks like name@bank' }) upiId?: string;
+}
+
+export const BANK_COLUMNS = `holder_name AS "holderName", account_last4 AS "accountLast4", ifsc, upi_id AS "upiId", status,
+  reject_reason AS "rejectReason", updated_at AS "updatedAt"`;
+
 class ReplyDto {
   @IsString() @Length(2, 1000) reply: string;
 }
@@ -19,7 +32,10 @@ class ReplyDto {
 @UseGuards(AuthGuard, PartnerAppGuard)
 @Controller('v1/partner')
 export class PartnerHomeController {
-  constructor(private readonly db: Db) {}
+  constructor(
+    private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+  ) {}
 
   private async vendorId(userId: string) {
     const v = await this.db.one<{ id: string }>(this.db, 'SELECT id FROM vendors WHERE user_id = $1', [userId]);
@@ -78,6 +94,31 @@ export class PartnerHomeController {
       [vendorId, month],
     );
     return { month, ...totals, payouts: payouts.rows };
+  }
+
+  /** Where payouts go. Only the last 4 digits ever come back. */
+  @Get('bank-account')
+  async bankAccount(@Auth() auth: AuthContext) {
+    const vendorId = await this.vendorId(auth.userId);
+    const row = await this.db.one(this.db, `SELECT ${BANK_COLUMNS} FROM vendor_bank_accounts WHERE vendor_id = $1`, [vendorId]);
+    return { account: row ?? null };
+  }
+
+  /** Saving (or changing) details sends them back for a check by the finance team. */
+  @Put('bank-account')
+  async saveBankAccount(@Auth() auth: AuthContext, @Body() body: BankAccountDto) {
+    const vendorId = await this.vendorId(auth.userId);
+    const row = await this.db.one(
+      this.db,
+      `INSERT INTO vendor_bank_accounts (vendor_id, holder_name, account_enc, account_last4, ifsc, upi_id)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (vendor_id) DO UPDATE SET holder_name = $2, account_enc = $3, account_last4 = $4, ifsc = $5, upi_id = $6,
+              status = 'pending', reject_reason = NULL, verified_by = NULL, updated_at = now()
+       RETURNING ${BANK_COLUMNS}`,
+      [vendorId, body.holderName.trim(), encrypt(body.accountNumber, this.config.bankDetailsKey), body.accountNumber.slice(-4),
+        body.ifsc.toUpperCase(), body.upiId?.toLowerCase() ?? null],
+    );
+    return { account: row };
   }
 
   @Get('reviews')

@@ -354,6 +354,19 @@ export interface Earnings {
   }>;
 }
 
+// ---- vendor bank account (payouts) ----
+
+/** GET/PUT /v1/partner/bank-account → { account }. Only the last 4 digits ever come back. */
+export interface BankAccount {
+  holderName: string;
+  accountLast4: string;
+  ifsc: string;
+  upiId: string | null;
+  status: 'pending' | 'verified' | 'rejected';
+  rejectReason: string | null;
+  updatedAt: string;
+}
+
 // ---- errors ----
 
 /** Every API error: { error: { code, message, ...details } }. */

@@ -108,7 +108,8 @@ export interface AdminPayout {
   day: string;
   vendorId: string;
   vendorName: string;
-  hasBankAccount: boolean;
+  /** null = the vendor has not added a bank account. */
+  bankStatus: 'pending' | 'verified' | 'rejected' | null;
 }
 
 export interface AdminComplaint {

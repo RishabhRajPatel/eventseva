@@ -54,6 +54,12 @@ export const MEDIA_STATUS: Record<MediaStatus, StatusLabel> = {
   rejected: { label: 'Rejected', tone: 'dark' },
 };
 
+export const BANK_STATUS: Record<'pending' | 'verified' | 'rejected', StatusLabel> = {
+  pending: { label: 'To verify', tone: 'warning' },
+  verified: { label: 'Verified', tone: 'success' },
+  rejected: { label: 'Sent back', tone: 'dark' },
+};
+
 /** Falls back to the raw value, so a status added on the backend still shows. */
 export function statusLabel<S extends string>(map: Record<S, StatusLabel>, status: string): StatusLabel {
   return (map as Record<string, StatusLabel>)[status] ?? { label: humanize(status), tone: 'neutral' };

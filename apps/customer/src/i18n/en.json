@@ -162,9 +162,18 @@
     "package": "How many"
   },
   "slots": {
-    "full": { "label": "Full day", "hours": "All day" },
-    "day": { "label": "Day", "hours": "10–4" },
-    "night": { "label": "Night", "hours": "6–11" }
+    "full": {
+      "label": "Full day",
+      "hours": "All day"
+    },
+    "day": {
+      "label": "Day",
+      "hours": "10–4"
+    },
+    "night": {
+      "label": "Night",
+      "hours": "6–11"
+    }
   },
   "eventTypes": {
     "wedding": "Wedding",
@@ -226,14 +235,46 @@
     "send": "Send request"
   },
   "status": {
-    "requested": { "pill": "Request sent", "short": "Awaiting reply", "title": "Waiting for vendor" },
-    "accepted": { "pill": "Pay pending", "short": "Accepted", "title": "Pay advance {{amount}}" },
-    "confirmed": { "pill": "Confirmed", "short": "Advance paid", "title": "Confirmed" },
-    "completed": { "pill": "Done", "short": "Event over", "title": "Done" },
-    "rejected": { "pill": "Declined", "short": "Vendor said no", "title": "The vendor said no" },
-    "expired": { "pill": "Expired", "short": "Timed out", "title": "This request has expired" },
-    "cancelled_by_customer": { "pill": "Cancelled", "short": "Cancelled by you", "title": "You cancelled this booking" },
-    "cancelled_by_vendor": { "pill": "Cancelled", "short": "Cancelled by vendor", "title": "The vendor cancelled this booking" }
+    "requested": {
+      "pill": "Request sent",
+      "short": "Awaiting reply",
+      "title": "Waiting for vendor"
+    },
+    "accepted": {
+      "pill": "Pay pending",
+      "short": "Accepted",
+      "title": "Pay advance {{amount}}"
+    },
+    "confirmed": {
+      "pill": "Confirmed",
+      "short": "Advance paid",
+      "title": "Confirmed"
+    },
+    "completed": {
+      "pill": "Done",
+      "short": "Event over",
+      "title": "Done"
+    },
+    "rejected": {
+      "pill": "Declined",
+      "short": "Vendor said no",
+      "title": "The vendor said no"
+    },
+    "expired": {
+      "pill": "Expired",
+      "short": "Timed out",
+      "title": "This request has expired"
+    },
+    "cancelled_by_customer": {
+      "pill": "Cancelled",
+      "short": "Cancelled by you",
+      "title": "You cancelled this booking"
+    },
+    "cancelled_by_vendor": {
+      "pill": "Cancelled",
+      "short": "Cancelled by vendor",
+      "title": "The vendor cancelled this booking"
+    }
   },
   "booking": {
     "title": "Booking",
@@ -446,5 +487,19 @@
     "PAYMENT_INVALID": "We could not verify this payment. If money was taken, it will be refunded.",
     "REVIEW_NOT_ALLOWED": "You can review after the event is over.",
     "REVIEW_EXISTS": "You have already reviewed this booking."
+  },
+  "deleteAccount": {
+    "menu": "Delete account",
+    "title": "Delete account",
+    "warningTitle": "This cannot be undone",
+    "warningBody": "You will be logged out and your account will be closed. Open bookings must be finished or cancelled first.",
+    "removedTitle": "What gets deleted",
+    "removed": "Your name, phone number, saved vendors and settings.",
+    "keptTitle": "What we keep",
+    "kept": "Past bookings and payment records, without your name or number, because the law requires us to keep them.",
+    "typeLabel": "Type DELETE to confirm",
+    "button": "Delete my account",
+    "doneTitle": "Account deleted",
+    "doneBody": "Your account has been deleted. You can sign up again any time."
   }
 }

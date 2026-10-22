@@ -451,8 +451,32 @@
   },
   "bank": {
     "title": "Bank account",
-    "comingSoon": "Bank account setup coming soon — EventSeva support will contact you.",
-    "note": "Payouts are sent only to an account in your own name."
+    "note": "Payouts are sent only to an account in your own name.",
+    "add": "Add",
+    "missing": "Add your bank account to receive payouts.",
+    "status": {
+      "pending": "Being checked",
+      "verified": "Verified",
+      "rejected": "Needs a fix"
+    },
+    "holderName": "Account holder name",
+    "holderHint": "Exactly as on your passbook or cheque",
+    "accountNumber": "Account number",
+    "confirmAccount": "Re-enter account number",
+    "ifsc": "IFSC code",
+    "ifscHint": "11 characters, e.g. SBIN0001234",
+    "upi": "UPI ID (optional)",
+    "replacing": "Saving replaces {{account}}. The new account will be checked again.",
+    "security": "Your account number is stored encrypted. Only the EventSeva finance team can see it, to send your payouts.",
+    "savedTitle": "Bank account saved",
+    "savedBody": "Our team will check it within 1–2 working days.",
+    "errors": {
+      "required": "Enter the account holder name.",
+      "account": "Account number must be 9 to 18 digits.",
+      "mismatch": "The two account numbers do not match.",
+      "ifsc": "Enter a valid IFSC, e.g. SBIN0001234.",
+      "upi": "UPI ID looks like name@bank."
+    }
   },
   "earnings": {
     "title": "Earnings",
@@ -548,5 +572,21 @@
     "videoTooLong": "Videos can be up to 2 minutes long.",
     "fileTooBig": "This file is too big.",
     "fileTooBigMax": "This file is too big. The limit is {{mb}} MB."
+  },
+  "deleteAccount": {
+    "menu": "Delete account",
+    "title": "Delete account",
+    "warningTitle": "This cannot be undone",
+    "warningBody": "Your business will be removed from EventSeva and you will be logged out. Open bookings must be finished or cancelled first, and pending payouts must arrive.",
+    "removedTitle": "What gets deleted",
+    "removed1": "Your name and phone number",
+    "removed2": "Your business profile, photos and documents",
+    "removed3": "Your bank details and saved settings",
+    "keptTitle": "What we keep",
+    "kept": "Past bookings and payment records, without your name or number, because the law requires us to keep them.",
+    "typeLabel": "Type DELETE to confirm",
+    "button": "Delete my account",
+    "doneTitle": "Account deleted",
+    "doneBody": "Your account has been deleted. You can sign up again any time."
   }
 }
