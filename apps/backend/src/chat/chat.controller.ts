@@ -137,7 +137,7 @@ export class ChatController {
       const preview = (share ? text : maskPhones(text)).slice(0, 100);
       await notify(client, to, 'chat_message', { en: { title: 'New message', body: preview }, hi: { title: 'नया मैसेज', body: preview } }, {
         conversationId: id,
-      });
+      }, to === conv.vendor_user_id ? 'partner' : 'customer');
       return { ...msg, mine: true, body: share ? msg.body : maskPhones(msg.body) };
     });
   }

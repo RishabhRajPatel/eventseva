@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { parseServiceAccount, type ServiceAccount } from './push/push-sender';
 
 export const CONFIG = Symbol('CONFIG');
 
@@ -26,6 +27,10 @@ export interface AppConfig {
   cloudinary?: { cloudName: string; apiKey: string; apiSecret: string };
   /** 32-byte key for bank account numbers (BANK_DETAILS_KEY, base64). */
   bankDetailsKey: Buffer;
+  /** FIREBASE_SERVICE_ACCOUNT; unset = pushes are only logged (development). */
+  firebase?: ServiceAccount;
+  /** Send pushes in the background (off in tests, which call the dispatcher directly). */
+  pushDispatch: boolean;
   isProduction: boolean;
 }
 
@@ -94,6 +99,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     bookingSweepSec: Number(env.BOOKING_SWEEP_SEC ?? 60),
     cloudinary: parseCloudinaryUrl(env.CLOUDINARY_URL),
     bankDetailsKey,
+    firebase: parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT),
+    pushDispatch: env.PUSH_DISPATCH !== 'off',
     isProduction,
   };
 }

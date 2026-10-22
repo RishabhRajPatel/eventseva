@@ -217,7 +217,7 @@ export class AdminController {
         await notify(client, owner!.user_id, 'document_rejected', {
           en: { title: `${name.en} not accepted`, body: `${reason}. Please upload it again.` },
           hi: { title: `${name.hi} स्वीकार नहीं हुआ`, body: `${reason}। कृपया दोबारा अपलोड करें।` },
-        }, { documentId: id });
+        }, { documentId: id }, 'partner');
       }
       return { id, status, rejectReason: reason };
     });
@@ -274,11 +274,8 @@ export class AdminController {
          VALUES ($1, $2, 'vendor', $3, $4, $5)`,
         [admin.adminId, `vendor.${decision}`, vendorId, { status: v.status, reason: v.reject_reason }, { status, reason }],
       );
-      const notice = NOTICE[decision][v.language];
-      await client.query(
-        `INSERT INTO notifications (user_id, kind, title, body, data) VALUES ($1, $2, $3, $4, $5)`,
-        [v.user_id, `vendor_${status}`, notice.title, notice.body(reason), { vendorId }],
-      );
+      const text = (lang: Language) => ({ title: NOTICE[decision][lang].title, body: NOTICE[decision][lang].body(reason) });
+      await notify(client, v.user_id, `vendor_${status}`, { en: text('en'), hi: text('hi') }, { vendorId }, 'partner');
       return { id: vendorId, status, rejectReason: reason };
     });
   }

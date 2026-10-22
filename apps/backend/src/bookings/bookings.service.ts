@@ -47,6 +47,9 @@ interface BookingRow {
 }
 
 const rupees = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN')}`;
+/** "21 Nov" / "21 नव॰" for notifications; days are plain dates, so no time-zone shift. */
+const niceDay = (day: string, lang: 'en' | 'hi') =>
+  new Date(`${day}T00:00:00Z`).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short' });
 const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
 
 /**
@@ -144,9 +147,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           quantity, { note: body.note?.trim() || null }, money.amountPaise, money.advancePaise, money.commissionPaise, RESPOND_HOURS],
       );
       await notify(client, vendor.user_id, 'booking_requested', {
-        en: { title: 'New booking request', body: `${item.title} on ${event.event_date}. Reply within ${RESPOND_HOURS} hours.` },
-        hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${event.event_date}। ${RESPOND_HOURS} घंटे में जवाब दें।` },
-      }, { bookingId: booking!.id });
+        en: { title: 'New booking request', body: `${item.title} on ${niceDay(event.event_date, 'en')}. Reply within ${RESPOND_HOURS} hours.` },
+        hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${niceDay(event.event_date, 'hi')}। ${RESPOND_HOURS} घंटे में जवाब दें।` },
+      }, { bookingId: booking!.id }, 'partner');
       return booking!.id;
     });
   }
@@ -222,13 +225,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (b.status === 'accepted') {
         await client.query(`UPDATE bookings SET status = 'confirmed', updated_at = now() WHERE id = $1`, [b.id]);
         await notify(client, b.customer_id, 'booking_confirmed', {
-          en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${b.day} is confirmed.` },
-          hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${b.day} की बुकिंग पक्की है।` },
-        }, { bookingId: b.id });
+          en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${niceDay(b.day, 'en')} is confirmed.` },
+          hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${niceDay(b.day, 'hi')} की बुकिंग पक्की है।` },
+        }, { bookingId: b.id }, 'customer');
         await notify(client, b.vendor_user_id, 'booking_confirmed', {
-          en: { title: 'Booking confirmed', body: `The customer paid the advance for ${b.day}. Their phone number is now visible.` },
-          hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${b.day} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
-        }, { bookingId: b.id });
+          en: { title: 'Booking confirmed', body: `The customer paid the advance for ${niceDay(b.day, 'en')}. Their phone number is now visible.` },
+          hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
+        }, { bookingId: b.id }, 'partner');
         return 'confirmed';
       }
 
@@ -236,7 +239,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       await notify(client, b.customer_id, 'payment_refunded', {
         en: { title: 'Payment refunded', body: `This booking was no longer open, so ${rupees(p.amount_paise)} is being refunded in full.` },
         hi: { title: 'पैसा वापस', body: `यह बुकिंग अब खुली नहीं थी, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
-      }, { bookingId: b.id });
+      }, { bookingId: b.id }, 'customer');
       return 'refunded';
     });
   }
@@ -253,9 +256,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const refunded = b.status === 'confirmed' ? await this.refundAdvance(client, b, refundPercent('customer', days)) : 0;
       await this.close(client, b.id, 'cancelled_by_customer', reason);
       await notify(client, b.vendor_user_id, 'booking_cancelled', {
-        en: { title: 'Booking cancelled', body: `The customer cancelled the booking for ${b.day}. Your calendar is free again.` },
-        hi: { title: 'बुकिंग रद्द', body: `ग्राहक ने ${b.day} की बुकिंग रद्द कर दी। आपकी तारीख़ फिर खाली है।` },
-      }, { bookingId: b.id });
+        en: { title: 'Booking cancelled', body: `The customer cancelled the booking for ${niceDay(b.day, 'en')}. Your calendar is free again.` },
+        hi: { title: 'बुकिंग रद्द', body: `ग्राहक ने ${niceDay(b.day, 'hi')} की बुकिंग रद्द कर दी। आपकी तारीख़ फिर खाली है।` },
+      }, { bookingId: b.id }, 'partner');
       return { refundPaise: refunded };
     });
   }
@@ -284,9 +287,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         [b.id, PAY_HOURS],
       );
       await notify(client, b.customer_id, 'booking_accepted', {
-        en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise)} within ${PAY_HOURS} hours to confirm ${b.day}.` },
-        hi: { title: 'वेंडर ने मंज़ूर किया', body: `${b.day} पक्का करने के लिए ${PAY_HOURS} घंटे में ${rupees(b.advance_paise)} एडवांस दें।` },
-      }, { bookingId: b.id });
+        en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise)} within ${PAY_HOURS} hours to confirm ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर ने मंज़ूर किया', body: `${niceDay(b.day, 'hi')} पक्का करने के लिए ${PAY_HOURS} घंटे में ${rupees(b.advance_paise)} एडवांस दें।` },
+      }, { bookingId: b.id }, 'customer');
     });
   }
 
@@ -296,9 +299,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       this.assertRequested(b);
       await this.close(client, b.id, 'rejected', reason);
       await notify(client, b.customer_id, 'booking_rejected', {
-        en: { title: 'Vendor is not available', body: `${reason}. You can book another vendor for ${b.day}.` },
-        hi: { title: 'वेंडर उपलब्ध नहीं', body: `${reason}। आप ${b.day} के लिए दूसरा वेंडर चुन सकते हैं।` },
-      }, { bookingId: b.id });
+        en: { title: 'Vendor is not available', body: `${reason}. You can book another vendor for ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर उपलब्ध नहीं', body: `${reason}। आप ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुन सकते हैं।` },
+      }, { bookingId: b.id }, 'customer');
     });
   }
 
@@ -320,7 +323,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           title: 'वेंडर ने रद्द किया',
           body: refunded ? `${rupees(refunded)} पूरा वापस किया जा रहा है। माफ़ कीजिए! दूसरा वेंडर चुनें।` : 'माफ़ कीजिए! दूसरा वेंडर चुनें।',
         },
-      }, { bookingId: b.id });
+      }, { bookingId: b.id }, 'customer');
       return { refundPaise: refunded };
     });
   }
@@ -360,9 +363,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     for (const b of noReply.rows) {
       expired++;
       await notify(this.db, b.customer_id, 'booking_expired', {
-        en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${b.day}.` },
-        hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${b.day} के लिए दूसरा वेंडर चुनें।` },
-      }, { bookingId: b.id });
+        en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
+      }, { bookingId: b.id }, 'customer');
     }
 
     const unpaid = await this.db.query<{ id: string; customer_id: string; vendor_user_id: string; day: string }>(
@@ -375,13 +378,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     for (const b of unpaid.rows) {
       expired++;
       await notify(this.db, b.customer_id, 'booking_expired', {
-        en: { title: 'Booking expired', body: `The advance for ${b.day} was not paid in time.` },
-        hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${b.day} का एडवांस समय पर नहीं दिया गया।` },
-      }, { bookingId: b.id });
+        en: { title: 'Booking expired', body: `The advance for ${niceDay(b.day, 'en')} was not paid in time.` },
+        hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${niceDay(b.day, 'hi')} का एडवांस समय पर नहीं दिया गया।` },
+      }, { bookingId: b.id }, 'customer');
       await notify(this.db, b.vendor_user_id, 'booking_expired', {
-        en: { title: 'Date free again', body: `The customer did not pay for ${b.day}, so the date is free again.` },
-        hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${b.day} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
-      }, { bookingId: b.id });
+        en: { title: 'Date free again', body: `The customer did not pay for ${niceDay(b.day, 'en')}, so the date is free again.` },
+        hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
+      }, { bookingId: b.id }, 'partner');
     }
 
     // Payout = advance − commission. Newer vendors are paid 3 days after the event (time for
@@ -410,7 +413,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       await notify(this.db, b.vendor_user_id, 'payout_scheduled', {
         en: { title: 'Payout scheduled', body: `${rupees(b.payout_paise)} will reach your bank on ${when}.` },
         hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
-      }, { bookingId: b.id });
+      }, { bookingId: b.id }, 'partner');
     }
     return { expired, completed: done.rows.length };
   }

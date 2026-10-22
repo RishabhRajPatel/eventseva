@@ -120,7 +120,7 @@ export class SocialController {
       await notify(client, b.vendor_user_id, 'review_received', {
         en: { title: `New ${body.rating}★ review`, body: body.comment?.slice(0, 120) || 'A customer rated your service.' },
         hi: { title: `नया ${body.rating}★ रिव्यू`, body: body.comment?.slice(0, 120) || 'एक ग्राहक ने आपकी सेवा को रेटिंग दी।' },
-      }, { reviewId: review.id });
+      }, { reviewId: review.id }, 'partner');
       return review;
     });
   }
@@ -230,9 +230,9 @@ export class SocialController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async device(@Auth() auth: AuthContext, @Body() body: DeviceDto) {
     await this.db.query(
-      `INSERT INTO device_tokens (user_id, fcm_token, platform) VALUES ($1, $2, $3)
-       ON CONFLICT (fcm_token) DO UPDATE SET user_id = $1, platform = $3, updated_at = now()`,
-      [auth.userId, body.fcmToken, body.platform],
+      `INSERT INTO device_tokens (user_id, fcm_token, platform, app) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (fcm_token) DO UPDATE SET user_id = $1, platform = $3, app = $4, updated_at = now()`,
+      [auth.userId, body.fcmToken, body.platform, auth.app],
     );
   }
 

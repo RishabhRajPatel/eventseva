@@ -13,6 +13,18 @@ import { hashPassword } from '../src/admin/password';
 import { newTotpSecret, totpAt } from '../src/admin/totp';
 import { CloudinaryService } from '../src/media/cloudinary.service';
 import { loadConfig } from '../src/config';
+import { PUSH_SENDER, type PushMessage, type PushResult, type PushSender } from '../src/push/push-sender';
+
+/** Records pushes; tokens listed in `invalid` behave like uninstalled apps. */
+export class FakePushSender implements PushSender {
+  readonly sent: { token: string; message: PushMessage }[] = [];
+  readonly invalid = new Set<string>();
+  async send(token: string, message: PushMessage): Promise<PushResult> {
+    if (this.invalid.has(token)) return 'invalid_token';
+    this.sent.push({ token, message });
+    return 'ok';
+  }
+}
 
 /** Records deletes instead of calling Cloudinary. */
 export class FakeCloudinary extends CloudinaryService {
@@ -38,6 +50,7 @@ export interface TestApp {
   db: Db;
   sms: FakeOtpSender;
   cloudinary: FakeCloudinary;
+  push: FakePushSender;
   http: () => ReturnType<typeof request>;
   reset: () => Promise<void>;
   /** Full send → verify; fails the test unless verify returns `status`. */
@@ -49,11 +62,14 @@ export interface TestApp {
 export async function createTestApp(): Promise<TestApp> {
   const sms = new FakeOtpSender();
   const cloudinary = new FakeCloudinary(loadConfig());
+  const push = new FakePushSender();
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(OTP_SENDER)
     .useValue(sms)
     .overrideProvider(CloudinaryService)
     .useValue(cloudinary)
+    .overrideProvider(PUSH_SENDER)
+    .useValue(push)
     .compile();
   const app = configureApp(moduleRef.createNestApplication({ logger: false, rawBody: true }));
   await app.init();
@@ -65,6 +81,7 @@ export async function createTestApp(): Promise<TestApp> {
     db,
     sms,
     cloudinary,
+    push,
     http,
     reset: async () => {
       sms.sent.length = 0;

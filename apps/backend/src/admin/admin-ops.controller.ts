@@ -239,7 +239,7 @@ export class AdminOpsController {
       await notify(client, ba.vendor_user_id, `bank_${status}`, status === 'verified'
         ? { en: { title: 'Bank account verified', body: 'Your payouts will be sent to this account.' }, hi: { title: 'बैंक खाता सत्यापित', body: 'आपका पेमेंट इसी खाते में भेजा जाएगा।' } }
         : { en: { title: 'Please check your bank details', body: reason! }, hi: { title: 'कृपया बैंक विवरण जाँचें', body: reason! } },
-        {});
+        {}, 'partner');
       return { vendorId, status, rejectReason: reason };
     });
   }
@@ -269,7 +269,7 @@ export class AdminOpsController {
       await notify(client, po.vendor_user_id, 'payout_paid', {
         en: { title: 'Payout sent', body: `${amount} has been sent to your bank. Reference: ${body.reference.trim()}` },
         hi: { title: 'पेमेंट भेजा गया', body: `${amount} आपके बैंक में भेज दिया गया। रेफ़रेंस: ${body.reference.trim()}` },
-      }, { payoutId: id });
+      }, { payoutId: id }, 'partner');
       return { id, status: 'paid' };
     });
   }
@@ -416,7 +416,7 @@ export class AdminOpsController {
         await notify(client, m.vendor_user_id, 'media_rejected', {
           en: { title: 'A photo was not approved', body: reason! },
           hi: { title: 'एक फ़ोटो मंज़ूर नहीं हुई', body: reason! },
-        }, { mediaId: id });
+        }, { mediaId: id }, 'partner');
       }
       return { id, status, rejectReason: reason };
     });

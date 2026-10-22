@@ -26,6 +26,8 @@ import { PartnerHomeController } from './partner/partner-home.controller';
 import { AdminOpsController } from './admin/admin-ops.controller';
 import { MediaController } from './media/media.controller';
 import { CloudinaryService } from './media/cloudinary.service';
+import { ConsolePushSender, FcmPushSender, PUSH_SENDER } from './push/push-sender';
+import { PushService } from './push/push.service';
 import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
 
 @Controller()
@@ -84,6 +86,12 @@ class ConfigModule {}
     AdminGuard,
     BookingsService,
     CloudinaryService,
+    PushService,
+    {
+      provide: PUSH_SENDER,
+      inject: [CONFIG],
+      useFactory: (config: AppConfig) => (config.firebase ? new FcmPushSender(config.firebase) : new ConsolePushSender()),
+    },
     { provide: PAYMENT_GATEWAY, inject: [CONFIG], useFactory: createGateway },
   ],
 })
