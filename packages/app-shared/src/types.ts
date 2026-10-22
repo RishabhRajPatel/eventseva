@@ -247,8 +247,16 @@ export interface Booking {
   advancePaise: number;
   balancePaise: number;
   refundPaise: number;
+  /** Coupon discount (paid by EventSeva): lowers what is paid in the app. */
+  discountPaise: number;
+  /** Customer app only: the applied coupon code, or null. */
+  couponCode: string | null;
+  /** What the customer pays in the app now: advancePaise − discountPaise. */
+  payNowPaise: number;
   /** Partner app only. */
   commissionPaise?: number;
+  /** Partner app only: taken off the payout by an admin refund. */
+  payoutDeductionPaise?: number;
   payoutPaise?: number;
   respondBy: string | null;
   payBy: string | null;
@@ -365,6 +373,59 @@ export interface BankAccount {
   status: 'pending' | 'verified' | 'rejected';
   rejectReason: string | null;
   updatedAt: string;
+}
+
+// ---- offers and coupons ----
+
+/** GET /v1/offers: public coupons for the home banner and the payment screen. */
+export interface Offer {
+  code: string;
+  title: string;
+  /** "10% off, up to ₹500", in the request language. */
+  summary: string;
+  discountType: 'percent' | 'flat';
+  /** Percent, or paise for flat. */
+  discountValue: number;
+  maxDiscountPaise: number | null;
+  minAmountPaise: number;
+  firstBookingOnly: boolean;
+  validUntil: string | null;
+  category: { slug: string; icon: string; name: string } | null;
+}
+
+// ---- featured listings (Partner app) ----
+
+export interface FeaturedPlan {
+  id: number;
+  name: string;
+  days: number;
+  pricePaise: number;
+}
+
+export interface FeaturedPurchase {
+  id: string;
+  days: number;
+  amountPaise: number;
+  /** 'granted' = free days from EventSeva. */
+  status: 'paid' | 'granted';
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+}
+
+/** GET /v1/partner/featured */
+export interface FeaturedOverview {
+  /** null when not featured right now. */
+  featuredUntil: string | null;
+  /** Only live (approved) vendors can buy. */
+  canBuy: boolean;
+  plans: FeaturedPlan[];
+  history: FeaturedPurchase[];
+}
+
+/** POST /v1/partner/featured/plans/:planId/order */
+export interface FeaturedOrder extends PaymentOrder {
+  purchaseId: string;
 }
 
 // ---- errors ----

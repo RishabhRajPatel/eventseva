@@ -5,6 +5,7 @@ import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { PAYMENT_GATEWAY, PaymentGateway } from '../payments/gateway';
+import { CouponsService } from '../coupons/coupons.service';
 import type { PricingUnit } from '../vendors/vendor.queries';
 import {
   daysUntil,
@@ -42,6 +43,8 @@ interface BookingRow {
   amount_paise: number;
   advance_paise: number;
   commission_paise: number;
+  discount_paise: number;
+  refund_paise: number;
   respond_by: Date;
   pay_by: Date | null;
 }
@@ -69,6 +72,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+    private readonly coupons: CouponsService,
   ) {}
 
   onModuleInit() {
@@ -163,21 +167,28 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }
       if (b.pay_by && b.pay_by < new Date()) throw new AppError('PAYMENT_TIME_OVER', 'The time to pay has run out.', HttpStatus.CONFLICT);
 
-      // Reuse an open order: two taps on "Pay" must never create two charges.
-      let payment = await this.db.one<{ razorpay_order_id: string }>(
+      // What is paid now: the advance minus any coupon discount (EventSeva pays the discount).
+      const payNow = b.advance_paise - b.discount_paise;
+      // Reuse an open order: two taps on "Pay" must never create two charges. An order for a
+      // different amount (the coupon changed) is dropped and a new one made.
+      let payment = await this.db.one<{ id: string; razorpay_order_id: string; amount_paise: number }>(
         client,
-        `SELECT razorpay_order_id FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'created'`,
+        `SELECT id, razorpay_order_id, amount_paise FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'created'`,
         [bookingId],
       );
+      if (payment && payment.amount_paise !== payNow) {
+        await client.query(`UPDATE payments SET status = 'failed' WHERE id = $1`, [payment.id]);
+        payment = undefined;
+      }
       if (!payment) {
-        const { orderId } = await this.gateway.createOrder(b.advance_paise, bookingId, { bookingId });
+        const { orderId } = await this.gateway.createOrder(payNow, bookingId, { bookingId });
         await client.query(
           `INSERT INTO payments (booking_id, type, amount_paise, razorpay_order_id) VALUES ($1, 'advance', $2, $3)`,
-          [bookingId, b.advance_paise, orderId],
+          [bookingId, payNow, orderId],
         );
-        payment = { razorpay_order_id: orderId };
+        payment = { id: '', razorpay_order_id: orderId, amount_paise: payNow };
       }
-      return { orderId: payment.razorpay_order_id, amountPaise: b.advance_paise, currency: 'INR', keyId: this.gateway.keyId };
+      return { orderId: payment.razorpay_order_id, amountPaise: payNow, currency: 'INR', keyId: this.gateway.keyId };
     });
   }
 
@@ -217,13 +228,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         [orderId],
       );
       if (!p) return 'unknown_order';
-      if (p.status === 'paid') return 'already_done';
+      if (p.status === 'paid' || p.status === 'refunded') return 'already_done';
 
       const b = await this.lockBooking(client, p.booking_id, {});
       await client.query(`UPDATE payments SET status = 'paid', razorpay_payment_id = $2, paid_at = now() WHERE id = $1`, [p.id, paymentId]);
 
-      if (b.status === 'accepted') {
+      // A replaced order (coupon changed after checkout opened) that still got paid is refunded.
+      const replaced = p.status === 'failed';
+      if (b.status === 'accepted' && !replaced) {
         await client.query(`UPDATE bookings SET status = 'confirmed', updated_at = now() WHERE id = $1`, [b.id]);
+        await this.coupons.markUsed(client, b.id);
         await notify(client, b.customer_id, 'booking_confirmed', {
           en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${niceDay(b.day, 'en')} is confirmed.` },
           hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${niceDay(b.day, 'hi')} की बुकिंग पक्की है।` },
@@ -235,10 +249,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         return 'confirmed';
       }
 
-      await this.refund(client, b.id, paymentId, p.amount_paise, 'late_payment');
+      await this.refund(client, b.id, paymentId, p.amount_paise, replaced ? 'replaced_order' : 'late_payment', !replaced || b.status !== 'accepted');
+      // Not the booking's payment: keeps "the paid advance" unique for later refunds.
+      await client.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [p.id]);
       await notify(client, b.customer_id, 'payment_refunded', {
-        en: { title: 'Payment refunded', body: `This booking was no longer open, so ${rupees(p.amount_paise)} is being refunded in full.` },
-        hi: { title: 'पैसा वापस', body: `यह बुकिंग अब खुली नहीं थी, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
+        en: { title: 'Payment refunded', body: `This payment could not be used for the booking, so ${rupees(p.amount_paise)} is being refunded in full.` },
+        hi: { title: 'पैसा वापस', body: `यह पेमेंट बुकिंग में इस्तेमाल नहीं हो सका, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
       }, { bookingId: b.id }, 'customer');
       return 'refunded';
     });
@@ -393,7 +409,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       `WITH c AS (
          UPDATE bookings SET status = 'completed', updated_at = now()
           WHERE status = 'confirmed' AND day < (now() AT TIME ZONE 'Asia/Kolkata')::date
-          RETURNING id, vendor_id, day, advance_paise - commission_paise AS payout_paise
+          RETURNING id, vendor_id, day, advance_paise - commission_paise - payout_deduction_paise AS payout_paise
        ), p AS (
          INSERT INTO payouts (booking_id, vendor_id, amount_paise, release_after)
          SELECT c.id, c.vendor_id, c.payout_paise,
@@ -415,6 +431,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
       }, { bookingId: b.id }, 'partner');
     }
+    // Coupons held by bookings that ended unpaid (expired above) can be used again.
+    await this.db.query(
+      `WITH r AS (
+         UPDATE coupon_redemptions cr SET status = 'released' FROM bookings b
+          WHERE cr.booking_id = b.id AND cr.status = 'applied' AND b.status NOT IN ('requested', 'accepted')
+          RETURNING cr.booking_id
+       )
+       UPDATE bookings SET discount_paise = 0 WHERE id IN (SELECT booking_id FROM r)`,
+    );
     return { expired, completed: done.rows.length };
   }
 
@@ -428,7 +453,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const b = await this.db.one<BookingRow>(
       client,
       `SELECT b.id, b.event_id, b.customer_id, b.vendor_id, v.user_id AS vendor_user_id, b.status, b.day, b.slot,
-              b.amount_paise, b.advance_paise, b.commission_paise, b.respond_by, b.pay_by
+              b.amount_paise, b.advance_paise, b.commission_paise, b.discount_paise, b.refund_paise, b.respond_by, b.pay_by
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
         WHERE b.id = $1 AND ($2::uuid IS NULL OR b.customer_id = $2) AND ($3::uuid IS NULL OR v.user_id = $3)
         FOR UPDATE OF b`,
@@ -458,30 +483,90 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Ends a booking and frees the vendor's slot. */
+  /** Ends a booking, frees the vendor's slot, and gives back an unpaid coupon. */
   private async close(q: Queryable, bookingId: string, status: BookingStatus, reason: string) {
     await q.query(`UPDATE bookings SET status = $2, cancel_reason = $3, updated_at = now() WHERE id = $1`, [bookingId, status, reason]);
     await q.query('DELETE FROM availability WHERE booking_id = $1', [bookingId]);
+    await this.coupons.releaseFor(q, bookingId);
   }
 
+  /** Refund by the cancellation rule, on what was actually paid (after any coupon) and not yet refunded. */
   private async refundAdvance(q: Queryable, b: BookingRow, percent: number): Promise<number> {
-    const amount = refundPaise(b.advance_paise, percent);
-    if (amount === 0) return 0;
-    const paid = await this.db.one<{ razorpay_payment_id: string }>(
-      q,
-      `SELECT razorpay_payment_id FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'paid'`,
-      [b.id],
-    );
-    await this.refund(q, b.id, paid!.razorpay_payment_id, amount, 'cancellation');
+    const paid = await this.paidAdvance(q, b.id);
+    if (!paid) return 0;
+    const amount = Math.min(refundPaise(paid.amount_paise, percent), paid.amount_paise - b.refund_paise);
+    if (amount <= 0) return 0;
+    await this.refund(q, b.id, paid.razorpay_payment_id, amount, 'cancellation');
     return amount;
   }
 
+  private paidAdvance(q: Queryable, bookingId: string) {
+    return this.db.one<{ razorpay_payment_id: string; amount_paise: number }>(
+      q,
+      `SELECT razorpay_payment_id, amount_paise FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'paid'`,
+      [bookingId],
+    );
+  }
+
+  /**
+   * Admin goodwill or partial refund (e.g. the vendor came late). Any amount up to what is left of
+   * the payment. With `fromVendorPayout` the same amount comes off the vendor's payout, which must
+   * not be paid yet; otherwise EventSeva bears it.
+   */
+  async adminRefund(adminId: string, bookingId: string, amountPaise: number, reason: string, fromVendorPayout: boolean) {
+    return this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, {});
+      const paid = await this.paidAdvance(client, bookingId);
+      if (!paid) throw new AppError('NOTHING_TO_REFUND', 'No payment has been made for this booking.', HttpStatus.CONFLICT);
+      const left = paid.amount_paise - b.refund_paise;
+      if (amountPaise > left) {
+        throw new AppError('REFUND_TOO_HIGH', `At most ${rupees(left)} can still be refunded.`, HttpStatus.BAD_REQUEST, { maxPaise: left });
+      }
+      if (fromVendorPayout) {
+        const payout = await this.db.one<{ id: string; status: string; amount_paise: number }>(
+          client,
+          'SELECT id, status, amount_paise FROM payouts WHERE booking_id = $1 FOR UPDATE',
+          [bookingId],
+        );
+        if (payout && !['scheduled', 'held', 'failed'].includes(payout.status)) {
+          throw new AppError('PAYOUT_ALREADY_PAID', 'The vendor has already been paid for this booking.', HttpStatus.CONFLICT);
+        }
+        const vendorShare = b.advance_paise - b.commission_paise;
+        const deduction = await this.db.one<{ total: number }>(client, 'SELECT payout_deduction_paise AS total FROM bookings WHERE id = $1', [bookingId]);
+        if (deduction!.total + amountPaise > vendorShare) {
+          throw new AppError('DEDUCTION_TOO_HIGH', `At most ${rupees(vendorShare - deduction!.total)} can come off the vendor's payout.`, HttpStatus.BAD_REQUEST);
+        }
+        await client.query('UPDATE bookings SET payout_deduction_paise = payout_deduction_paise + $2 WHERE id = $1', [bookingId, amountPaise]);
+        // Already scheduled payouts shrink now; later ones are created with the deduction.
+        if (payout) await client.query('UPDATE payouts SET amount_paise = amount_paise - $2 WHERE id = $1', [payout.id, amountPaise]);
+      }
+      await this.refund(client, bookingId, paid.razorpay_payment_id, amountPaise, 'admin');
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, 'booking.refund', 'booking', $2, $3, $4)`,
+        [adminId, bookingId, { refundPaise: b.refund_paise }, { refundPaise: b.refund_paise + amountPaise, amountPaise, reason, fromVendorPayout }],
+      );
+      await notify(client, b.customer_id, 'payment_refunded', {
+        en: { title: 'Refund on its way', body: `${rupees(amountPaise)} is being refunded to you: ${reason}` },
+        hi: { title: 'पैसा वापस आ रहा है', body: `${rupees(amountPaise)} आपको वापस किया जा रहा है: ${reason}` },
+      }, { bookingId }, 'customer');
+      if (fromVendorPayout) {
+        await notify(client, b.vendor_user_id, 'payout_adjusted', {
+          en: { title: 'Payout reduced', body: `${rupees(amountPaise)} was refunded to the customer from your payout: ${reason}` },
+          hi: { title: 'पेमेंट में कटौती', body: `${rupees(amountPaise)} आपके पेमेंट से ग्राहक को वापस किया गया: ${reason}` },
+        }, { bookingId }, 'partner');
+      }
+      return { refundPaise: b.refund_paise + amountPaise };
+    });
+  }
+
   /** The provider call is inside the transaction: if it fails, nothing is cancelled. */
-  private async refund(q: Queryable, bookingId: string, paymentId: string, amountPaise: number, why: string) {
+  /** `track`: count it in the booking's refund total (not for a stray duplicate payment on a still-open booking). */
+  private async refund(q: Queryable, bookingId: string, paymentId: string, amountPaise: number, why: string, track = true) {
     const { refundId } = await this.gateway.refund(paymentId, amountPaise, { bookingId, reason: why });
     await q.query(
       `INSERT INTO payments (booking_id, type, amount_paise, razorpay_refund_id, status) VALUES ($1, 'refund', $2, $3, 'refunded')`,
       [bookingId, amountPaise, refundId],
     );
-    await q.query('UPDATE bookings SET refund_paise = refund_paise + $2 WHERE id = $1', [bookingId, amountPaise]);
+    if (track) await q.query('UPDATE bookings SET refund_paise = refund_paise + $2 WHERE id = $1', [bookingId, amountPaise]);
   }
 }

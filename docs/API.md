@@ -91,12 +91,18 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/bookings/:id/pay/verify` | `{razorpayOrderId, razorpayPaymentId, razorpaySignature}` → `Booking` (confirmed). `PAYMENT_INVALID` |
 | `POST /v1/bookings/:id/pay/dev` | **Development only** (`PAYMENT_PROVIDER=fake`, 404 otherwise): pays without a checkout → `Booking` |
 | `POST /v1/bookings/:id/cancel` | `{reason}` → `Booking` with `refundPaise` |
+| `POST /v1/bookings/:id/coupon` · `DELETE /v1/bookings/:id/coupon` | `{code}` (any case) → `Booking` with `discountPaise`, `couponCode`, `payNowPaise`. Only before paying. Errors: `COUPON_INVALID`, `COUPON_NOT_APPLICABLE` (`reason`: `min_amount` with `minAmountPaise`, `category`, `first_booking`, `zero`), `COUPON_ALREADY_USED`, `COUPON_USED_UP`, `COUPON_NOT_ALLOWED` |
+| `GET /v1/offers` | No login. `{items: Offer[]}`: public coupons that can still be used, for the home banner and an "Offers" list on the payment screen |
 | `POST /v1/bookings/:id/review` | `{rating 1–5, comment?}`. Only when `completed`. `REVIEW_NOT_ALLOWED`, `REVIEW_EXISTS` |
 
 - **Slot:** `full` = whole day, `day` = 10–4, `night` = 6–11. `quantity` is required for `COUNTED_UNITS`
   (`QUANTITY_REQUIRED`).
 - **Booking request errors:** `SLOT_TAKEN` 409, `BOOKING_EXISTS` 409, `OWN_VENDOR`, `ITEM_NOT_FOUND`, `EVENT_NOT_FOUND`.
 - **Payment:** the app shows the checkout with `keyId`, `orderId` and `amountPaise`, then calls verify.
+  - With a coupon, `amountPaise` is `payNowPaise`: the advance minus the discount.
+  - EventSeva pays the discount. The vendor's payout and the balance paid at the event do not change.
+  - Changing the coupon after opening the checkout makes a new order; an old order that still gets paid is refunded automatically.
+  - Cancellation refunds are worked out on what was actually paid.
   - Errors from `pay`: `BOOKING_BAD_STATUS` 409, `PAYMENT_TIME_OVER` 409.
   - Razorpay checkout needs a native build (`react-native-razorpay`). In Expo Go or with
     `EXPO_PUBLIC_PAYMENTS=dev`, show a "Test payment" button that calls `pay/dev`.
@@ -160,6 +166,10 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/partner/calendar?month=2026-11` | `{month, items: CalendarEntry[]}`; days not listed are free |
 | `POST /v1/partner/calendar/block` · `DELETE …/block` | `{day, slot}` → 204. `SLOT_TAKEN`, `DATE_IN_PAST` |
 | `GET /v1/partner/earnings?month=` | `Earnings` (Kamai screen) |
+| `GET /v1/partner/featured` | `FeaturedOverview`: current featured end date, plans (7 days ₹499 and 30 days ₹1,499 by default, set by admin), history |
+| `POST /v1/partner/featured/plans/:planId/order` | → `FeaturedOrder` for the Razorpay checkout. Live vendors only (`VENDOR_NOT_ACTIVE`) |
+| `POST /v1/partner/featured/verify` | `{razorpayOrderId, razorpayPaymentId, razorpaySignature}` → `FeaturedOverview`. Days add on top of any current featured period |
+| `POST /v1/partner/featured/purchases/:id/pay/dev` | **Development only** (`PAYMENT_PROVIDER=fake`) |
 | `GET /v1/partner/reviews` · `POST /v1/partner/reviews/:id/reply` | `{reply}` |
 | `GET /v1/partner/bank-account` · `PUT /v1/partner/bank-account` | `{holderName, accountNumber (9–18 digits), ifsc, upiId?}` → `{account: BankAccount}`. Only the last 4 digits come back; saving resets `status` to `pending` |
 
@@ -228,6 +238,14 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere |
 | `GET /v1/admin/media?status=pending&page=` · `POST …/:id/approve` · `POST …/:id/reject {reason}` | verifier | photo moderation |
 | `POST /v1/admin/reviews/:id/hide {reason}` | support | |
+| `GET /v1/admin/coupons?page=` · `POST /v1/admin/coupons` · `PATCH /v1/admin/coupons/:id` | finance | create `{code, titleEn, titleHi, discountType: percent\|flat, discountValue (percent or paise), maxDiscountPaise?, minAmountPaise?, categoryId?, firstBookingOnly?, isPublic?, maxUses?, perCustomerLimit?, validFrom?, validUntil?}`; the list has `usedCount`, `heldCount`, `discountGivenPaise`; update `{titleEn?, titleHi?, isActive?, isPublic?, maxUses?, validUntil?}` (code and discount are fixed) |
+| `GET /v1/admin/featured-plans` · `POST` · `PATCH /:id` | finance views, super edits | `{nameEn, nameHi, days, pricePaise}`; update `{nameEn?, nameHi?, pricePaise?, isActive?}` |
+| `GET /v1/admin/featured-purchases?page=` | finance | sales and free grants |
+| `POST /v1/admin/vendors/:id/feature {days, reason}` · `POST …/unfeature {reason}` | super | free featured days / stop featuring |
+| `POST /v1/admin/bookings/:id/refund` | finance | `{amountPaise, reason, fromVendorPayout?}`: partial refund of any amount up to what is left (`REFUND_TOO_HIGH` with `maxPaise`). With `fromVendorPayout`, the vendor's payout is cut by the same amount (`PAYOUT_ALREADY_PAID` if already sent) |
+| `GET /v1/admin/cities` · `POST` · `PATCH /:id` | super | `{name, nameHi, state}`; new cities start hidden; `{isActive}` shows or hides; `LAST_CITY` |
+| `GET /v1/admin/audit?action=&targetType=&targetId=&adminId=&page=` | super | 50 per page, newest first, plus `admins` for the filter |
+| `GET /v1/admin/export/:kind?from=&to=` | by kind | CSV download. `kind`: bookings, payouts (finance), users (support), vendors (verifier, support), coupons, featured (finance). Dates are inclusive India days |
 | `GET /v1/admin/categories` | super | all categories (hidden too) with vendor counts, plus allowed `icons` and `units` |
 | `POST /v1/admin/categories` | super | `{nameEn, nameHi, icon, defaultUnit, slug?}`; added at the end. `CATEGORY_EXISTS` 409 |
 | `PATCH /v1/admin/categories/:id` | super | `{nameEn?, nameHi?, icon?, defaultUnit?, isActive?}`; hide instead of delete |

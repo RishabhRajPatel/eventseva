@@ -6,8 +6,10 @@ const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
 
 const SELECT = `
   SELECT b.id, b.status, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
-         b.refund_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
+         b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
          e.id AS event_id, e.title AS event_title, e.event_type, e.guest_count, e.venue_address,
+         (SELECT cp.code FROM coupon_redemptions r JOIN coupons cp ON cp.id = r.coupon_id
+           WHERE r.booking_id = b.id AND r.status <> 'released') AS coupon_code,
          (SELECT c.id FROM conversations c WHERE c.customer_id = b.customer_id AND c.vendor_id = b.vendor_id) AS conversation_id,
          v.id AS vendor_id, v.business_name, vu.phone AS vendor_phone, cat.slug AS category_slug, cat.icon AS category_icon,
          EXISTS (SELECT 1 FROM reviews r WHERE r.booking_id = b.id) AS reviewed,
@@ -49,8 +51,16 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     advancePaise: r.advance_paise,
     balancePaise: r.amount_paise - r.advance_paise,
     refundPaise: r.refund_paise,
+    // Coupon discount, paid by EventSeva: lowers what is paid in the app, never the vendor's share.
+    discountPaise: r.discount_paise,
+    couponCode: viewer === 'customer' ? r.coupon_code : null,
+    payNowPaise: r.advance_paise - r.discount_paise,
     // The vendor sees what reaches their bank; the customer never sees EventSeva's commission.
-    ...(viewer === 'vendor' ? { commissionPaise: r.commission_paise, payoutPaise: r.advance_paise - r.commission_paise } : {}),
+    ...(viewer === 'vendor' ? {
+          commissionPaise: r.commission_paise,
+          payoutDeductionPaise: r.payout_deduction_paise,
+          payoutPaise: r.advance_paise - r.commission_paise - r.payout_deduction_paise,
+        } : {}),
     respondBy: r.status === 'requested' ? r.respond_by : null,
     payBy: r.status === 'accepted' ? r.pay_by : null,
     cancelReason: r.cancel_reason,

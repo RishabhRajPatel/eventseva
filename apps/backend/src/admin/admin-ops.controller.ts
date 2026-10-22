@@ -90,7 +90,12 @@ export class AdminOpsController {
          (SELECT COALESCE(sum(commission_paise), 0)::bigint FROM bookings WHERE status IN ('confirmed', 'completed') AND to_char(day, 'YYYY-MM') = $1) AS "monthCommissionPaise",
          (SELECT count(*)::int FROM complaints WHERE status <> 'resolved') AS "openComplaints",
          (SELECT count(*)::int FROM media WHERE status = 'pending') AS "pendingMedia",
-         (SELECT count(*)::int FROM payouts WHERE status = 'scheduled' AND release_after <= now()) AS "duePayouts"`,
+         (SELECT count(*)::int FROM payouts WHERE status = 'scheduled' AND release_after <= now()) AS "duePayouts",
+         (SELECT COALESCE(sum(r.discount_paise), 0)::bigint FROM coupon_redemptions r JOIN bookings b ON b.id = r.booking_id
+           WHERE r.status = 'used' AND to_char(b.day, 'YYYY-MM') = $1) AS "monthDiscountPaise",
+         (SELECT COALESCE(sum(amount_paise), 0)::bigint FROM featured_purchases
+           WHERE status = 'paid' AND to_char(paid_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM') = $1) AS "monthFeaturedPaise",
+         (SELECT count(*)::int FROM vendors WHERE featured_until > now()) AS "featuredVendors"`,
       [month],
     );
     const byStatus = await this.db.query(
@@ -115,6 +120,10 @@ export class AdminOpsController {
       ...stats,
       monthGmvPaise: Number(stats!.monthGmvPaise),
       monthCommissionPaise: Number(stats!.monthCommissionPaise),
+      monthDiscountPaise: Number(stats!.monthDiscountPaise),
+      monthFeaturedPaise: Number(stats!.monthFeaturedPaise),
+      // What EventSeva earned: commission − coupon discounts + featured sales.
+      monthNetRevenuePaise: Number(stats!.monthCommissionPaise) - Number(stats!.monthDiscountPaise) + Number(stats!.monthFeaturedPaise),
       bookingsByStatus: Object.fromEntries(byStatus.rows.map((r) => [r.status, r.n])),
       last14Days: daily.rows,
       topCategories: topCategories.rows,

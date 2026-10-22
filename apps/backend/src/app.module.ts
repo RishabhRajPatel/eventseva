@@ -29,6 +29,11 @@ import { MediaController } from './media/media.controller';
 import { CloudinaryService } from './media/cloudinary.service';
 import { ConsolePushSender, FcmPushSender, PUSH_SENDER } from './push/push-sender';
 import { PushService } from './push/push.service';
+import { CouponsService } from './coupons/coupons.service';
+import { AdminCouponsController, CouponsController } from './coupons/coupons.controller';
+import { FeaturedService } from './featured/featured.service';
+import { AdminFeaturedController, PartnerFeaturedController } from './featured/featured.controller';
+import { AdminExtrasController } from './admin/admin-extras.controller';
 import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
 
 @Controller()
@@ -75,6 +80,11 @@ class ConfigModule {}
     PartnerHomeController,
     AdminOpsController,
     AdminCategoriesController,
+    CouponsController,
+    AdminCouponsController,
+    PartnerFeaturedController,
+    AdminFeaturedController,
+    AdminExtrasController,
     MediaController,
   ],
   providers: [
@@ -89,6 +99,8 @@ class ConfigModule {}
     BookingsService,
     CloudinaryService,
     PushService,
+    CouponsService,
+    FeaturedService,
     {
       provide: PUSH_SENDER,
       inject: [CONFIG],

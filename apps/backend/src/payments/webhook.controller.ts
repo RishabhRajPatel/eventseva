@@ -3,6 +3,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { AppError } from '../common/errors';
 import { BookingsService } from '../bookings/bookings.service';
+import { FeaturedService } from '../featured/featured.service';
 import { PAYMENT_GATEWAY, PaymentGateway } from './gateway';
 
 interface RazorpayEvent {
@@ -21,6 +22,7 @@ export class PaymentWebhookController {
 
   constructor(
     private readonly bookings: BookingsService,
+    private readonly featured: FeaturedService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
   ) {}
 
@@ -33,7 +35,9 @@ export class PaymentWebhookController {
     const body = req.body as RazorpayEvent;
     const payment = body.payload?.payment?.entity;
     if (body.event === 'payment.captured' && payment?.id && payment.order_id) {
-      const result = await this.bookings.paymentCaptured(payment.order_id, payment.id);
+      // An order is either a booking advance or a featured-listing purchase.
+      let result: string = await this.bookings.paymentCaptured(payment.order_id, payment.id);
+      if (result === 'unknown_order') result = await this.featured.captured(payment.order_id, payment.id);
       this.logger.log(`${payment.order_id}: ${result}`);
     }
     // Always 200 for events we do not use, or Razorpay keeps retrying them.

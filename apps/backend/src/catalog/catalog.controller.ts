@@ -10,8 +10,9 @@ export class CatalogController {
   constructor(private readonly db: Db) {}
 
   @Get('cities')
-  async cities() {
-    const { rows } = await this.db.query('SELECT id, name, state FROM cities WHERE is_active ORDER BY name');
+  async cities(@Headers('accept-language') acceptLanguage?: string) {
+    const hi = pickLanguage(acceptLanguage) === 'hi';
+    const { rows } = await this.db.query(`SELECT id, ${hi ? 'name_hi' : 'name'} AS name, state FROM cities WHERE is_active ORDER BY name`);
     return { items: rows };
   }
 
