@@ -113,6 +113,9 @@ export class AppModule {}
 
 /** Shared by main.ts and the tests so both run the same middleware and validation. */
 export function configureApp(app: INestApplication) {
+  const config = app.get<AppConfig>(CONFIG);
+  // Behind a load balancer, req.ip must be the user's IP (from X-Forwarded-For), not the proxy's.
+  if (config.trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
   app.use(helmet());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new ErrorFilter());

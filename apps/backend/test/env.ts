@@ -14,5 +14,7 @@ export function useTestEnv() {
   process.env.PAYMENT_PROVIDER = 'fake';
   process.env.BOOKING_SWEEP_SEC = '0';
   process.env.PUSH_DISPATCH = 'off';
+  // Like production behind one proxy: tests set X-Forwarded-For to act as different users' IPs.
+  process.env.TRUST_PROXY = '1';
   process.env.CLOUDINARY_URL = 'cloudinary://111222333:test-secret@testcloud';
 }

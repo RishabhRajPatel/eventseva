@@ -11,10 +11,6 @@ export const OTP_RULES = {
   resendAfterSec: 30,
   maxAttempts: 5,
   lockMin: 15,
-  maxPerPhonePerHour: 5,
-  maxPerIpPerHour: 10,
-  maxPerPhonePerDay: 5,
-  maxPerIpPerDay: 20,
 } as const;
 
 /**
@@ -75,11 +71,12 @@ export class OtpService {
           });
         }
       }
-      await this.limit(client, 'phone', phone, WINDOWS.hour, OTP_RULES.maxPerPhonePerHour);
-      await this.limit(client, 'phone', phone, WINDOWS.day, OTP_RULES.maxPerPhonePerDay);
+      const max = this.config.otpLimits;
+      await this.limit(client, 'phone', phone, WINDOWS.hour, max.phonePerHour);
+      await this.limit(client, 'phone', phone, WINDOWS.day, max.phonePerDay);
       if (ip) {
-        await this.limit(client, 'ip', ip, WINDOWS.hour, OTP_RULES.maxPerIpPerHour);
-        await this.limit(client, 'ip', ip, WINDOWS.day, OTP_RULES.maxPerIpPerDay);
+        await this.limit(client, 'ip', ip, WINDOWS.hour, max.ipPerHour);
+        await this.limit(client, 'ip', ip, WINDOWS.day, max.ipPerDay);
       }
       await client.query(
         `INSERT INTO otp_requests (phone, code_hash, ip, expires_at)

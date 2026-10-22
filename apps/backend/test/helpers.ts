@@ -88,7 +88,8 @@ export async function createTestApp(): Promise<TestApp> {
       await db.query('TRUNCATE otp_requests, sessions, users, admin_users CASCADE');
     },
     login: async (phone, appName = 'customer', status = 200) => {
-      const sent = await http().post('/v1/auth/otp/send').send({ phone });
+      // Each login from its own IP, so tests with many users do not hit the per-IP limit.
+      const sent = await http().post('/v1/auth/otp/send').set('X-Forwarded-For', `10.${phone.slice(-6, -4)}.${phone.slice(-4, -2)}.${phone.slice(-2)}`).send({ phone });
       if (sent.status !== 200) throw new Error(`otp/send ${sent.status}: ${JSON.stringify(sent.body)}`);
       return http()
         .post('/v1/auth/otp/verify')

@@ -31,10 +31,24 @@ export interface AppConfig {
   firebase?: ServiceAccount;
   /** Send pushes in the background (off in tests, which call the dispatcher directly). */
   pushDispatch: boolean;
+  /** OTP send limits (rolling windows). Phone limits are the real protection; IP limits catch bots. */
+  otpLimits: { phonePerHour: number; phonePerDay: number; ipPerHour: number; ipPerDay: number };
+  /**
+   * How many proxies sit in front of the API (load balancer, Nginx …). Without it every request looks
+   * like it comes from the proxy, and IP limits would count all users as one.
+   */
+  trustProxy: number;
   isProduction: boolean;
 }
 
 /** cloudinary://<api_key>:<api_secret>@<cloud_name> — the format Cloudinary's dashboard shows. */
+function positiveInt(value: string | undefined, fallback: number): number {
+  if (value === undefined || value === '') return fallback;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`OTP limits must be whole numbers of 1 or more (got "${value}")`);
+  return n;
+}
+
 export function parseCloudinaryUrl(value?: string): AppConfig['cloudinary'] {
   if (!value) return undefined;
   const m = /^cloudinary:\/\/([^:]+):([^@]+)@([\w-]+)$/.exec(value.trim());
@@ -101,6 +115,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     bankDetailsKey,
     firebase: parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT),
     pushDispatch: env.PUSH_DISPATCH !== 'off',
+    otpLimits: {
+      phonePerHour: positiveInt(env.OTP_MAX_PER_PHONE_PER_HOUR, 5),
+      phonePerDay: positiveInt(env.OTP_MAX_PER_PHONE_PER_DAY, 5),
+      ipPerHour: positiveInt(env.OTP_MAX_PER_IP_PER_HOUR, 5),
+      ipPerDay: positiveInt(env.OTP_MAX_PER_IP_PER_DAY, 5),
+    },
+    trustProxy: Number(env.TRUST_PROXY || 0),
     isProduction,
   };
 }

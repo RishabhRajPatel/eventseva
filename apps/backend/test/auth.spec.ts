@@ -135,9 +135,15 @@ describe('auth (phone + OTP)', () => {
     expect(results.map((r) => r.status).sort()).toEqual([200, 429, 429]);
   });
 
-  it('allows at most 10 codes per IP per hour', async () => {
-    for (let i = 0; i < 10; i++) await send(`98765432${String(i).padStart(2, '0')}`).expect(200);
-    expect((await send('9123456789').expect(429)).body.error.code).toBe('OTP_LIMIT');
+  it('allows at most 5 codes per IP in a day, counting the real IP behind the proxy', async () => {
+    const fromIp = (phone: string, ip: string) => t.http().post('/v1/auth/otp/send').set('X-Forwarded-For', ip).send({ phone });
+    for (let i = 0; i < 5; i++) await fromIp(`98765432${String(i).padStart(2, '0')}`, '203.0.113.7').expect(200);
+    const blocked = await fromIp('9123456789', '203.0.113.7').expect(429);
+    expect(blocked.body.error).toMatchObject({ code: 'OTP_LIMIT', retryAfterSec: expect.any(Number) });
+    // Another user behind the same load balancer has their own IP and is not blocked.
+    await fromIp('9123456789', '198.51.100.20').expect(200);
+    const { rows } = await t.db.query(`SELECT DISTINCT host(ip) AS ip FROM otp_requests ORDER BY 1`);
+    expect(rows.map((r) => r.ip)).toEqual(['198.51.100.20', '203.0.113.7']);
   });
 
   it('rejects an expired code', async () => {
