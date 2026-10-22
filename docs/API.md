@@ -115,6 +115,9 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `cancelled_by_customer` / `cancelled_by_vendor` | `refundPaise`, if any | — |
 
 - **Phones:** `vendor.phone` (customer side) and `customer.phone` (vendor side) stay null until `confirmed`.
+- **Venue:** `event.guestCount` is always shown. The vendor sees `event.venueAddress` only once the booking is
+  `confirmed`.
+- **Chat:** `conversationId` is the chat between the two, or null if there is none yet.
 - **Money shown:** `amountPaise` total, `advancePaise` paid in the app (25%), `balancePaise` paid to the vendor
   after the event.
 
@@ -123,7 +126,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | Route | Notes |
 |---|---|
 | `GET /v1/shortlist` · `PUT /v1/shortlist/:vendorId` · `DELETE /v1/shortlist/:vendorId` | Saved vendors (heart) |
-| `POST /v1/conversations` | `{vendorId}` → `{id}` (customer app only; get-or-create) |
+| `POST /v1/conversations` | Customer app: `{vendorId}`. Partner app: `{bookingId}` (only its own customers). → `{id}` (get-or-create) |
 | `GET /v1/conversations` | `{items: Conversation[]}` (both apps) |
 | `GET /v1/conversations/:id/messages?beforeId=` | `{items: Message[] newest first, hasMore, phoneShared}`; marks as read |
 | `POST /v1/conversations/:id/messages` | `{body}` → `Message` |
@@ -195,7 +198,9 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 ## Admin panel (`/v1/admin/*`, admin token)
 
 - **Login:** `POST /v1/admin/login {email, password, totp}` → `{accessToken, expiresInSec, admin{id, email, role}}`.
-  Any wrong part returns `ADMIN_LOGIN_FAILED` 401. Create admins with `pnpm --filter @eventseva/backend create-admin`.
+  Any wrong part returns `ADMIN_LOGIN_FAILED` 401. After 5 wrong attempts the account is locked for 15 min
+  (`ADMIN_LOCKED` 429). `POST /v1/admin/logout` (204) ends every token already issued to that admin.
+  Create admins with `pnpm --filter @eventseva/backend create-admin`.
 - **Roles:**
   - `super`: everything.
   - `verifier`: vendors and media.

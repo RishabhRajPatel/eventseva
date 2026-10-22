@@ -1,0 +1,70 @@
+.screen {
+  min-height: 100vh;
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--white);
+  border-radius: 1.25rem;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wordmark {
+  font-family: var(--font-display), 'Playfair Display', Georgia, serif;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--royal);
+}
+
+.title {
+  font-family: var(--font-body), 'Lato', sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.input {
+  min-height: 3rem;
+  font-size: 1rem;
+}
+
+.totp {
+  min-height: 3rem;
+  font-size: 1.125rem;
+  letter-spacing: 0.3em;
+}
+
+.submit {
+  min-height: 3.25rem;
+  font-size: 1rem;
+  width: 100%;
+}
+
+.lock {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  border-radius: var(--radius);
+  background: var(--cream);
+  padding: 0.75rem;
+}
+
+.lock svg {
+  flex-shrink: 0;
+}

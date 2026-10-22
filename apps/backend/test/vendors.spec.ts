@@ -165,6 +165,29 @@ describe('vendor onboarding and approval', () => {
       await t.http().get('/v1/admin/me').set('Authorization', `Bearer ${ok.accessToken}`).expect(401);
     });
 
+    it('5 wrong logins lock the admin for 15 minutes; logout ends issued tokens', async () => {
+      const secret = 'JBSWY3DPEHPK3PXP';
+      await t.db.query(`INSERT INTO admin_users (email, password_hash, totp_secret, role) VALUES ($1, $2, $3, 'verifier')`, [
+        'lock@eventseva.test',
+        await hashPassword('right password 1'),
+        secret,
+      ]);
+      const login = (password: string) =>
+        t.http().post('/v1/admin/login').send({ email: 'lock@eventseva.test', password, totp: totpAt(secret) });
+
+      for (let i = 0; i < 4; i++) await login('wrong password').expect(401);
+      const ok = (await login('right password 1').expect(200)).body; // success resets the count
+      for (let i = 0; i < 5; i++) await login('wrong password').expect(401);
+      expect((await login('right password 1').expect(429)).body.error.code).toBe('ADMIN_LOCKED');
+      await t.db.query(`UPDATE admin_users SET locked_until = now() - interval '1 second'`);
+      await login('right password 1').expect(200);
+
+      await t.http().post('/v1/admin/logout').set('Authorization', `Bearer ${ok.accessToken}`).expect(204);
+      await t.http().get('/v1/admin/me').set('Authorization', `Bearer ${ok.accessToken}`).expect(401);
+      const fresh = (await login('right password 1').expect(200)).body;
+      await t.http().get('/v1/admin/me').set('Authorization', `Bearer ${fresh.accessToken}`).expect(200);
+    });
+
     it('app tokens and admin tokens cannot be swapped', async () => {
       await as(partner).get('/v1/admin/vendors').expect(401);
       const admin = await t.adminLogin();
@@ -188,7 +211,7 @@ describe('vendor onboarding and approval', () => {
 
       const queue = (await as(admin).get('/v1/admin/vendors').expect(200)).body;
       expect(queue.items).toHaveLength(1);
-      expect(queue.items[0]).toMatchObject({ id: v.id, phone: '+919811111111', category: 'dj', serviceCount: 1, packageCount: 0 });
+      expect(queue.items[0]).toMatchObject({ id: v.id, phone: '+919811111111', category: 'dj', categoryName: 'DJ & sound', serviceCount: 1, packageCount: 0 });
 
       // Not public before approval.
       await t.http().get(`/v1/vendors/${v.id}`).expect(404);

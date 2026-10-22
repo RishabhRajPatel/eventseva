@@ -1,0 +1,117 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--white);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 400;
+  border: 2px solid transparent;
+}
+
+a.stat:hover {
+  border-color: var(--lilac);
+  color: var(--ink);
+}
+
+.statLabel {
+  font-size: 0.875rem;
+}
+
+.statValue {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--royal);
+  font-variant-numeric: tabular-nums;
+}
+
+.statHint {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.attention {
+  background: var(--peach);
+}
+
+.panels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+.chart {
+  flex: 2 1 28rem;
+}
+
+.side {
+  flex: 1 1 18rem;
+}
+
+.todo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 2.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background: var(--lavender);
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 400;
+}
+
+.todo:hover {
+  color: var(--ink);
+  outline: 2px solid var(--royal);
+}
+
+.todoWarn {
+  background: var(--peach);
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rows li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--lavender);
+  font-size: 0.875rem;
+}
+
+.rows li:last-child {
+  border-bottom: none;
+}
+
+.meter {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--lavender);
+  overflow: hidden;
+}
+
+.meter span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--royal);
+}

@@ -10,6 +10,7 @@ import { loadVendor } from '../vendors/vendor.queries';
 import { Admin, AdminContext, AdminGuard, AdminRoles, ADMIN_TTL_SEC, signAdminToken } from './admin-auth';
 import { hashPassword, verifyPassword } from './password';
 import { verifyTotp } from './totp';
+import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
 
 class AdminLoginDto {
@@ -27,7 +28,16 @@ class ReasonDto {
   @IsString() @Length(5, 300) reason: string;
 }
 
+const DOC_NAMES: Record<string, { en: string; hi: string }> = {
+  aadhaar: { en: 'Aadhaar', hi: 'आधार' },
+  pan: { en: 'PAN card', hi: 'पैन कार्ड' },
+  gst: { en: 'GST certificate', hi: 'जीएसटी प्रमाणपत्र' },
+  shop_photo: { en: 'Shop photo', hi: 'दुकान की फ़ोटो' },
+};
+
 const PAGE_SIZE = 20;
+const ADMIN_MAX_FAILED_LOGINS = 5;
+const ADMIN_LOCK_MIN = 15;
 
 type Decision = 'approve' | 'reject' | 'hold';
 
@@ -70,22 +80,44 @@ export class AdminController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() body: AdminLoginDto) {
-    const admin = await this.db.one<{ id: string; email: string; role: string; password_hash: string; totp_secret: string }>(
+    const admin = await this.db.one<{ id: string; email: string; role: string; password_hash: string; totp_secret: string; locked: boolean }>(
       this.db,
-      'SELECT id, email, role, password_hash, totp_secret FROM admin_users WHERE email = $1 AND is_active',
+      `SELECT id, email, role, password_hash, totp_secret, locked_until > now() AS locked
+         FROM admin_users WHERE email = $1 AND is_active`,
       [body.email.trim().toLowerCase()],
     );
+    if (admin?.locked) {
+      throw new AppError('ADMIN_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    }
     const hash = admin?.password_hash ?? (await (this.dummyHash ??= hashPassword('dummy-password')));
     const passwordOk = await verifyPassword(body.password, hash);
     // One message for every failure, so the response does not reveal which part was wrong.
     if (!admin || !passwordOk || !verifyTotp(admin.totp_secret, body.totp)) {
+      if (admin) {
+        await this.db.query(
+          `UPDATE admin_users SET
+             locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END,
+             failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END
+           WHERE id = $1`,
+          [admin.id, ADMIN_MAX_FAILED_LOGINS, ADMIN_LOCK_MIN],
+        );
+      }
       throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
     }
+    await this.db.query('UPDATE admin_users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [admin.id]);
     return {
       accessToken: signAdminToken(this.config, admin.id),
       expiresInSec: ADMIN_TTL_SEC,
       admin: { id: admin.id, email: admin.email, role: admin.role },
     };
+  }
+
+  /** Ends every admin token issued to this admin so far (all browsers). */
+  @UseGuards(AdminGuard)
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(@Admin() admin: AdminContext) {
+    await this.db.query('UPDATE admin_users SET tokens_valid_after = now() WHERE id = $1', [admin.adminId]);
   }
 
   @UseGuards(AdminGuard)
@@ -103,7 +135,7 @@ export class AdminController {
     const status = query.status ?? 'pending';
     const { rows } = await this.db.query(
       `SELECT v.id, v.business_name AS "businessName", v.status, v.area, v.created_at AS "createdAt",
-              u.phone, c.slug AS category, ci.name AS city,
+              u.phone, c.slug AS category, c.name_en AS "categoryName", ci.name AS city,
               (SELECT count(*)::int FROM services s WHERE s.vendor_id = v.id AND s.is_active) AS "serviceCount",
               (SELECT count(*)::int FROM packages p WHERE p.vendor_id = v.id AND p.is_active) AS "packageCount"
          FROM vendors v
@@ -130,7 +162,7 @@ export class AdminController {
       [id],
     );
     const history = await this.db.query(
-      `SELECT l.action, l.after->>'reason' AS reason, a.email AS "adminEmail", l.created_at AS "createdAt"
+      `SELECT l.action, l.after->>'reason' AS reason, l.after->>'docType' AS "docType", a.email AS "adminEmail", l.created_at AS "createdAt"
          FROM admin_audit_log l JOIN admin_users a ON a.id = l.admin_id
         WHERE l.target_type = 'vendor' AND l.target_id = $1 ORDER BY l.created_at DESC`,
       [id],
@@ -179,6 +211,14 @@ export class AdminController {
         `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, $2, 'vendor', $3, $4, $5)`,
         [admin.adminId, `document.${status === 'approved' ? 'approve' : 'reject'}`, d.vendor_id, { docType: d.doc_type, status: d.status }, { docType: d.doc_type, status, reason }],
       );
+      if (status === 'rejected') {
+        const owner = await this.db.one<{ user_id: string }>(client, 'SELECT user_id FROM vendors WHERE id = $1', [d.vendor_id]);
+        const name = DOC_NAMES[d.doc_type] ?? { en: d.doc_type, hi: d.doc_type };
+        await notify(client, owner!.user_id, 'document_rejected', {
+          en: { title: `${name.en} not accepted`, body: `${reason}. Please upload it again.` },
+          hi: { title: `${name.hi} स्वीकार नहीं हुआ`, body: `${reason}। कृपया दोबारा अपलोड करें।` },
+        }, { documentId: id });
+      }
       return { id, status, rejectReason: reason };
     });
   }
@@ -218,7 +258,7 @@ export class AdminController {
       );
       if (!v) throw new AppError('VENDOR_NOT_FOUND', 'Vendor not found.', HttpStatus.NOT_FOUND);
       if (!ALLOWED_FROM[decision].includes(v.status)) {
-        throw new AppError('VENDOR_BAD_STATUS', `A ${v.status} vendor cannot be changed this way.`, HttpStatus.CONFLICT, {
+        throw new AppError('VENDOR_BAD_STATUS', `This vendor is ${v.status.replace('_', ' ')}, so this cannot be done.`, HttpStatus.CONFLICT, {
           status: v.status,
         });
       }

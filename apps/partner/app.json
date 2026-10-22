@@ -28,7 +28,22 @@
       "expo-secure-store",
       "expo-font",
       "expo-image",
-      "expo-splash-screen"
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#312e81",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EventSeva Partner needs your photos so you can add pictures of your work and verification documents.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
     ],
     "scheme": "eventseva-partner"
   }

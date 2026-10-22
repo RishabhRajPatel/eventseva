@@ -107,7 +107,8 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
     it('customer starts, vendor replies, unread counts and read receipts, phones hidden before booking', async () => {
       const conv = (await as(customer).post('/v1/conversations', { vendorId }).expect(201)).body;
       expect((await as(customer).post('/v1/conversations', { vendorId }).expect(201)).body.id).toBe(conv.id);
-      expect((await as(vendorToken).post('/v1/conversations', { vendorId }).expect(403)).body.error.code).toBe('CUSTOMER_APP_ONLY');
+      // The Partner app opens chats from a booking only.
+      await as(vendorToken).post('/v1/conversations', { vendorId }).expect(400);
 
       const sent = (await as(customer).post(`/v1/conversations/${conv.id}/messages`, { body: 'Is 12 Feb free? My number 9822222222' }).expect(201)).body;
       expect(sent).toMatchObject({ mine: true, body: 'Is 12 Feb free? My number ••••••••••' });
@@ -131,6 +132,22 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
       expect(after.phoneShared).toBe(true);
       expect(after.items.at(-1).body).toBe('Is 12 Feb free? My number 9822222222');
     });
+  });
+
+  it('vendor can open the chat from a booking; booking shows guests and venue (venue after payment)', async () => {
+    const event = (await as(customer).post('/v1/events', { title: 'Shaadi', eventType: 'wedding', eventDate: inDays(9), cityId, guestCount: 300, venueAddress: 'Civil Lines, Prayagraj' }).expect(201)).body;
+    const b = (await as(customer).post('/v1/bookings', { eventId: event.id, vendorId, serviceId, slot: 'night' }).expect(201)).body;
+    const req = (await as(vendorToken).get(`/v1/partner/bookings/${b.id}`).expect(200)).body;
+    expect(req.event).toMatchObject({ guestCount: 300, venueAddress: null });
+    expect(req.conversationId).toBeNull();
+
+    const conv = (await as(vendorToken).post('/v1/conversations', { bookingId: b.id }).expect(201)).body;
+    expect((await as(vendorToken).get(`/v1/partner/bookings/${b.id}`)).body.conversationId).toBe(conv.id);
+    expect((await as(customer).post('/v1/conversations', { vendorId }).expect(201)).body.id).toBe(conv.id);
+    expect((await as(customer).get(`/v1/bookings/${b.id}`)).body.event.venueAddress).toBe('Civil Lines, Prayagraj');
+
+    const stranger = (await t.login('9844444444', 'partner')).body.accessToken;
+    await as(stranger).post('/v1/conversations', { bookingId: b.id }).expect(404);
   });
 
   describe('notifications and devices', () => {

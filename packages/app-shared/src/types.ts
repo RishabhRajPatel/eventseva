@@ -233,7 +233,16 @@ export interface Booking {
   item: { type: 'service' | 'package'; id: string; title: string; unit: PricingUnit };
   quantity: number;
   note: string | null;
-  event: { id: string; title: string; eventType: EventType };
+  event: {
+    id: string;
+    title: string;
+    eventType: EventType;
+    guestCount: number | null;
+    /** Partner app: null until the booking is confirmed. */
+    venueAddress: string | null;
+  };
+  /** Chat between this customer and vendor, if one exists. */
+  conversationId: string | null;
   amountPaise: number;
   advancePaise: number;
   balancePaise: number;

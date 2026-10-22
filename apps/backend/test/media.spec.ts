@@ -170,5 +170,9 @@ describe('vendor photos, videos and documents', () => {
 
     await as(verifier).post(`/v1/admin/documents/${detail.documents[0].id}/reject`, { reason: 'Photo is blurry' }).expect(200);
     expect((await as(partner).get('/v1/partner/documents')).body.items[0]).toMatchObject({ status: 'rejected', rejectReason: 'Photo is blurry' });
+    const notice = (await as(partner).get('/v1/notifications')).body.items[0];
+    expect(notice).toMatchObject({ kind: 'document_rejected', title: 'Aadhaar not accepted' });
+    const history = (await as(verifier).get(`/v1/admin/vendors/${vendorId}`)).body.history;
+    expect(history[0]).toMatchObject({ action: 'document.reject', docType: 'aadhaar', reason: 'Photo is blurry' });
   });
 });

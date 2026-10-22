@@ -7,7 +7,8 @@ const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
 const SELECT = `
   SELECT b.id, b.status, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
-         e.id AS event_id, e.title AS event_title, e.event_type,
+         e.id AS event_id, e.title AS event_title, e.event_type, e.guest_count, e.venue_address,
+         (SELECT c.id FROM conversations c WHERE c.customer_id = b.customer_id AND c.vendor_id = b.vendor_id) AS conversation_id,
          v.id AS vendor_id, v.business_name, vu.phone AS vendor_phone,
          cu.name AS customer_name, cu.phone AS customer_phone,
          COALESCE(s.title, p.title) AS item_title, CASE WHEN s.id IS NULL THEN 'package' ELSE 'service' END AS item_type,
@@ -31,7 +32,15 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     item: { type: r.item_type, id: r.item_id, title: r.item_title, unit: r.unit },
     quantity: r.quantity,
     note: r.details?.note ?? null,
-    event: { id: r.event_id, title: r.event_title, eventType: r.event_type },
+    event: {
+      id: r.event_id,
+      title: r.event_title,
+      eventType: r.event_type,
+      guestCount: r.guest_count,
+      // The customer always sees their own venue; the vendor only once the booking is paid.
+      venueAddress: viewer === 'customer' || share ? r.venue_address : null,
+    },
+    conversationId: r.conversation_id,
     amountPaise: r.amount_paise,
     advancePaise: r.advance_paise,
     balancePaise: r.amount_paise - r.advance_paise,

@@ -7,8 +7,10 @@ import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { notify } from '../notifications/notify';
 
+/** Customer app sends vendorId; Partner app sends bookingId (it can only open chats with its own customers). */
 class StartDto {
-  @IsUUID() vendorId: string;
+  @IsOptional() @IsUUID() vendorId?: string;
+  @IsOptional() @IsUUID() bookingId?: string;
 }
 
 class MessageDto {
@@ -47,17 +49,32 @@ export class ChatController {
 
   @Post()
   async start(@Auth() auth: AuthContext, @Body() body: StartDto) {
-    if (auth.app !== 'customer') throw new AppError('CUSTOMER_APP_ONLY', 'Customers start chats from the EventSeva app.', HttpStatus.FORBIDDEN);
+    if (auth.app === 'partner') {
+      if (!body.bookingId) throw new AppError('VALIDATION', 'bookingId is required.');
+      const b = await this.db.one<{ customer_id: string; vendor_id: string }>(
+        this.db,
+        `SELECT b.customer_id, b.vendor_id FROM bookings b JOIN vendors v ON v.id = b.vendor_id WHERE b.id = $1 AND v.user_id = $2`,
+        [body.bookingId, auth.userId],
+      );
+      if (!b) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
+      return { id: await this.open(b.customer_id, b.vendor_id) };
+    }
+    if (!body.vendorId) throw new AppError('VALIDATION', 'vendorId is required.');
     const vendor = await this.db.one<{ user_id: string }>(this.db, `SELECT user_id FROM vendors WHERE id = $1 AND status = 'approved'`, [body.vendorId]);
     if (!vendor) throw new AppError('VENDOR_NOT_FOUND', 'This vendor is not available.', HttpStatus.NOT_FOUND);
     if (vendor.user_id === auth.userId) throw new AppError('OWN_VENDOR', 'You cannot chat with your own business.');
+    return { id: await this.open(auth.userId, body.vendorId) };
+  }
+
+  /** Get-or-create: one conversation per customer and vendor. */
+  private async open(customerId: string, vendorId: string): Promise<string> {
     const conv = await this.db.one<{ id: string }>(
       this.db,
       `INSERT INTO conversations (customer_id, vendor_id) VALUES ($1, $2)
        ON CONFLICT (customer_id, vendor_id) DO UPDATE SET customer_id = EXCLUDED.customer_id RETURNING id`,
-      [auth.userId, body.vendorId],
+      [customerId, vendorId],
     );
-    return { id: conv!.id };
+    return conv!.id;
   }
 
   @Get()

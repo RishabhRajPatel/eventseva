@@ -34,7 +34,8 @@ const ROLES_KEY = 'adminRoles';
 export const AdminRoles = (...roles: AdminRole[]) => SetMetadata(ROLES_KEY, roles);
 
 export const signAdminToken = (config: AppConfig, adminId: string) =>
-  jwt.sign({ sub: adminId }, config.jwtSecret, { algorithm: 'HS256', audience: ADMIN_AUDIENCE, expiresIn: ADMIN_TTL_SEC });
+  // ims: issue time in milliseconds, so a logout also ends tokens issued earlier in the same second.
+  jwt.sign({ sub: adminId, ims: Date.now() }, config.jwtSecret, { algorithm: 'HS256', audience: ADMIN_AUDIENCE, expiresIn: ADMIN_TTL_SEC });
 
 @Injectable()
 export class AdminGuard implements CanActivate {
@@ -48,14 +49,24 @@ export class AdminGuard implements CanActivate {
     const req = ctx.switchToHttp().getRequest<AdminRequest>();
     const [scheme, token] = (req.headers.authorization ?? '').split(' ');
     let adminId: string;
+    let issuedAt: number;
     try {
       if (scheme !== 'Bearer' || !token) throw new Error('missing');
-      adminId = (jwt.verify(token, this.config.jwtSecret, { algorithms: ['HS256'], audience: ADMIN_AUDIENCE }) as { sub: string }).sub;
+      ({ sub: adminId, ims: issuedAt } = jwt.verify(token, this.config.jwtSecret, { algorithms: ['HS256'], audience: ADMIN_AUDIENCE }) as {
+        sub: string;
+        ims: number;
+      });
     } catch {
       throw new AppError('UNAUTHORIZED', 'Please log in.', HttpStatus.UNAUTHORIZED);
     }
     // Checked on every request, so deactivating an admin locks them out at once.
-    const admin = await this.db.one<{ role: AdminRole }>(this.db, 'SELECT role FROM admin_users WHERE id = $1 AND is_active', [adminId]);
+    // Tokens issued before the admin's last logout stop working at once.
+    const admin = await this.db.one<{ role: AdminRole }>(
+      this.db,
+      `SELECT role FROM admin_users
+        WHERE id = $1 AND is_active AND (tokens_valid_after IS NULL OR $2::bigint > extract(epoch FROM tokens_valid_after) * 1000)`,
+      [adminId, issuedAt ?? 0],
+    );
     if (!admin) throw new AppError('UNAUTHORIZED', 'Please log in.', HttpStatus.UNAUTHORIZED);
 
     const allowed = this.reflector.getAllAndOverride<AdminRole[] | undefined>(ROLES_KEY, [ctx.getHandler(), ctx.getClass()]);

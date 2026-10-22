@@ -1,0 +1,552 @@
+{
+  "common": {
+    "add": "Add",
+    "back": "Back",
+    "cancel": "Cancel",
+    "change": "Change",
+    "close": "Close",
+    "continue": "Continue",
+    "delete": "Delete",
+    "save": "Save",
+    "seeAll": "See all",
+    "tryAgain": "Try again",
+    "view": "View"
+  },
+  "tabs": {
+    "home": "Home",
+    "bookings": "Bookings",
+    "calendar": "Calendar",
+    "chat": "Chat",
+    "profile": "Profile"
+  },
+  "login": {
+    "partnerBadge": "PARTNER",
+    "headline": "Get more bookings for your service in Prayagraj",
+    "benefitRequests": "New booking requests right on your phone",
+    "benefitAdvance": "Advance secured upfront",
+    "benefitPayout": "Money in your bank the day after the event",
+    "title": "Log in or register",
+    "subtitle": "Just phone + OTP. Your profile goes live after admin approval.",
+    "mobile": "Mobile number",
+    "placeholder": "10-digit number",
+    "invalidPhone": "Enter a valid 10-digit mobile number.",
+    "sendOtp": "Send OTP",
+    "customerQuestion": "Want to book a service?",
+    "customerLink": "Get the EventSeva app",
+    "brand": "EventSeva"
+  },
+  "otp": {
+    "title": "Enter OTP",
+    "sentTo": "We sent a 6-digit code to {{phone}}.",
+    "changeNumber": "Change number",
+    "codeLabel": "6-digit code",
+    "noCode": "Didn't get the code?",
+    "resendIn": "Resend in {{time}}",
+    "resend": "Resend OTP",
+    "autofill": "OTP will auto-fill from SMS",
+    "verify": "Verify"
+  },
+  "name": {
+    "title": "What's your name?",
+    "subtitle": "Customers and the EventSeva team will see this name.",
+    "label": "Your name",
+    "placeholder": "e.g. Ramesh Sharma"
+  },
+  "onboarding": {
+    "step": "Step {{step}} / {{total}}",
+    "step1": "Business info",
+    "step2": "Services & prices",
+    "step3": "Documents + photos",
+    "businessTitle": "Tell us about your business",
+    "businessSubtitle": "Customers will see this on your profile.",
+    "servicesTitle": "Add your services and prices",
+    "servicesSubtitle": "Add at least one service or package. You can change prices any time.",
+    "servicesNeeded": "Add at least one service or package to continue.",
+    "submitTitle": "For verification",
+    "submitSubtitle": "Our team reviews within 24–48 hours.",
+    "checklist": "Before you submit",
+    "check": {
+      "area": "Area of your business",
+      "about": "About you (at least 20 letters)",
+      "services": "At least one service or package",
+      "photos": "At least one photo of your work"
+    },
+    "done": "Done",
+    "fix": "Add now",
+    "submit": "Submit for verification",
+    "resubmit": "Send for review again",
+    "rejectedTitle": "Your profile was not approved",
+    "rejectedNoReason": "The team did not give a reason.",
+    "rejectedHelp": "Fix the points above, then send it for review again.",
+    "editBusiness": "Edit business info"
+  },
+  "pending": {
+    "title": "Your profile is under review",
+    "body": "The EventSeva team reviews within 24–48 hours, usually sooner. Pull down to check again.",
+    "steps": {
+      "business": "Business info",
+      "businessSub": "Done",
+      "documents": "Documents + photos",
+      "documentsSub": "Submitted",
+      "approval": "Admin approval",
+      "approvalSub": "In progress",
+      "live": "Profile live",
+      "liveSub": "Customers can view and book you"
+    },
+    "lockedNote": "Your profile can't be edited while it is being reviewed. Once approved, you can change services, prices and photos any time.",
+    "checkAgain": "Check status",
+    "talkToTeam": "Talk to the EventSeva team"
+  },
+  "onHold": {
+    "banner": "Your profile is hidden from customers — contact support",
+    "contact": "Contact"
+  },
+  "home": {
+    "verified": "Verified",
+    "thisMonth": "Earned this month",
+    "newRequests": "New requests",
+    "monthBookings": "Bookings this month",
+    "respond": "Respond",
+    "noRequests": "No new requests right now. We'll notify you when one comes in.",
+    "requestsWaiting": "{{n}} new requests are waiting. Answer within 24 hours.",
+    "awaitingPayment": "Waiting for payment",
+    "pendingPayout": "Payout on the way",
+    "rating": "Rating",
+    "unreadChats": "Unread chats",
+    "upcoming": "Upcoming bookings",
+    "noUpcoming": "No confirmed bookings coming up yet."
+  },
+  "requests": {
+    "title": "Bookings",
+    "segments": {
+      "new": "New",
+      "awaitingPayment": "Waiting for payment",
+      "upcoming": "Upcoming",
+      "past": "Past"
+    },
+    "empty": {
+      "new": {
+        "title": "No new requests",
+        "body": "New booking requests will show up here. Answer them within 24 hours."
+      },
+      "awaitingPayment": {
+        "title": "Nothing waiting for payment",
+        "body": "After you accept a request, the customer has 24 hours to pay the advance."
+      },
+      "upcoming": {
+        "title": "No upcoming bookings",
+        "body": "Confirmed bookings with the advance paid will show up here."
+      },
+      "past": {
+        "title": "No past bookings",
+        "body": "Finished, cancelled and expired bookings will show up here."
+      }
+    },
+    "accept": "Accept",
+    "decline": "Decline",
+    "declineTitle": "Why are you declining?",
+    "answerWithin": "Answer within {{time}}, or the request expires.",
+    "waitingPaymentTitle": "Waiting for the customer to pay",
+    "waitingPaymentBody": "The slot is held for you. The customer must pay the advance by {{time}}, or the booking is released.",
+    "selectOne": "Select a booking to see the details."
+  },
+  "booking": {
+    "title": "Booking",
+    "date": "Date",
+    "slot": "Time",
+    "item": "Service",
+    "quantity": "Quantity",
+    "event": "Event",
+    "customer": "Customer",
+    "customerFallback": "Customer",
+    "customerContact": "Customer contact",
+    "call": "Call customer",
+    "phoneAfterConfirm": "The customer's phone number is shared once the advance is paid and the booking is confirmed.",
+    "reason": "Reason",
+    "cancel": "Cancel booking",
+    "cancelTitle": "Cancel this booking?",
+    "cancelBodyPaid": "The customer will get 100% of the advance ({{amount}}) back. Cancel only if you really must — customers rely on you.",
+    "cancelBodyUnpaid": "The customer has not paid yet, so nothing is charged. They will be told to book another vendor.",
+    "cancelConfirm": "Yes, cancel",
+    "reportProblem": "Report a problem with this booking",
+    "guests": "Guests",
+    "venue": "Venue",
+    "chat": "Chat with customer"
+  },
+  "money": {
+    "title": "Payment",
+    "youReceive": "You receive from EventSeva",
+    "collectAtEvent": "Collect at the event",
+    "bookingTotal": "Booking total",
+    "feeNote": "Advance {{advance}} paid in the app, minus EventSeva fee {{fee}}.",
+    "refunded": "{{amount}} refunded to the customer."
+  },
+  "reason": {
+    "alreadyBooked": "Already booked that day",
+    "notAvailable": "Not available on this date",
+    "tooFar": "Venue is too far",
+    "notOffered": "We don't offer this",
+    "emergency": "Family emergency",
+    "equipment": "Equipment problem",
+    "health": "Health issue",
+    "doubleBooked": "Date clash with another booking",
+    "more": "Anything else to add? (optional)",
+    "placeholder": "Write a short note for the customer",
+    "required": "Pick a reason or write one (at least 3 letters)."
+  },
+  "calendar": {
+    "title": "Calendar",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "weekdays": {
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat",
+      "sun": "Sun"
+    },
+    "legend": {
+      "free": "Free",
+      "booked": "Booked",
+      "blocked": "Blocked by you",
+      "selected": "Selected"
+    },
+    "summary": {
+      "free": "Free",
+      "partial": "Partly busy",
+      "booked": "Booked",
+      "blocked": "Blocked",
+      "past": "Past date"
+    },
+    "state": {
+      "free": "Free",
+      "booked": "Booked",
+      "blocked": "Blocked by you",
+      "overlap": "Not available — part of the day is taken"
+    },
+    "block": "Block",
+    "unblock": "Unblock",
+    "pickDay": "Tap a date to block it or see its bookings.",
+    "blockNote": "Dates you block show as \"not available\" to customers."
+  },
+  "slot": {
+    "full": "Full day",
+    "day": "Day",
+    "night": "Night"
+  },
+  "slotHours": {
+    "full": "whole day",
+    "day": "10 am – 4 pm",
+    "night": "6 pm – 11 pm"
+  },
+  "bookingStatus": {
+    "requested": "New request",
+    "accepted": "Waiting for payment",
+    "confirmed": "Confirmed",
+    "completed": "Completed",
+    "rejected": "Declined",
+    "expired": "Expired",
+    "cancelled_by_customer": "Cancelled by customer",
+    "cancelled_by_vendor": "Cancelled by you"
+  },
+  "vendorStatus": {
+    "draft": "Draft",
+    "pending": "Under review",
+    "approved": "Live",
+    "rejected": "Not approved",
+    "on_hold": "On hold"
+  },
+  "payoutStatus": {
+    "scheduled": "Scheduled",
+    "processing": "Processing",
+    "paid": "Paid",
+    "failed": "Failed",
+    "held": "On hold"
+  },
+  "complaintStatus": {
+    "open": "Open",
+    "in_progress": "In progress",
+    "resolved": "Resolved"
+  },
+  "eventType": {
+    "wedding": "Wedding",
+    "engagement": "Engagement",
+    "haldi": "Haldi",
+    "mehendi": "Mehendi",
+    "birthday": "Birthday",
+    "anniversary": "Anniversary",
+    "puja": "Puja",
+    "griha_pravesh": "Griha pravesh",
+    "naamkaran": "Naamkaran",
+    "corporate": "Corporate event",
+    "party": "Party",
+    "other": "Other event"
+  },
+  "unit": {
+    "per_event": "Per event",
+    "per_day": "Per day",
+    "per_shift": "Per shift",
+    "per_plate": "Per plate",
+    "per_hour": "Per hour",
+    "per_km": "Per km",
+    "per_room_night": "Per room-night",
+    "per_person": "Per person",
+    "package": "Package"
+  },
+  "time": {
+    "hoursLeft": "{{h}}h {{m}}m left",
+    "minutesLeft": "{{m}}m left",
+    "timeOver": "Time over"
+  },
+  "chat": {
+    "title": "Chat",
+    "emptyTitle": "No chats yet",
+    "emptyBody": "When customers message you about a booking, the chat shows up here.",
+    "noMessages": "No messages yet",
+    "customerLabel": "{{name}} (customer)",
+    "phoneHint": "Phone number is shared after booking is confirmed. Until then, chat in the app.",
+    "placeholder": "Type a message…",
+    "send": "Send",
+    "seen": "Seen",
+    "startHint": "Say hello and answer the customer's questions."
+  },
+  "profile": {
+    "earnings": "Earnings & payouts",
+    "thisMonth": "{{amount}} this month",
+    "reviews": "Reviews",
+    "documents": "Documents",
+    "language": "Language",
+    "help": "Help & support",
+    "logout": "Log out",
+    "logoutTitle": "Log out?",
+    "logoutBody": "You will stop getting booking requests on this phone until you log in again.",
+    "underReviewNote": "Your profile is under review, so editing is paused for now.",
+    "languageValue": "English · हिंदी"
+  },
+  "catalog": {
+    "title": "Services & packages",
+    "empty": "No services yet. Add what you offer with a price.",
+    "packageOf": "Package: {{items}}",
+    "newService": "+ New service",
+    "newPackage": "+ New package",
+    "note": "Price and package changes go live instantly.",
+    "notFound": "This item no longer exists.",
+    "deleteTitle": "Delete this?",
+    "deleteBody": "Customers will no longer see it. Existing bookings are not affected."
+  },
+  "service": {
+    "newTitle": "New service",
+    "editTitle": "Edit service",
+    "title": "Service name",
+    "titlePlaceholder": "e.g. DJ with sound system",
+    "price": "Price",
+    "unit": "Price is",
+    "description": "Description (optional)",
+    "descriptionPlaceholder": "What's included, timings, anything customers should know",
+    "minGuests": "Min guests (optional)",
+    "maxGuests": "Max guests (optional)",
+    "guestRangeError": "Minimum guests can't be more than maximum guests."
+  },
+  "package": {
+    "newTitle": "New package",
+    "editTitle": "Edit package",
+    "title": "Package name",
+    "titlePlaceholder": "e.g. Gold wedding package",
+    "items": "What's included ({{n}}/{{max}})",
+    "itemPlaceholder": "e.g. DJ + lights",
+    "itemsRequired": "Add at least one item.",
+    "itemsMax": "You can add up to {{max}} items.",
+    "price": "Package price"
+  },
+  "price": {
+    "hint": "Price in rupees, at least ₹1.",
+    "preview": "Customers see {{amount}}",
+    "empty": "Enter a price.",
+    "invalid": "Enter the price in numbers, e.g. 1500.",
+    "tooLow": "The price must be at least ₹1.",
+    "tooHigh": "The price can be at most ₹10,00,000."
+  },
+  "form": {
+    "required": "This is required.",
+    "short": "Too short — please write a little more.",
+    "tooLong": "This is too long."
+  },
+  "business": {
+    "title": "Business info",
+    "name": "Business name",
+    "namePlaceholder": "e.g. Sharma DJ & Sound",
+    "category": "What service do you offer",
+    "moreCategories": "+ More",
+    "categoryLocked": "Your service type is fixed after approval. To change it, contact EventSeva support.",
+    "city": "City",
+    "area": "Area",
+    "areaIn": "Area ({{city}})",
+    "areaPlaceholder": "e.g. Civil Lines, Naini, Jhunsi",
+    "address": "Address (optional)",
+    "addressPlaceholder": "Shop or office address",
+    "addressHint": "Only the EventSeva team sees your full address.",
+    "about": "About you (2–3 lines)",
+    "aboutPlaceholder": "Years of experience, what makes you special",
+    "aboutHint": "Write at least {{min}} letters — customers read this first.",
+    "aboutCount": "{{n}} / 1500",
+    "reviewNote": "Changes to your business info are checked by the EventSeva team."
+  },
+  "photos": {
+    "title": "Photos & videos",
+    "all": "All photos & videos",
+    "workPhotos": "Work photos",
+    "countMin": "{{n}} added · at least {{min}} needed",
+    "manage": "{{n}} · Manage",
+    "add": "Add photos",
+    "cover": "Cover",
+    "status": {
+      "pending": "In review",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    },
+    "guidelines": "Clear photos, at least 1200px. No screenshots.",
+    "reviewNote": "New photos show to customers after the team approves them.",
+    "rejectedTitle": "Why some photos were rejected",
+    "rejectedNoReason": "Rejected — no reason given.",
+    "noCover": "Add photos — your first photo becomes the cover.",
+    "previewUnavailable": "Photo preview is not available yet.",
+    "limitTitle": "Photo limit reached",
+    "limitBody": "You can have up to 30 photos and 5 videos. Remove one to add another.",
+    "failedTitle": "{{n}} of {{total}} files were not added",
+    "uploading": "Uploading {{n}} of {{total}}…",
+    "limits": "{{photos}}/{{maxPhotos}} photos · {{videos}}/{{maxVideos}} videos",
+    "makeCover": "Make cover photo",
+    "moveEarlier": "Move earlier",
+    "moveLater": "Move later",
+    "deleteTitle": "Delete this file?",
+    "deleteBody": "It will be removed from your profile for good.",
+    "photo": "Photo",
+    "video": "Video",
+    "tapHint": "Tap a photo to make it the cover, move or delete it."
+  },
+  "docs": {
+    "title": "Documents",
+    "subtitle": "For verification only. Our team reviews within 24–48 hours.",
+    "aadhaar": "Aadhaar card",
+    "pan": "PAN card",
+    "required": "Required",
+    "optional": "Optional",
+    "upload": "Upload",
+    "aadhaarNote": "We only ever store the last 4 digits of your Aadhaar.",
+    "privacy": "Documents are only for verification. Customers never see them.",
+    "gst": "GST certificate",
+    "shop_photo": "Shop / work photo",
+    "status": {
+      "pending": "In review",
+      "approved": "Verified",
+      "rejected": "Rejected"
+    },
+    "uploadAgain": "Upload again",
+    "last4Title": "Last 4 digits of Aadhaar",
+    "last4Label": "Last 4 digits",
+    "last4Error": "Enter exactly 4 digits.",
+    "chooseFile": "Choose Aadhaar photo"
+  },
+  "bank": {
+    "title": "Bank account",
+    "comingSoon": "Bank account setup coming soon — EventSeva support will contact you.",
+    "note": "Payouts are sent only to an account in your own name."
+  },
+  "earnings": {
+    "title": "Earnings",
+    "monthEarnings": "Earnings this month",
+    "bookingsLine": "{{n}} bookings · after EventSeva fee",
+    "upcomingPayout": "Upcoming payout",
+    "received": "Received in bank",
+    "collectAtEvent": "Collected at events",
+    "gross": "Total booking value",
+    "fee": "EventSeva fee",
+    "payouts": "Payouts",
+    "noPayouts": "No payouts for this month.",
+    "arrives": "Arrives {{day}}",
+    "sent": "Sent to your bank",
+    "payoutRule": "Payouts reach your bank the day after the event (3 days for new vendors)."
+  },
+  "reviews": {
+    "title": "Reviews",
+    "count": "{{n}} reviews",
+    "stars": "{{n}} out of 5 stars",
+    "emptyTitle": "No reviews yet",
+    "emptyBody": "Customers can review you after the event. Good service brings good reviews.",
+    "reply": "Reply",
+    "editReply": "Edit reply",
+    "yourReply": "Your reply",
+    "replyPlaceholder": "Thank the customer or answer their point politely",
+    "postReply": "Post reply"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAll": "Mark all read",
+    "emptyTitle": "No notifications",
+    "emptyBody": "Booking requests, payments and messages will show up here."
+  },
+  "help": {
+    "title": "Help & support",
+    "subtitle": "Write to the EventSeva team. We usually reply within a day.",
+    "newRequest": "New request",
+    "aboutBooking": "Is this about a booking?",
+    "noBooking": "No, general",
+    "subject": "Subject",
+    "subjectPlaceholder": "e.g. Payout not received",
+    "subjectShort": "Write at least 3 letters.",
+    "details": "Details",
+    "detailsPlaceholder": "Tell us what happened",
+    "detailsShort": "Write at least 10 letters.",
+    "send": "Send to EventSeva team",
+    "sent": "Sent! The EventSeva team will get back to you.",
+    "history": "Your requests",
+    "noHistory": "You haven't written to us yet.",
+    "resolution": "Our reply"
+  },
+  "language": {
+    "title": "Choose language",
+    "titleAlt": "भाषा चुनें",
+    "englishName": "English",
+    "englishSub": "English",
+    "hindiName": "हिंदी",
+    "hindiSub": "Hindi",
+    "info": "The whole app switches to this language — menus, buttons and notifications. Customer names and reviews stay as written.",
+    "changeLater": "You can change this anytime from Profile → Language.",
+    "apply": "Apply"
+  },
+  "offline": {
+    "title": "No internet",
+    "body": "Check your connection and try again."
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "generic": "Something went wrong. Please try again.",
+    "network": "No internet connection. Please check and try again.",
+    "slotTaken": "This date and time is already booked or blocked in your calendar. Free it in Calendar, or decline this request.",
+    "bookingExpired": "This request has expired — the 24 hours to answer are over.",
+    "vendorNotActive": "Your profile is not live right now, so you can't accept bookings. Please contact EventSeva support.",
+    "bookingBadStatus": "This booking has already changed. Pull down to refresh.",
+    "underReview": "Your profile is being reviewed. You can edit it after the review.",
+    "categoryLocked": "Your service type is fixed after approval. Contact EventSeva support to change it.",
+    "incomplete": "Complete the checklist before sending your profile for review.",
+    "limitReached": "You've reached the limit. Remove one to add another.",
+    "dateInPast": "This date has already passed.",
+    "otpInvalid": "Wrong code. {{left}} attempts left.",
+    "otpTooSoon": "Please wait {{sec}} seconds before asking for a new code.",
+    "otpExpired": "This code has expired. Tap Resend OTP to get a new one.",
+    "otpLocked": "Too many wrong codes. Please try again after 15 minutes.",
+    "otpLimit": "Too many OTP requests. Please try again in an hour.",
+    "invalidPhone": "Enter a valid Indian mobile number.",
+    "userBlocked": "This account has been blocked. Please contact EventSeva support.",
+    "rateLimited": "Too many tries. Please wait a moment and try again.",
+    "uploadNotConfigured": "Photo upload is not available right now. Please try again later or contact EventSeva support.",
+    "uploadInvalid": "We could not verify this upload. Please try again.",
+    "uploadFailed": "The upload did not finish. Please check your internet and try again.",
+    "mediaDuplicate": "You have already added this file.",
+    "videoTooLong": "Videos can be up to 2 minutes long.",
+    "fileTooBig": "This file is too big.",
+    "fileTooBigMax": "This file is too big. The limit is {{mb}} MB."
+  }
+}
