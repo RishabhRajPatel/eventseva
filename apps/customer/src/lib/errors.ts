@@ -1,6 +1,6 @@
 // The API sends an English `message` and a stable `code`. Known codes get the app's own
 // (translated) text; anything else falls back to the server's message.
-import { ApiError, rupees } from '@eventseva/app-shared';
+import { ApiError, formatDateTime, rupees } from '@eventseva/app-shared';
 import type { TFunction } from 'i18next';
 import { PaymentError } from './payments';
 
@@ -56,6 +56,8 @@ export function errorText(t: TFunction, e: unknown): string {
       const minAmountPaise = typeof d.minAmountPaise === 'number' ? d.minAmountPaise : 0;
       return t(COUPON_REASONS[d.reason as keyof typeof COUPON_REASONS], { amount: rupees(minAmountPaise) });
     }
+    // Rolling 24-hour limit: say exactly when the next code is allowed.
+    if (e.code === 'OTP_LIMIT' && typeof d.retryAt === 'string') return t('errors.OTP_LIMIT_UNTIL', { time: formatDateTime(d.retryAt) });
     return t(`errors.${e.code}`, {
       attemptsLeft: typeof d.attemptsLeft === 'number' ? d.attemptsLeft : 0,
       seconds: typeof d.retryAfterSec === 'number' ? d.retryAfterSec : 30,

@@ -469,7 +469,7 @@
     "NETWORK": "No internet connection. Please check and try again.",
     "INVALID_PHONE": "Enter a valid 10-digit Indian mobile number.",
     "OTP_TOO_SOON": "Please wait {{seconds}} seconds before asking for a new code.",
-    "OTP_LIMIT": "Too many codes requested. Please try again in an hour.",
+    "OTP_LIMIT": "Too many codes requested. Please try again later.",
     "OTP_LOCKED": "Too many wrong codes. For your safety, login is locked for 15 minutes.",
     "OTP_INVALID_one": "Wrong code. {{count}} try left.",
     "OTP_INVALID_other": "Wrong code. {{count}} tries left.",
@@ -495,7 +495,8 @@
     "COUPON_NOT_APPLICABLE": "This coupon cannot be used on this booking.",
     "COUPON_ALREADY_USED": "You have already used this coupon.",
     "COUPON_USED_UP": "This coupon has been fully used. Try another offer.",
-    "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay."
+    "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
+    "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}."
   },
   "deleteAccount": {
     "menu": "Delete account",

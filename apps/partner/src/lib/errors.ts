@@ -1,4 +1,4 @@
-import { ApiError } from '@eventseva/app-shared';
+import { ApiError, formatDateTime } from '@eventseva/app-shared';
 import type { TFunction } from 'i18next';
 
 export const errorCode = (e: unknown): string | undefined => (e instanceof ApiError ? e.code : (e as { code?: string } | null)?.code);
@@ -42,6 +42,10 @@ export function errorText(t: TFunction, e: unknown): string {
   }
   if (code === 'OTP_TOO_SOON' && e instanceof ApiError && typeof e.details.retryAfterSec === 'number') {
     return t('errors.otpTooSoon', { sec: e.details.retryAfterSec });
+  }
+  // Rolling 24-hour limit: say exactly when the next code is allowed.
+  if (code === 'OTP_LIMIT' && e instanceof ApiError && typeof e.details.retryAt === 'string') {
+    return t('errors.otpLimitUntil', { time: formatDateTime(e.details.retryAt) });
   }
   if (code === 'FILE_TOO_BIG') {
     const max = (e as { details?: { maxBytes?: unknown } }).details?.maxBytes;

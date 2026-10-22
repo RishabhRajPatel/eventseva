@@ -595,7 +595,7 @@
     "otpTooSoon": "Please wait {{sec}} seconds before asking for a new code.",
     "otpExpired": "This code has expired. Tap Resend OTP to get a new one.",
     "otpLocked": "Too many wrong codes. Please try again after 15 minutes.",
-    "otpLimit": "Too many OTP requests. Please try again in an hour.",
+    "otpLimit": "Too many OTP requests. Please try again later.",
     "invalidPhone": "Enter a valid Indian mobile number.",
     "userBlocked": "This account has been blocked. Please contact EventSeva support.",
     "rateLimited": "Too many tries. Please wait a moment and try again.",
@@ -607,7 +607,8 @@
     "fileTooBig": "This file is too big.",
     "fileTooBigMax": "This file is too big. The limit is {{mb}} MB.",
     "planNotFound": "This plan is no longer available. Please pick another one.",
-    "paymentInvalid": "We could not verify this payment. If money was taken, it will be refunded automatically."
+    "paymentInvalid": "We could not verify this payment. If money was taken, it will be refunded automatically.",
+    "otpLimitUntil": "Too many OTP requests for this number. You can try again after {{time}}."
   },
   "deleteAccount": {
     "menu": "Delete account",

@@ -98,6 +98,43 @@ describe('auth (phone + OTP)', () => {
     expect((await send().expect(429)).body.error.code).toBe('OTP_LIMIT');
   });
 
+  it('daily limits are rolling 24 hours, so midnight resets nothing (5 at 11:59 pm still block 12:01 am)', async () => {
+    // Five codes sent "at 11:59 pm": 2 minutes ago, spaced so the 30-second wait never applies.
+    for (let i = 0; i < 5; i++) {
+      await t.db.query(
+        `INSERT INTO otp_requests (phone, code_hash, expires_at, created_at)
+         VALUES ($1, 'x', now(), now() - make_interval(secs => $2))`,
+        [E164, 120 + i * 40],
+      );
+    }
+    // "12:01 am": the hourly limit blocks first, and says when to come back.
+    let res = await send().expect(429);
+    expect(res.body.error.code).toBe('OTP_LIMIT');
+
+    // Two hours later the hourly window is clear, but the 24-hour one is not.
+    await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '2 hours'`);
+    res = await send().expect(429);
+    expect(res.body.error.code).toBe('OTP_LIMIT');
+    // Free again ~22 hours from now, when the oldest of the five is 24 hours old.
+    expect(res.body.error.retryAfterSec).toBeGreaterThan(21.5 * 3600);
+    expect(res.body.error.retryAfterSec).toBeLessThan(22 * 3600);
+
+    // A full day after the oldest one, a slot opens.
+    await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '22 hours'`);
+    await send().expect(200);
+  });
+
+  it('two requests at the same moment cannot both slip under the limit', async () => {
+    for (let i = 0; i < 4; i++) {
+      await t.db.query(
+        `INSERT INTO otp_requests (phone, code_hash, expires_at, created_at) VALUES ($1, 'x', now(), now() - make_interval(mins => $2))`,
+        [E164, 10 + i],
+      );
+    }
+    const results = await Promise.all([send(), send(), send()]);
+    expect(results.map((r) => r.status).sort()).toEqual([200, 429, 429]);
+  });
+
   it('allows at most 10 codes per IP per hour', async () => {
     for (let i = 0; i < 10; i++) await send(`98765432${String(i).padStart(2, '0')}`).expect(200);
     expect((await send('9123456789').expect(429)).body.error.code).toBe('OTP_LIMIT');

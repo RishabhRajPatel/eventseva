@@ -42,7 +42,9 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 - **Phone input:** `9876543210`, `+91 98765 43210` or `919876543210`. Only Indian mobiles are accepted (`INVALID_PHONE`).
 - **otp/send errors:**
   - `OTP_TOO_SOON` 429 with `retryAfterSec`
-  - `OTP_LIMIT` 429 (5 per phone per hour, 10 per IP per hour)
+  - `OTP_LIMIT` 429 with `retryAfterSec` and `retryAt`. Limits: 5 per phone per hour and per 24 hours, 10 per IP
+    per hour and 20 per 24 hours. All windows are **rolling** ("the last 24 hours"), not calendar days, so midnight
+    resets nothing; `retryAt` is when the oldest counted code leaves the window.
   - `OTP_LOCKED` 429 (15 minutes after 5 wrong codes)
 - **otp/verify errors:**
   - `OTP_INVALID` 400 with `attemptsLeft`

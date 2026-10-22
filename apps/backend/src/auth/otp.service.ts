@@ -2,7 +2,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { AppConfig, CONFIG } from '../config';
 import { AppError } from '../common/errors';
-import { Db } from '../db/db.service';
+import { Db, Queryable } from '../db/db.service';
 import { OTP_SENDER, OtpSender } from './otp-sender';
 
 // Rules from the Security Plan.
@@ -13,7 +13,15 @@ export const OTP_RULES = {
   lockMin: 15,
   maxPerPhonePerHour: 5,
   maxPerIpPerHour: 10,
+  maxPerPhonePerDay: 5,
+  maxPerIpPerDay: 20,
 } as const;
+
+/**
+ * All limits are rolling windows ("the last 24 hours"), never calendar days, so waiting for midnight
+ * does not reset anything: 5 codes at 11:59 pm still block 12:01 am.
+ */
+const WINDOWS = { hour: 3600, day: 24 * 3600 } as const;
 
 /** Accepts "9876543210", "+91 98765 43210" or "919876543210"; returns "+919876543210". Only Indian mobiles. */
 export function normalizePhone(input: string): string {
@@ -43,49 +51,66 @@ export class OtpService {
   async send(rawPhone: string, ip: string | undefined, language: 'en' | 'hi' = 'en') {
     const phone = normalizePhone(rawPhone);
 
-    const stats = await this.db.one<{ last_at: Date | null; last_hour: number; locked: boolean }>(
-      this.db,
-      `SELECT max(created_at) AS last_at,
-              count(*) FILTER (WHERE created_at > now() - interval '1 hour')::int AS last_hour,
-              bool_or(attempts >= $2 AND created_at > now() - make_interval(mins => $3)) AS locked
-         FROM otp_requests WHERE phone = $1`,
-      [phone, OTP_RULES.maxAttempts, OTP_RULES.lockMin],
-    );
-    if (stats?.locked) {
-      throw new AppError('OTP_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
-    }
-    if (stats?.last_at) {
-      const waited = (Date.now() - new Date(stats.last_at).getTime()) / 1000;
-      if (waited < OTP_RULES.resendAfterSec) {
-        throw new AppError('OTP_TOO_SOON', 'Please wait before requesting a new code.', HttpStatus.TOO_MANY_REQUESTS, {
-          retryAfterSec: Math.ceil(OTP_RULES.resendAfterSec - waited),
-        });
-      }
-    }
-    if ((stats?.last_hour ?? 0) >= OTP_RULES.maxPerPhonePerHour) {
-      throw new AppError('OTP_LIMIT', 'Too many codes requested. Try again later.', HttpStatus.TOO_MANY_REQUESTS);
-    }
-    if (ip) {
-      const perIp = await this.db.one<{ n: number }>(
-        this.db,
-        `SELECT count(*)::int AS n FROM otp_requests WHERE ip = $1 AND created_at > now() - interval '1 hour'`,
-        [ip],
-      );
-      if ((perIp?.n ?? 0) >= OTP_RULES.maxPerIpPerHour) {
-        throw new AppError('OTP_LIMIT', 'Too many codes requested. Try again later.', HttpStatus.TOO_MANY_REQUESTS);
-      }
-    }
-
     const review = this.isReviewPhone(phone);
     const code = review ? this.config.reviewOtp! : String(randomInt(0, 1_000_000)).padStart(6, '0');
-    await this.db.query(
-      `INSERT INTO otp_requests (phone, code_hash, ip, expires_at)
-       VALUES ($1, $2, $3, now() + make_interval(secs => $4))`,
-      [phone, this.hash(phone, code), ip ?? null, OTP_RULES.ttlSec],
-    );
+
+    await this.db.tx(async (client) => {
+      // One request per phone at a time, so two parallel taps cannot both slip under a limit.
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [phone]);
+      const stats = await this.db.one<{ last_at: Date | null; locked: boolean }>(
+        client,
+        `SELECT max(created_at) AS last_at,
+                bool_or(attempts >= $2 AND created_at > now() - make_interval(mins => $3)) AS locked
+           FROM otp_requests WHERE phone = $1`,
+        [phone, OTP_RULES.maxAttempts, OTP_RULES.lockMin],
+      );
+      if (stats?.locked) {
+        throw new AppError('OTP_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+      }
+      if (stats?.last_at) {
+        const waited = (Date.now() - new Date(stats.last_at).getTime()) / 1000;
+        if (waited < OTP_RULES.resendAfterSec) {
+          throw new AppError('OTP_TOO_SOON', 'Please wait before requesting a new code.', HttpStatus.TOO_MANY_REQUESTS, {
+            retryAfterSec: Math.ceil(OTP_RULES.resendAfterSec - waited),
+          });
+        }
+      }
+      await this.limit(client, 'phone', phone, WINDOWS.hour, OTP_RULES.maxPerPhonePerHour);
+      await this.limit(client, 'phone', phone, WINDOWS.day, OTP_RULES.maxPerPhonePerDay);
+      if (ip) {
+        await this.limit(client, 'ip', ip, WINDOWS.hour, OTP_RULES.maxPerIpPerHour);
+        await this.limit(client, 'ip', ip, WINDOWS.day, OTP_RULES.maxPerIpPerDay);
+      }
+      await client.query(
+        `INSERT INTO otp_requests (phone, code_hash, ip, expires_at)
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4))`,
+        [phone, this.hash(phone, code), ip ?? null, OTP_RULES.ttlSec],
+      );
+    });
     if (!review) await this.sender.send(phone, code, language);
 
     return { phone, expiresInSec: OTP_RULES.ttlSec, resendAfterSec: OTP_RULES.resendAfterSec };
+  }
+
+  /**
+   * Refuses when `max` codes were already sent for this phone or IP in the last `windowSec` seconds,
+   * and says when the next one is allowed: when the oldest of those codes leaves the window.
+   */
+  private async limit(q: Queryable, by: 'phone' | 'ip', value: string, windowSec: number, max: number) {
+    const r = await this.db.one<{ n: number; retry_at: Date | null }>(
+      q,
+      `SELECT count(*)::int AS n,
+              (SELECT created_at FROM otp_requests WHERE ${by} = $1 AND created_at > now() - make_interval(secs => $2)
+                ORDER BY created_at DESC OFFSET $3 - 1 LIMIT 1) + make_interval(secs => $2) AS retry_at
+         FROM otp_requests WHERE ${by} = $1 AND created_at > now() - make_interval(secs => $2)`,
+      [value, windowSec, max],
+    );
+    if (r!.n < max) return;
+    const retryAfterSec = Math.max(1, Math.ceil((new Date(r!.retry_at!).getTime() - Date.now()) / 1000));
+    throw new AppError('OTP_LIMIT', 'Too many codes requested. Please try again later.', HttpStatus.TOO_MANY_REQUESTS, {
+      retryAfterSec,
+      retryAt: r!.retry_at,
+    });
   }
 
   /** Checks the latest code for this phone. Returns the normalized phone if it matches. */
