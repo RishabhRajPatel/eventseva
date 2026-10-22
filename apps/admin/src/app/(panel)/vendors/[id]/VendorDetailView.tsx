@@ -16,6 +16,7 @@ import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
 import { VendorDocuments } from './VendorDocuments';
 import { VendorBank } from './VendorBank';
+import { VendorFeatured } from './VendorFeatured';
 import styles from './vendor.module.css';
 
 const VENDOR_REJECT_PRESETS = [
@@ -146,6 +147,7 @@ function VendorDetail({
 
         <div className={`stack ${styles.decide}`}>
           {can(role, 'vendor.decide') ? <Decision vendor={v} onDone={reload} /> : null}
+          {can(role, 'featured.grant') ? <VendorFeatured vendor={v} onDone={reload} /> : null}
           <History vendor={v} />
         </div>
       </div>

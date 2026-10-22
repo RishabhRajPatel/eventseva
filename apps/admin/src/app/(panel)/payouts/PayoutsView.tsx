@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { formatDateTime, formatDay, rupees, type Paged } from '@eventseva/app-shared';
 import { ActionDialog } from '@/components/ActionDialog';
+import { CsvDownload } from '@/components/CsvDownload';
 import { useShell } from '@/components/ShellContext';
 import { EmptyState, PageHead, Pager, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -32,6 +33,7 @@ export function PayoutsView() {
     <div className="page">
       <PageHead title="Payouts" subtitle="Vendor share of each advance, by release time.">
         <RefreshingHint show={state.refreshing} />
+        <CsvDownload kind="payouts" hint="By event date. Dates are optional and inclusive." />
       </PageHead>
 
       <div className="note">

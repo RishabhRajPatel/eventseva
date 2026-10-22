@@ -73,14 +73,16 @@ export function Pager({
   hasMore,
   hrefFor,
   count,
+  pageSize = 20,
 }: {
   page: number;
   hasMore: boolean;
   hrefFor: (page: number) => string;
   count: number;
+  pageSize?: number;
 }) {
   if (page === 1 && !hasMore) return null;
-  const from = (page - 1) * 20 + 1;
+  const from = (page - 1) * pageSize + 1;
   return (
     <nav className="pager" aria-label="Pages">
       <span className="muted">
@@ -94,7 +96,7 @@ export function Pager({
         ) : null}
         {hasMore ? (
           <Link className="btn btn-small" href={hrefFor(page + 1)} scroll={false}>
-            Next 20 →
+            Next {pageSize} →
           </Link>
         ) : null}
       </div>

@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { formatDateTime, formatPhone, type Category, type Paged, type VendorStatus } from '@eventseva/app-shared';
+import { CsvDownload } from '@/components/CsvDownload';
 import { EmptyState, PageHead, Pager, QueryView, RefreshingHint, StatusPill, TabLinks } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useUrlState } from '@/hooks/useUrlState';
@@ -39,6 +40,7 @@ export function VendorsView() {
         subtitle={status === 'pending' ? 'Verification queue, oldest first, so nobody waits longest.' : 'Newest first.'}
       >
         <RefreshingHint show={state.refreshing} />
+        <CsvDownload kind="vendors" hint="By the date the profile was created. Dates are optional and inclusive." />
       </PageHead>
 
       <TabLinks

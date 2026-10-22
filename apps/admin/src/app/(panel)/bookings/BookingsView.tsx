@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { formatDay, formatPhone, rupees, type Paged } from '@eventseva/app-shared';
 import { BOOKING_STATUSES } from '@eventseva/core';
 import { SearchBox } from '@/components/SearchBox';
+import { CsvDownload } from '@/components/CsvDownload';
 import { EmptyState, PageHead, Pager, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useUrlState } from '@/hooks/useUrlState';
@@ -20,6 +21,7 @@ export function BookingsView() {
     <div className="page">
       <PageHead title="Bookings" subtitle="Newest first.">
         <RefreshingHint show={state.refreshing} />
+        <CsvDownload kind="bookings" hint="By event date. Dates are optional and inclusive." />
       </PageHead>
 
       <div className="box filters">

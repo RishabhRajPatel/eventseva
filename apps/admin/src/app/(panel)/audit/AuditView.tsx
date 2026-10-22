@@ -1,0 +1,203 @@
+'use client';
+import Link from 'next/link';
+import { Fragment, useState, type FormEvent } from 'react';
+import { formatDateTime } from '@eventseva/app-shared';
+import { EmptyState, PageHead, Pager, QueryView, RefreshingHint } from '@/components/ui';
+import { useApiQuery } from '@/hooks/useApiQuery';
+import { useUrlState } from '@/hooks/useUrlState';
+import type { AuditEntry, AuditPage } from '@/lib/admin-types';
+import { auditDiff, auditTargetHref } from '@/lib/audit';
+import { humanize, pageFrom, shortId } from '@/lib/labels';
+import { isAdminRole, ROLE_LABELS } from '@/lib/roles';
+import styles from './audit.module.css';
+
+/** target_type values the API writes (admin_audit_log). */
+const TARGET_TYPES = ['booking', 'category', 'city', 'complaint', 'coupon', 'document', 'export', 'featured_plan', 'media', 'payout', 'review', 'user', 'vendor'];
+
+const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+/** Every admin action with what it changed. Newest first, 50 per page. */
+export function AuditView() {
+  const { params, hrefWith, set } = useUrlState();
+  const action = params.get('action') ?? '';
+  const targetType = params.get('targetType') ?? '';
+  const adminId = params.get('adminId') ?? '';
+  const page = pageFrom(params.get('page'));
+  const state = useApiQuery<AuditPage>('/v1/admin/audit', {
+    action: action || undefined,
+    targetType: targetType || undefined,
+    adminId: isUuid(adminId) ? adminId : undefined,
+    page,
+  });
+  const admins = state.data?.admins ?? [];
+  const filtered = Boolean(action || targetType || adminId);
+
+  return (
+    <div className="page">
+      <PageHead title="Audit log" subtitle="Every admin action, newest first. Open a row to see what changed.">
+        <RefreshingHint show={state.refreshing} />
+      </PageHead>
+
+      <div className="box filters">
+        <ActionFilter key={action} initial={action} onApply={(value) => set({ action: value || null })} />
+        <div className="field">
+          <label htmlFor="audit-target">Target</label>
+          <select id="audit-target" className="select" value={targetType} onChange={(e) => set({ targetType: e.target.value || null })}>
+            <option value="">All targets</option>
+            {[...new Set([...TARGET_TYPES, ...(targetType ? [targetType] : [])])].map((t) => (
+              <option key={t} value={t}>
+                {humanize(t)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="audit-admin">Admin</label>
+          <select id="audit-admin" className="select" value={adminId} onChange={(e) => set({ adminId: e.target.value || null })}>
+            <option value="">All admins</option>
+            {adminId && !admins.some((a) => a.id === adminId) ? <option value={adminId}>Selected admin</option> : null}
+            {admins.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.email} ({isAdminRole(a.role) ? ROLE_LABELS[a.role] : a.role})
+              </option>
+            ))}
+          </select>
+        </div>
+        {filtered ? (
+          <button type="button" className="btn" onClick={() => set({ action: null, targetType: null, adminId: null })}>
+            Clear filters
+          </button>
+        ) : null}
+      </div>
+
+      <QueryView
+        state={state}
+        isEmpty={(d) => d.items.length === 0}
+        empty={<EmptyState title="No entries">{filtered ? 'Nothing matches these filters.' : 'No admin actions recorded yet.'}</EmptyState>}
+        loadingLabel="Loading audit log…"
+      >
+        {(data) => (
+          <>
+            <AuditTable items={data.items} />
+            <Pager page={data.page} hasMore={data.hasMore} count={data.items.length} pageSize={50} hrefFor={(p) => hrefWith({ page: p })} />
+          </>
+        )}
+      </QueryView>
+    </div>
+  );
+}
+
+function ActionFilter({ initial, onApply }: { initial: string; onApply: (value: string) => void }) {
+  const [value, setValue] = useState(initial);
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    onApply(value.trim());
+  }
+  return (
+    <form className="field grow" onSubmit={submit} role="search">
+      <label htmlFor="audit-action">Action starts with</label>
+      <div className="btn-row" style={{ flexWrap: 'nowrap' }}>
+        <input id="audit-action" className="input mono" placeholder="e.g. coupon or vendor.feature" maxLength={60} value={value} onChange={(e) => setValue(e.target.value)} />
+        <button type="submit" className="btn btn-primary">
+          Filter
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function AuditTable({ items }: { items: AuditEntry[] }) {
+  const [open, setOpen] = useState<Set<number>>(() => new Set());
+  const flip = (id: number) =>
+    setOpen((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <div className="table-wrap">
+      <table className="tbl">
+        <thead>
+          <tr>
+            <th scope="col">Time</th>
+            <th scope="col">Admin</th>
+            <th scope="col">Action</th>
+            <th scope="col">Target</th>
+            <th scope="col">Changes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((entry) => {
+            const rows = auditDiff(entry.before, entry.after);
+            const changed = rows.filter((r) => r.changed).length;
+            const href = auditTargetHref(entry.targetType, entry.targetId);
+            const expanded = open.has(entry.id);
+            const target = entry.targetId ? (isUuid(entry.targetId) ? shortId(entry.targetId) : entry.targetId) : '—';
+            return (
+              <Fragment key={entry.id}>
+                <tr>
+                  <td className="nowrap">{formatDateTime(entry.createdAt)}</td>
+                  <td>
+                    <span className="cell-main">{entry.adminEmail}</span>
+                    <span className="role-badge">{isAdminRole(entry.adminRole) ? ROLE_LABELS[entry.adminRole] : entry.adminRole}</span>
+                  </td>
+                  <td className="mono">{entry.action}</td>
+                  <td>
+                    <span className="cell-sub">{humanize(entry.targetType)}</span>
+                    {href ? (
+                      <Link href={href} className="mono" title={entry.targetId ?? undefined}>
+                        {target}
+                      </Link>
+                    ) : (
+                      <span className="mono" title={entry.targetId ?? undefined}>
+                        {target}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    {rows.length ? (
+                      <button type="button" className="btn btn-small" aria-expanded={expanded} aria-controls={`audit-${entry.id}`} onClick={() => flip(entry.id)}>
+                        {expanded ? 'Hide' : `Show ${changed} change${changed === 1 ? '' : 's'}`}
+                      </button>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                </tr>
+                {expanded ? (
+                  <tr id={`audit-${entry.id}`} className={styles.detail}>
+                    <td colSpan={5}>
+                      <table className={styles.diff}>
+                        <thead>
+                          <tr>
+                            <th scope="col">Field</th>
+                            <th scope="col">Before</th>
+                            <th scope="col">After</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.map((r) => (
+                            <tr key={r.key} className={r.changed ? styles.changed : undefined}>
+                              <th scope="row" className="mono">
+                                {r.key}
+                                {r.changed ? <span className="sr-only"> (changed)</span> : null}
+                              </th>
+                              <td>{r.before === undefined ? <span className={styles.absent}>not set</span> : <pre>{r.before}</pre>}</td>
+                              <td>{r.after === undefined ? <span className={styles.absent}>not set</span> : <pre>{r.after}</pre>}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}

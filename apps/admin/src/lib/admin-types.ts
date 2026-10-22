@@ -13,6 +13,14 @@ export interface Dashboard {
   monthConfirmed: number;
   monthGmvPaise: number;
   monthCommissionPaise: number;
+  /** Coupon discounts EventSeva paid on bookings this month. */
+  monthDiscountPaise: number;
+  /** Featured listings sold this month. */
+  monthFeaturedPaise: number;
+  /** Commission − discounts + featured sales. */
+  monthNetRevenuePaise: number;
+  /** Vendors featured right now. */
+  featuredVendors: number;
   openComplaints: number;
   pendingMedia: number;
   duePayouts: number;
@@ -89,6 +97,10 @@ export interface AdminBooking {
   advancePaise: number;
   commissionPaise: number;
   refundPaise: number;
+  /** Coupon discount paid by EventSeva. */
+  discountPaise: number;
+  /** Already taken off the vendor's payout by earlier refunds. */
+  payoutDeductionPaise: number;
   cancelReason: string | null;
   event: { id: string; title: string; eventType: EventType };
   vendor: { id: string; businessName: string; phone: string };
@@ -169,4 +181,94 @@ export interface AdminCategoryList {
   items: AdminCategory[];
   icons: string[];
   units: string[];
+}
+
+export interface AdminCoupon {
+  id: number;
+  code: string;
+  titleEn: string;
+  titleHi: string;
+  discountType: 'percent' | 'flat';
+  /** Percent, or paise for flat. */
+  discountValue: number;
+  maxDiscountPaise: number | null;
+  minAmountPaise: number;
+  categoryId: number | null;
+  categoryName: string | null;
+  firstBookingOnly: boolean;
+  isPublic: boolean;
+  maxUses: number | null;
+  perCustomerLimit: number;
+  validFrom: string;
+  validUntil: string | null;
+  isActive: boolean;
+  createdAt: string;
+  usedCount: number;
+  /** Applied to unpaid bookings, not used yet. */
+  heldCount: number;
+  discountGivenPaise: number;
+}
+
+export interface FeaturedPlan {
+  id: number;
+  nameEn: string;
+  nameHi: string;
+  days: number;
+  pricePaise: number;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface FeaturedPurchase {
+  id: string;
+  days: number;
+  amountPaise: number;
+  /** 'paid' (bought by the vendor) or 'granted' (free days from an admin). */
+  status: string;
+  reason: string | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  paidAt: string | null;
+  paymentId: string | null;
+  vendorId: string;
+  vendorName: string;
+  planName: string | null;
+  grantedBy: string | null;
+}
+
+export interface AdminCity {
+  id: number;
+  name: string;
+  nameHi: string;
+  state: string;
+  isActive: boolean;
+  liveVendors: number;
+}
+
+export interface AuditEntry {
+  id: number;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  before: unknown;
+  after: unknown;
+  createdAt: string;
+  adminId: string;
+  adminEmail: string;
+  adminRole: string;
+}
+
+export interface AuditPage {
+  items: AuditEntry[];
+  page: number;
+  hasMore: boolean;
+  admins: Array<{ id: string; email: string; role: string }>;
+}
+
+/** GET /v1/categories (public, active only). */
+export interface PublicCategory {
+  id: number;
+  slug: string;
+  name: string;
 }

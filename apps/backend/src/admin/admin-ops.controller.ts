@@ -182,6 +182,8 @@ export class AdminOpsController {
       advancePaise: b.advance_paise,
       commissionPaise: b.commission_paise,
       refundPaise: b.refund_paise,
+      discountPaise: b.discount_paise,
+      payoutDeductionPaise: b.payout_deduction_paise,
       cancelReason: b.cancel_reason,
       event: { id: b.event_id, title: b.event_title, eventType: b.event_type },
       vendor: { id: b.vendor_id, businessName: b.business_name, phone: b.vendor_phone },

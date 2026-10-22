@@ -1,0 +1,38 @@
+.diff {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.diff th,
+.diff td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--lavender);
+}
+
+.diff pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.changed {
+  background: var(--cream);
+}
+
+.changed th::before {
+  content: '● ';
+  color: var(--royal);
+}
+
+.detail {
+  background: var(--white);
+}
+
+.absent {
+  color: var(--muted);
+  font-style: italic;
+}

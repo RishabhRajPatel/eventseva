@@ -14,7 +14,19 @@ export const ROLE_LABELS: Record<AdminRole, string> = {
   finance: 'Finance',
 };
 
-export type Section = 'dashboard' | 'vendors' | 'photos' | 'bookings' | 'payouts' | 'complaints' | 'users' | 'categories';
+export type Section =
+  | 'dashboard'
+  | 'vendors'
+  | 'photos'
+  | 'bookings'
+  | 'payouts'
+  | 'complaints'
+  | 'users'
+  | 'coupons'
+  | 'featured'
+  | 'categories'
+  | 'cities'
+  | 'audit';
 
 export interface NavItem {
   section: Section;
@@ -32,14 +44,18 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'payouts', href: '/payouts', label: 'Payouts', badge: 'duePayouts' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
-  // Super admins only: categories change both apps at once.
+  { section: 'coupons', href: '/coupons', label: 'Coupons' },
+  { section: 'featured', href: '/featured', label: 'Featured' },
+  // Super admins only: categories and cities change both apps at once.
   { section: 'categories', href: '/categories', label: 'Categories' },
+  { section: 'cities', href: '/cities', label: 'Cities' },
+  { section: 'audit', href: '/audit', label: 'Audit log' },
 ];
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
   verifier: ['dashboard', 'vendors', 'photos'],
   support: ['dashboard', 'vendors', 'bookings', 'complaints', 'users'],
-  finance: ['dashboard', 'bookings', 'payouts'],
+  finance: ['dashboard', 'bookings', 'payouts', 'coupons', 'featured'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {
@@ -67,14 +83,35 @@ export type AdminAction =
   | 'review.hide'
   | 'payout.manage'
   | 'complaint.manage'
-  | 'user.block';
+  | 'user.block'
+  | 'coupon.manage'
+  | 'featured.plans'
+  | 'featured.grant'
+  | 'booking.refund';
 
 const ACTIONS: Record<Exclude<AdminRole, 'super'>, readonly AdminAction[]> = {
   verifier: ['vendor.decide', 'media.moderate'],
   support: ['review.hide', 'complaint.manage', 'user.block'],
-  finance: ['payout.manage'],
+  finance: ['payout.manage', 'coupon.manage', 'booking.refund'],
 };
 
 export function can(role: AdminRole, action: AdminAction): boolean {
   return role === 'super' || ACTIONS[role].includes(action);
+}
+
+/** CSV downloads (GET /v1/admin/export/:kind); EXPORT_ROLES in admin-extras.controller.ts. */
+export const EXPORT_KINDS = ['bookings', 'payouts', 'users', 'vendors', 'coupons', 'featured'] as const;
+export type ExportKind = (typeof EXPORT_KINDS)[number];
+
+const EXPORTS: Record<ExportKind, readonly Exclude<AdminRole, 'super'>[]> = {
+  bookings: ['support', 'finance'],
+  payouts: ['finance'],
+  users: ['support'],
+  vendors: ['verifier', 'support'],
+  coupons: ['finance'],
+  featured: ['finance'],
+};
+
+export function canExport(role: AdminRole, kind: ExportKind): boolean {
+  return role === 'super' || EXPORTS[kind].includes(role);
 }

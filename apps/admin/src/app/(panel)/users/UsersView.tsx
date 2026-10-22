@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { formatDateTime, formatPhone, type Paged } from '@eventseva/app-shared';
 import { ActionDialog } from '@/components/ActionDialog';
 import { SearchBox } from '@/components/SearchBox';
+import { CsvDownload } from '@/components/CsvDownload';
 import { useShell } from '@/components/ShellContext';
 import { EmptyState, PageHead, Pager, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -30,6 +31,7 @@ export function UsersView() {
     <div className="page">
       <PageHead title="Users" subtitle="Customers and vendors, newest first.">
         <RefreshingHint show={state.refreshing} />
+        <CsvDownload kind="users" hint="By the date they joined. Dates are optional and inclusive." />
       </PageHead>
 
       <div className="box filters">
