@@ -7,6 +7,8 @@ import type { SessionState } from '../lib/session';
 
 jest.mock('../lib/api', () => require('./mockApi').mockApiModule());
 jest.mock('expo-font', () => ({ useFonts: () => [true, null] }));
+// Push setup needs a phone; routing is what these tests check.
+jest.mock('../lib/push', () => ({ usePush: jest.fn(), unregisterPush: jest.fn() }));
 let mockState: SessionState = { status: 'signedOut' };
 jest.mock('../lib/session', () => ({
   SessionProvider: ({ children }: { children: React.ReactNode }) => children,

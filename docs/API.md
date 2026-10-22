@@ -135,7 +135,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/complaints` · `GET /v1/complaints` | `{bookingId?, subject, details}` (Help & support) |
 | `GET /v1/notifications?beforeId=` | `{items, hasMore, unreadCount}` |
 | `POST /v1/notifications/read` | `{ids?}`; no ids marks all as read |
-| `POST /v1/devices` · `DELETE /v1/devices` | `{fcmToken, platform}` for push (when FCM is set up) |
+| `POST /v1/devices` · `DELETE /v1/devices` | `{fcmToken, platform}`. Registers the phone's FCM token for this app (customer or partner, from the login). Pushes carry `data.kind`, `data.bookingId` / `data.conversationId`, `data.notificationId`; Android channels `bookings` and `chat` |
 
 - **Chat:** polls every 4–5 s while open. Phone numbers are masked (`••••••••••`) until a booking is confirmed
   (`phoneShared`). Show a hint: "Phone number is shared after booking".

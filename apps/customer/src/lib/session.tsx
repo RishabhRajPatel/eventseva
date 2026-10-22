@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, type LoginResult, type Me } from '@eventseva/app-shared';
 import { setLanguage } from '../i18n';
 import { api, onSessionEnded } from './api';
+import { unregisterPush } from './push';
 import { queryClient } from './queryClient';
 import { cachedMe, secureTokens } from './tokens';
 
@@ -76,6 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
       setMe,
       async signOut(everywhere) {
+        await unregisterPush();
         await (everywhere ? api.logoutAll() : api.logout());
         await clear();
       },

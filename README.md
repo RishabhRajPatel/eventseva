@@ -69,6 +69,22 @@ pnpm -r test     # backend e2e tests need PostgreSQL on localhost (postgres/post
 - **API URLs:** set `EXPO_PUBLIC_API_URL` in `eas.json` to the real HTTPS API before the preview and production
   builds. Release builds do not allow plain `http`.
 
+## Push notifications (Firebase)
+
+Every in-app notification (new request, payment, chat …) is also pushed to the phone. Until Firebase is set up,
+the API prints pushes in its log and the apps simply skip push.
+
+1. [console.firebase.google.com](https://console.firebase.google.com) → create a project (e.g. "EventSeva").
+2. **Add the apps:**
+   - Add an Android app with package `in.eventseva.app`, download `google-services.json`, and put it in `apps/customer/`.
+   - Add another Android app with `in.eventseva.partner`, and put its `google-services.json` in `apps/partner/`.
+   - These files are not secret.
+3. **Server key:**
+   - Project settings → Service accounts → Generate new private key.
+   - Run `base64 -w0 key.json` and put the output in the server's `.env` as `FIREBASE_SERVICE_ACCOUNT`.
+   - **This key is secret:** never commit it or put it in the apps.
+4. Make new app builds (`eas build`), because push is part of the native app.
+
 ## Before going live
 
 - `NODE_ENV=production` refuses development settings. Set `BANK_DETAILS_KEY` (`openssl rand -base64 32`, never change it),

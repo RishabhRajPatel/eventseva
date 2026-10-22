@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from '@tanstack/react-query';
 import type { Language, LoginResult, Me } from '@eventseva/app-shared';
 import { api, onSessionEnded } from './api';
+import { unregisterPush } from './push';
 import { isOffline } from './errors';
 import { keys } from './queries';
 import { languageStore, secureTokenStore } from './tokens';
@@ -83,6 +84,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    await unregisterPush();
     await api.logout();
     queryClient.clear();
     await setLanguage('en');

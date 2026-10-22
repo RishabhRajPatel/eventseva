@@ -14,6 +14,7 @@ import { NotoSansDevanagari_700Bold } from '@expo-google-fonts/noto-sans-devanag
 import { NotoSerifDevanagari_700Bold } from '@expo-google-fonts/noto-serif-devanagari/700Bold';
 import { queryClient } from '../lib/queryClient';
 import { SessionProvider, useSession } from '../lib/session';
+import { usePush } from '../lib/push';
 import { c } from '../lib/theme';
 import { Screen } from '../components/Screen';
 import { OfflineState } from '../components/States';
@@ -48,6 +49,7 @@ export default function RootLayout() {
 function RootNavigator() {
   const { state, retry } = useSession();
   const ready = state.status !== 'loading';
+  usePush(state.status === 'signedIn');
 
   useEffect(() => {
     if (ready) SplashScreen.hide();
