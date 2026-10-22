@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App icon</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+h1,h2,h3{margin:0}
+</style>
+</helmet>
+<div class="font-sans" style="width: 720px; height: 420px; box-sizing: border-box; padding: 2rem; background: #ffffff; color: #23262f; display: flex; flex-direction: column; gap: 1.5rem">
+
+<div style="display: flex; justify-content: space-between; align-items: baseline">
+<h1 class="font-display" style="font-size: 1.5rem; font-weight: 700">App icon</h1>
+<span style="font-size: 0.8125rem">Letter changes once the final name is set</span>
+</div>
+
+<div style="display: flex; gap: 2.5rem; align-items: flex-end; flex-grow: 1">
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem">
+<div style="width: 12rem; height: 12rem; border-radius: 2.75rem; background: #263baa; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem">
+<span class="font-display" style="font-size: 7rem; line-height: 1; font-weight: 700; color: #ffffff">E</span>
+<div style="display: flex; gap: 0.5rem"><span style="width: 0.875rem; height: 0.875rem; border-radius: 999px; background: #d9b8ff"></span><span style="width: 0.875rem; height: 0.875rem; border-radius: 999px; background: #ffd6a5"></span><span style="width: 0.875rem; height: 0.875rem; border-radius: 999px; background: #b7f7d4"></span></div>
+</div>
+<span style="font-size: 0.8125rem; font-weight: 700">Play Store (512 × 512)</span>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem">
+<div style="width: 7.5rem; height: 7.5rem; border-radius: 999px; background: #263baa; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem">
+<span class="font-display" style="font-size: 4rem; line-height: 1; font-weight: 700; color: #ffffff">E</span>
+<div style="display: flex; gap: 0.25rem"><span style="width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #d9b8ff"></span><span style="width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #ffd6a5"></span><span style="width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #b7f7d4"></span></div>
+</div>
+<span style="font-size: 0.8125rem; font-weight: 700">Android round icon</span>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem">
+<div style="width: 7.5rem; height: 7.5rem; border-radius: 1.75rem; background: #312e81; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem">
+<span class="font-display" style="font-size: 3.5rem; line-height: 1; font-weight: 700; color: #ffffff">E</span>
+<span style="padding: 0.125rem 0.5rem; border-radius: 999px; background: #ffd6a5; color: #23262f; font-size: 0.75rem; font-weight: 700">PARTNER</span>
+</div>
+<span style="font-size: 0.8125rem; font-weight: 700">Partner app (vendor)</span>
+</div>
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem">
+<div style="width: 3rem; height: 3rem; border-radius: 0.75rem; background: #263baa; display: flex; align-items: center; justify-content: center">
+<span class="font-display" style="font-size: 1.75rem; line-height: 1; font-weight: 700; color: #ffffff">E</span>
+</div>
+<span style="font-size: 0.8125rem; font-weight: 700">Small (48)</span>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":720,"height":420}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

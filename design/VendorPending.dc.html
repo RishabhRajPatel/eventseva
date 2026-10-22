@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Awaiting approval</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.st{display:flex;gap:0.875rem;align-items:flex-start}
+.dot{width:2rem;height:2rem;border-radius:999px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column; padding: 2rem 1.25rem 1.25rem; box-sizing: border-box; gap: 1.5rem">
+
+<div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem; text-align: center; padding-top: 1rem">
+<div style="width: 5rem; height: 5rem; border-radius: 999px; background: #ffd6a5; display: flex; align-items: center; justify-content: center">
+<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+</div>
+<h1 class="font-display" style="font-size: 1.75rem; font-weight: 700; line-height: 1.2">Your profile is under review</h1>
+<div style="font-size: 0.9375rem; line-height: 1.5">The EventSeva team reviews within 24–48 hours. You'll get an SMS once approved.</div>
+</div>
+
+<div style="background: #ffffff; border-radius: 1rem; padding: 1.25rem 1rem; display: flex; flex-direction: column; gap: 1rem">
+<div class="st"><span class="dot" style="background: #b7f7d4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"></path></svg></span><div style="display: flex; flex-direction: column"><span style="font-size: 1rem; font-weight: 700">Business info</span><span style="font-size: 0.8125rem">Done</span></div></div>
+<div class="st"><span class="dot" style="background: #b7f7d4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"></path></svg></span><div style="display: flex; flex-direction: column"><span style="font-size: 1rem; font-weight: 700">Documents + photos</span><span style="font-size: 0.8125rem">Submitted</span></div></div>
+<div class="st"><span class="dot" style="background: #263baa; color: #ffffff; font-size: 0.875rem; font-weight: 700">3</span><div style="display: flex; flex-direction: column"><span style="font-size: 1rem; font-weight: 700">Admin approval</span><span style="font-size: 0.8125rem">In progress</span></div></div>
+<div class="st"><span class="dot" style="background: #e8deff; color: #263baa; font-size: 0.875rem; font-weight: 700">4</span><div style="display: flex; flex-direction: column"><span style="font-size: 1rem; font-weight: 700">Profile live</span><span style="font-size: 0.8125rem">Customers can view and book you</span></div></div>
+</div>
+
+<div style="border-radius: 0.75rem; background: #e8deff; padding: 0.875rem 1rem; font-size: 0.875rem; line-height: 1.5">Meanwhile, set up your services, packages and calendar. Customers see them after approval.</div>
+
+<div style="flex-grow: 1"></div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<a href="VendorDash.dc.html" style="height: 3.5rem; border-radius: 0.75rem; background: #263baa; color: #ffffff; font-size: 1.0625rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center">Add services &amp; prices</a>
+<a href="PartnerChat.dc.html" style="height: 3.5rem; border-radius: 0.75rem; border: 1.5px solid #263baa; background: #ffffff; color: #263baa; font-size: 1.0625rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center">Talk to the EventSeva team</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Payments aur payouts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input,select{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.side{flex:1 1 15rem;background:#23262f;color:#ffffff;padding:1.5rem 1rem;box-sizing:border-box;display:flex;flex-direction:column;gap:0.25rem}
+.side a{display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border-radius:0.75rem;color:#ffffff;text-decoration:none;font-size:0.9375rem}
+.side a.on{background:#263baa;font-weight:700}
+.side .n{background:#ffd6a5;color:#23262f;border-radius:999px;padding:0.125rem 0.5rem;font-size:0.75rem;font-weight:700}
+.main{flex:999 1 560px;min-width:0;padding:2rem;box-sizing:border-box;display:flex;flex-direction:column;gap:1.5rem}
+.box{background:#ffffff;border-radius:1rem;padding:1.25rem;box-sizing:border-box}
+.tbl{width:100%;border-collapse:collapse;font-size:0.875rem}
+.tbl th{text-align:left;padding:0.75rem 1rem;background:#e8deff;color:#263baa;font-weight:700;white-space:nowrap}
+.tbl td{padding:0.75rem 1rem;border-bottom:1px solid #e8deff;white-space:nowrap}
+.pill{display:inline-block;padding:0.25rem 0.625rem;border-radius:999px;font-size:0.75rem;font-weight:700}
+.sb{height:2.25rem;padding:0 0.875rem;border-radius:0.625rem;font-size:0.8125rem;font-weight:700}
+</style>
+</helmet>
+<div class="font-sans" style="min-height: 100vh; background: #fff4d6; color: #23262f; display: flex; flex-wrap: wrap">
+
+<nav class="side" aria-label="Admin">
+<div class="font-display" style="font-size: 1.5rem; font-weight: 700; padding: 0 0.75rem 1.25rem">EventSeva <span class="font-sans" style="font-size: 0.75rem; font-weight: 700; color: #d9b8ff">ADMIN</span></div>
+<a href="AdminDashboard.dc.html">Dashboard</a>
+<a href="AdminVendors.dc.html">Vendor verification <span class="n">[N]</span></a>
+<a href="AdminModeration.dc.html">Photo moderation <span class="n">[N]</span></a>
+<a href="AdminBookings.dc.html">Bookings</a>
+<a href="#" class="on">Payments + payouts</a>
+<a href="AdminComplaints.dc.html">Complaints <span class="n">[N]</span></a>
+<a href="#">Categories + cities</a>
+<a href="#">Audit log</a>
+</nav>
+
+<main class="main">
+<h1 class="font-display" style="font-size: 2rem; font-weight: 700">Payments + payouts</h1>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem">
+<div class="box" style="display: flex; flex-direction: column; gap: 0.25rem"><span style="font-size: 0.875rem">Customers se aaya</span><span style="font-size: 1.5rem; font-weight: 700; color: #263baa">₹[X]</span></div>
+<div class="box" style="display: flex; flex-direction: column; gap: 0.25rem"><span style="font-size: 0.875rem">Vendors ko bheja</span><span style="font-size: 1.5rem; font-weight: 700; color: #263baa">₹[X]</span></div>
+<div class="box" style="display: flex; flex-direction: column; gap: 0.25rem; background: #ffd6a5"><span style="font-size: 0.875rem">Payout baaki / hold</span><span style="font-size: 1.5rem; font-weight: 700">₹[X]</span></div>
+<div class="box" style="display: flex; flex-direction: column; gap: 0.25rem"><span style="font-size: 0.875rem">Refunds</span><span style="font-size: 1.5rem; font-weight: 700; color: #263baa">₹[X]</span></div>
+</div>
+
+<div role="tablist" style="display: flex; gap: 0.25rem; background: #ffffff; border-radius: 0.75rem; padding: 0.25rem; align-self: flex-start; flex-wrap: wrap">
+<button type="button" role="tab" style="height: 2.5rem; padding: 0 1.25rem; border: none; border-radius: 0.625rem; background: transparent; font-size: 0.9375rem; color: #23262f">Payments</button>
+<button type="button" role="tab" aria-selected="true" style="height: 2.5rem; padding: 0 1.25rem; border: none; border-radius: 0.625rem; background: #263baa; color: #ffffff; font-size: 0.9375rem; font-weight: 700">Payouts</button>
+<button type="button" role="tab" style="height: 2.5rem; padding: 0 1.25rem; border: none; border-radius: 0.625rem; background: transparent; font-size: 0.9375rem; color: #23262f">Refunds</button>
+</div>
+
+<div class="box" style="padding: 0; overflow-x: auto">
+<table class="tbl">
+<thead><tr><th>Booking</th><th>Vendor</th><th>Event</th><th>Amount</th><th>Release</th><th>Status</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td>EV-[1037]</td><td>[Band naam]</td><td>8 Feb</td><td>₹[X]</td><td>9 Feb</td><td><span class="pill" style="background: #ffd6a5">Scheduled</span></td><td><button type="button" class="sb" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Hold</button></td></tr>
+<tr><td>EV-[1033]</td><td>[Vendor] DJ</td><td>5 Feb</td><td>₹[X]</td><td>8 Feb (naya vendor)</td><td><span class="pill" style="background: #ffd6a5">Scheduled</span></td><td><button type="button" class="sb" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Hold</button></td></tr>
+<tr><td>EV-[1030]</td><td>[Halwai naam]</td><td>3 Feb</td><td>₹[X]</td><td>—</td><td><span class="pill" style="background: #23262f; color: #ffffff">Hold · complaint</span></td><td><button type="button" class="sb" style="border: none; background: #263baa; color: #ffffff">Release</button></td></tr>
+<tr><td>EV-[1028]</td><td>[Studio naam]</td><td>1 Feb</td><td>₹[X]</td><td>2 Feb</td><td><span class="pill" style="background: #b7f7d4">Paid</span></td><td><a href="#" style="font-weight: 700; text-decoration: none">Razorpay</a></td></tr>
+<tr><td>EV-[1025]</td><td>[Hall naam]</td><td>30 Jan</td><td>₹[X]</td><td>31 Jan</td><td><span class="pill" style="background: #fff4d6; border: 1px solid #23262f">Failed · bank</span></td><td><button type="button" class="sb" style="border: none; background: #263baa; color: #ffffff">Retry</button></td></tr>
+</tbody>
+</table>
+</div>
+
+<div style="font-size: 0.8125rem; line-height: 1.5">Refund sirf Finance role kar sakta hai, wajah likhna zaroori. Har hold / release / refund audit log me jaata hai.</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

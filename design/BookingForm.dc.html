@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Booking form</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input,textarea,select{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="padding: 1.5rem 1.25rem 0.75rem; display: flex; gap: 0.75rem; align-items: center">
+<a href="Vendor.dc.html" aria-label="Back" style="width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></a>
+<h1 class="font-display" style="font-size: 1.5rem; font-weight: 700">Booking details</h1>
+</div>
+
+<div style="padding: 0 1.25rem; display: flex; flex-direction: column; gap: 1rem; flex-grow: 1">
+
+<div style="background: #ffffff; border-radius: 1rem; padding: 0.75rem; display: flex; gap: 0.75rem; align-items: center">
+<div style="width: 3rem; height: 3rem; border-radius: 0.75rem; background: #d9b8ff; flex-shrink: 0"></div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem; flex-grow: 1"><div style="font-size: 1rem; font-weight: 700">[Vendor name] DJ</div><div style="font-size: 0.8125rem">Wedding night · DJ + lights · 5 hours</div></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="ev" style="font-size: 0.875rem; font-weight: 700">For which event</label>
+<select id="ev" style="height: 3.25rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; padding: 0 0.875rem; font-size: 1rem; color: #23262f"><option>Rahul's Wedding · 12 Feb</option><option>+ New event</option></select>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<div style="font-size: 0.875rem; font-weight: 700">Time</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem">
+<button type="button" style="height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; font-size: 0.9375rem; color: #23262f">Day (10–4)</button>
+<button type="button" aria-pressed="true" style="height: 2.75rem; border-radius: 0.75rem; border: 2px solid #263baa; background: #e8deff; font-size: 0.9375rem; font-weight: 700; color: #263baa">Night (6–11)</button>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem">
+<div style="display: flex; flex-direction: column; gap: 0.5rem"><label for="g" style="font-size: 0.875rem; font-weight: 700">Guests</label><input id="g" type="number" value="300" style="height: 3.25rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; padding: 0 0.875rem; font-size: 1rem; color: #23262f; box-sizing: border-box; min-width: 0"></div>
+<div style="display: flex; flex-direction: column; gap: 0.5rem"><label for="area" style="font-size: 0.875rem; font-weight: 700">Area</label><input id="area" type="text" value="Civil Lines" style="height: 3.25rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; padding: 0 0.875rem; font-size: 1rem; color: #23262f; box-sizing: border-box; min-width: 0"></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="note" style="font-size: 0.875rem; font-weight: 700">Note for vendor (optional)</label>
+<textarea id="note" rows="2" placeholder="e.g. Baraat leaves at 7 pm" style="border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; padding: 0.75rem 0.875rem; font-size: 1rem; color: #23262f; resize: none"></textarea>
+</div>
+
+<div style="background: #ffffff; border-radius: 1rem; padding: 0.875rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.9375rem">
+<div style="display: flex; justify-content: space-between"><span>Package price</span><span style="font-weight: 700">₹[price]</span></div>
+<div style="display: flex; justify-content: space-between"><span>Advance (on confirmation)</span><span style="font-weight: 700; color: #263baa">₹[advance]</span></div>
+<div style="display: flex; justify-content: space-between"><span>Balance (after event)</span><span style="font-weight: 700">₹[balance]</span></div>
+</div>
+
+</div>
+
+<div style="padding: 0.75rem 1.25rem 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; background: #ffffff; border-top: 1px solid #e8deff">
+<div style="font-size: 0.8125rem; text-align: center">No payment now. The vendor will reply within 24 hours.</div>
+<a href="Payment.dc.html" style="height: 3.5rem; border-radius: 0.75rem; background: #263baa; color: #ffffff; font-size: 1.0625rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center">Send request</a>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

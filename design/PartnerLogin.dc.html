@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Partner app login</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;family=Noto+Sans+Devanagari:wght@400;700&amp;family=Noto+Serif+Devanagari:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.ben{display:flex;gap:0.75rem;align-items:center;font-size:0.9375rem}
+.ben span:first-child{width:2rem;height:2rem;border-radius:999px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #312e81; color: #ffffff; display: flex; flex-direction: column">
+
+<div style="padding: 2.5rem 1.5rem 1.75rem; display: flex; flex-direction: column; gap: 1.25rem">
+<div style="display: flex; align-items: baseline; gap: 0.5rem"><span class="font-display" style="font-size: 1.75rem; font-weight: 700">EventSeva</span><span style="padding: 0.25rem 0.625rem; border-radius: 999px; background: #ffd6a5; color: #23262f; font-size: 0.75rem; font-weight: 700">PARTNER</span></div>
+<h1 class="font-display" style="font-size: 1.75rem; font-weight: 700; line-height: 1.25">Get more bookings for your service in Prayagraj</h1>
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div class="ben"><span style="background: #b7f7d4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"></path></svg></span><span>New booking requests right on your phone</span></div>
+<div class="ben"><span style="background: #b7f7d4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"></path></svg></span><span>Advance secured upfront</span></div>
+<div class="ben"><span style="background: #b7f7d4"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4 4 10-10"></path></svg></span><span>Money in your bank the day after the event</span></div>
+</div>
+</div>
+
+<div style="flex-grow: 1; background: #fff4d6; color: #23262f; border-radius: 1.5rem 1.5rem 0 0; padding: 1.75rem 1.5rem 2rem; display: flex; flex-direction: column; gap: 1.25rem">
+<div style="display: flex; flex-direction: column; gap: 0.375rem">
+<h2 class="font-display" style="font-size: 1.375rem; font-weight: 700">Log in or register</h2>
+<div style="font-size: 0.875rem">Just phone + OTP. Your profile goes live after admin approval.</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="pphone" style="font-size: 0.875rem; font-weight: 700">Mobile number</label>
+<div style="height: 3.5rem; border-radius: 0.875rem; background: #ffffff; border: 2px solid #312e81; display: flex; align-items: center; overflow: hidden">
+<span style="height: 100%; padding: 0 1rem; display: flex; align-items: center; font-size: 1.0625rem; font-weight: 700; border-right: 1px solid #e8deff">+91</span>
+<input id="pphone" type="tel" inputmode="numeric" maxlength="10" placeholder="10-digit number" style="flex-grow: 1; height: 100%; border: none; outline: none; padding: 0 1rem; font-size: 1.0625rem; color: #23262f; background: transparent">
+</div>
+</div>
+<div style="flex-grow: 1"></div>
+<a href="PartnerOtp.dc.html" style="height: 3.5rem; border-radius: 0.875rem; background: #312e81; color: #ffffff; font-size: 1.0625rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center">Send OTP</a>
+<div style="font-size: 0.8125rem; text-align: center">Want to book a service? <a href="Login.dc.html" style="font-weight: 700">Get the EventSeva app</a></div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

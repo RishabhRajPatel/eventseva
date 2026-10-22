@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vendor dashboard</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="background: #312e81; color: #ffffff; padding: 2rem 1.25rem 1.5rem; border-radius: 0 0 1.5rem 1.5rem; display: flex; flex-direction: column; gap: 1rem">
+<div style="display: flex; justify-content: space-between; align-items: flex-start">
+<div style="display: flex; flex-direction: column; gap: 0.25rem">
+<span style="align-self: flex-start; padding: 0.25rem 0.625rem; border-radius: 999px; background: #b7f7d4; color: #23262f; font-size: 0.75rem; font-weight: 700">Verified</span>
+<h1 class="font-display" style="font-size: 1.5rem; font-weight: 700">[Vendor name] DJ</h1>
+</div>
+<button type="button" aria-label="Notifications" style="width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; border: none; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"></path></svg></button>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem">
+<div style="background: #ffffff; color: #23262f; border-radius: 0.75rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.125rem"><span style="font-size: 1.25rem; font-weight: 700; color: #263baa">₹[X]</span><span style="font-size: 0.75rem">This month</span></div>
+<div style="background: #ffd6a5; color: #23262f; border-radius: 0.75rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.125rem"><span style="font-size: 1.25rem; font-weight: 700">[N]</span><span style="font-size: 0.75rem">New requests</span></div>
+<div style="background: #b7f7d4; color: #23262f; border-radius: 0.75rem; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.125rem"><span style="font-size: 1.25rem; font-weight: 700">[N]</span><span style="font-size: 0.75rem">Upcoming</span></div>
+</div>
+</div>
+
+<div style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; flex-grow: 1">
+
+<div style="display: flex; justify-content: space-between; align-items: baseline"><h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Respond</h2><a href="VendorRequests.dc.html" style="font-size: 0.875rem; font-weight: 700; text-decoration: none">See all</a></div>
+
+<div style="background: #ffffff; border-radius: 1rem; padding: 0.875rem 1rem; display: flex; flex-direction: column; gap: 0.625rem">
+<div style="display: flex; justify-content: space-between; align-items: center"><span style="font-size: 1rem; font-weight: 700">Rahul's Wedding</span><span style="padding: 0.25rem 0.625rem; border-radius: 999px; background: #ffd6a5; font-size: 0.75rem; font-weight: 700">18 hours left</span></div>
+<div style="font-size: 0.875rem">12 Feb · Night · 300 guests · Wedding night</div>
+<div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem">
+<button type="button" style="height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #23262f; background: #ffffff; font-size: 0.9375rem; font-weight: 700; color: #23262f">Decline</button>
+<button type="button" style="height: 2.75rem; border-radius: 0.75rem; border: none; background: #263baa; color: #ffffff; font-size: 0.9375rem; font-weight: 700">Accept</button>
+</div>
+</div>
+
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Upcoming bookings</h2>
+
+<div style="background: #ffffff; border-radius: 1rem; display: flex; flex-direction: column">
+<div style="padding: 0.75rem 1rem; display: flex; gap: 0.75rem; align-items: center; border-bottom: 1px solid #e8deff">
+<div style="width: 3rem; text-align: center; display: flex; flex-direction: column"><span style="font-size: 1.25rem; font-weight: 700; color: #263baa">8</span><span style="font-size: 0.75rem">Feb</span></div>
+<div style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 0.9375rem; font-weight: 700">Birthday party</span><span style="font-size: 0.8125rem">Jhunsi · 5 pm</span></div>
+<span style="padding: 0.25rem 0.625rem; border-radius: 999px; background: #b7f7d4; font-size: 0.75rem; font-weight: 700">Confirmed</span>
+</div>
+<div style="padding: 0.75rem 1rem; display: flex; gap: 0.75rem; align-items: center">
+<div style="width: 3rem; text-align: center; display: flex; flex-direction: column"><span style="font-size: 1.25rem; font-weight: 700; color: #263baa">15</span><span style="font-size: 0.75rem">Feb</span></div>
+<div style="display: flex; flex-direction: column; flex-grow: 1"><span style="font-size: 0.9375rem; font-weight: 700">Engagement</span><span style="font-size: 0.8125rem">Civil Lines · 7 pm</span></div>
+<span style="padding: 0.25rem 0.625rem; border-radius: 999px; background: #b7f7d4; font-size: 0.75rem; font-weight: 700">Confirmed</span>
+</div>
+</div>
+
+</div>
+
+<nav aria-label="Vendor" style="background: #ffffff; border-top: 1px solid #e8deff; height: 4.25rem; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; text-align: center; font-size: 0.75rem">
+<a href="#" style="color: #263baa; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; font-weight: 700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>Dashboard</a>
+<a href="VendorRequests.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6v3H9zM6 6h12v15H6z"></path></svg>Bookings</a>
+<a href="VendorCalendar.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg>Calendar</a>
+<a href="PartnerChat.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path></svg>Chat</a>
+<a href="VendorProfile.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"></path></svg>Profile</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>No results</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="padding: 1.5rem 1.25rem 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; background: #ffffff; border-bottom: 1px solid #e8deff">
+<div style="display: flex; gap: 0.75rem; align-items: center">
+<a href="Home.dc.html" aria-label="Back" style="width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; background: #e8deff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></a>
+<label style="flex-grow: 1; height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; display: flex; align-items: center; gap: 0.5rem; padding: 0 0.75rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input type="text" value="Ghodi" aria-label="Search" style="border: none; outline: none; flex-grow: 1; font-size: 1rem; color: #23262f; background: transparent"></label>
+</div>
+<div style="display: flex; gap: 0.5rem">
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #263baa; color: #ffffff; font-size: 0.8125rem; font-weight: 700">12 Feb</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #263baa; color: #ffffff; font-size: 0.8125rem; font-weight: 700">Up to ₹5,000</span>
+</div>
+</div>
+
+<div style="flex-grow: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: 2rem 1.5rem; text-align: center">
+<div style="width: 7rem; height: 7rem; border-radius: 999px; background: #e8deff; display: flex; align-items: center; justify-content: center">
+<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5M8.5 11h5"></path></svg>
+</div>
+<h1 class="font-display" style="font-size: 1.5rem; font-weight: 700">No vendors found</h1>
+<div style="font-size: 0.9375rem; line-height: 1.5; max-width: 17rem">No ghodi (wedding horse) is free on 12 Feb under ₹5,000. Try changing your filters.</div>
+<div style="display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 18rem; margin-top: 0.5rem">
+<button type="button" style="height: 3.5rem; border: none; border-radius: 0.75rem; background: #263baa; color: #ffffff; font-size: 1.0625rem; font-weight: 700">Remove budget filter</button>
+<button type="button" style="height: 3.5rem; border: 1.5px solid #263baa; border-radius: 0.75rem; background: #ffffff; color: #263baa; font-size: 1.0625rem; font-weight: 700">Try nearby dates</button>
+</div>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

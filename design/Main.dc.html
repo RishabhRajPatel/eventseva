@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>EventSeva color system</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="width: 1320px; height: 940px; box-sizing: border-box; padding: 3.5rem; background: #ffffff; color: #23262f; display: flex; flex-direction: column; gap: 2.5rem">
+
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem">
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<div style="display: flex; align-items: baseline; gap: 0.75rem"><span class="font-display" style="font-size: 1.625rem; font-weight: 700; color: #263baa">EventSeva</span><span style="font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Color + type system</span></div>
+<h1 class="font-display" style="font-size: 2.75rem; line-height: 1.15; font-weight: 700">Royal blue leads, lavender supports, peach aur mint batate hain status</h1>
+</div>
+<div style="display: flex; flex-direction: column; gap: 0.5rem; width: 22.5rem; flex-shrink: 0">
+<div style="font-size: 0.8125rem; font-weight: 400; color: #23262f">Screen par kitna color (60 · 30 · 10)</div>
+<div style="display: flex; height: 1.75rem; border-radius: 0.5rem; overflow: hidden; border: 1px solid #e8deff">
+<div style="width: 60%; background: #fff4d6"></div>
+<div style="width: 30%; background: #e8deff"></div>
+<div style="width: 10%; background: #263baa"></div>
+</div>
+<div style="display: flex; font-size: 0.75rem; color: #23262f">
+<div style="width: 60%">Cream + white ground</div>
+<div style="width: 30%">Lavender</div>
+<div style="width: 10%">Blue</div>
+</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.25rem">
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div style="height: 13.75rem; border-radius: 1rem; background: #263baa; color: #ffffff; padding: 1.25rem; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Primary</div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem"><div style="font-size: 1.375rem; font-weight: 700">Royal Blue</div><div style="font-size: 0.9375rem">#263BAA</div></div>
+</div>
+<div style="font-size: 0.875rem; line-height: 1.5">Main buttons, links, app header, active tab, selected date.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div style="height: 13.75rem; border-radius: 1rem; overflow: hidden; display: flex; flex-direction: column">
+<div style="flex-grow: 1; background: #d9b8ff; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Secondary</div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem"><div style="font-size: 1.375rem; font-weight: 700">Lavender</div><div style="font-size: 0.9375rem">#D9B8FF</div></div>
+</div>
+<div style="height: 3.5rem; background: #e8deff; padding: 0 1.25rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem"><span>Lavender tint</span><span>#E8DEFF</span></div>
+</div>
+<div style="font-size: 0.875rem; line-height: 1.5">Category icons, chips, secondary button, "Request sent" status, banners.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div style="height: 13.75rem; border-radius: 1rem; overflow: hidden; display: flex; flex-direction: column">
+<div style="flex-grow: 1; background: #ffd6a5; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Accent</div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem"><div style="font-size: 1.375rem; font-weight: 700">Peach</div><div style="font-size: 0.9375rem">#FFD6A5</div></div>
+</div>
+<div style="height: 3.5rem; background: #fff4d6; padding: 0 1.25rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem"><span>Cream (ground)</span><span>#FFF4D6</span></div>
+</div>
+<div style="font-size: 0.875rem; line-height: 1.5">Offers, festive banners, "Pending" status. Cream = app ka background.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div style="height: 13.75rem; border-radius: 1rem; overflow: hidden; display: flex; flex-direction: column">
+<div style="flex-grow: 1; background: #b7f7d4; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Success</div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem"><div style="font-size: 1.375rem; font-weight: 700">Mint</div><div style="font-size: 0.9375rem">#B7F7D4</div></div>
+</div>
+<div style="height: 3.5rem; background: #ddfbef; padding: 0 1.25rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem"><span>Mint tint</span><span>#DDFBEF</span></div>
+</div>
+<div style="font-size: 0.875rem; line-height: 1.5">Confirmed booking, verified vendor, date available, payment done.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem">
+<div style="height: 13.75rem; border-radius: 1rem; background: #23262f; color: #ffffff; padding: 1.25rem; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase">Neutral</div>
+<div style="display: flex; flex-direction: column; gap: 0.125rem"><div style="font-size: 1.375rem; font-weight: 700">Ink</div><div style="font-size: 0.9375rem">#23262F</div></div>
+</div>
+<div style="font-size: 0.875rem; line-height: 1.5">Saara text, icons, dark buttons, vendor app ka dark mode.</div>
+</div>
+
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem; flex-grow: 1">
+
+<div style="border: 1px solid #e8deff; border-radius: 1rem; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem">
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Buttons</h2>
+<button type="button" style="height: 3.25rem; border: none; border-radius: 0.75rem; background: #263baa; color: #ffffff; font-size: 1rem; font-weight: 700">Book now</button>
+<button type="button" style="height: 3.25rem; border: none; border-radius: 0.75rem; background: #e8deff; color: #263baa; font-size: 1rem; font-weight: 700">Shortlist karo</button>
+<button type="button" style="height: 3.25rem; border: 1.5px solid #263baa; border-radius: 0.75rem; background: #ffffff; color: #263baa; font-size: 1rem; font-weight: 700">Vendor se chat</button>
+</div>
+
+<div style="border: 1px solid #e8deff; border-radius: 1rem; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem">
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Booking status</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 0.625rem">
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #e8deff; color: #263baa; font-size: 0.875rem; font-weight: 700">Request sent</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #ffd6a5; color: #23262f; font-size: 0.875rem; font-weight: 700">Payment pending</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #b7f7d4; color: #23262f; font-size: 0.875rem; font-weight: 700">Confirmed</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #23262f; color: #ffffff; font-size: 0.875rem; font-weight: 700">Cancelled</span>
+</div>
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700; margin-top: 0.5rem">Category chips</h2>
+<div style="display: flex; flex-wrap: wrap; gap: 0.625rem">
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #263baa; color: #ffffff; font-size: 0.875rem; font-weight: 400">Sab</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #ffffff; border: 1px solid #d9b8ff; color: #23262f; font-size: 0.875rem; font-weight: 400">DJ</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #ffffff; border: 1px solid #d9b8ff; color: #23262f; font-size: 0.875rem; font-weight: 400">Halwai</span>
+<span style="padding: 0.5rem 0.875rem; border-radius: 999px; background: #ffffff; border: 1px solid #d9b8ff; color: #23262f; font-size: 0.875rem; font-weight: 400">Hall</span>
+</div>
+</div>
+
+<div style="border: 1px solid #e8deff; border-radius: 1rem; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.75rem">
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Text ke liye safe pairs</h2>
+<div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-radius: 0.625rem; background: #263baa; color: #ffffff; font-size: 0.875rem"><span style="font-weight: 700; font-size: 1.125rem">Aa</span><span>White on Royal Blue</span></div>
+<div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-radius: 0.625rem; background: #e8deff; color: #263baa; font-size: 0.875rem"><span style="font-weight: 700; font-size: 1.125rem">Aa</span><span>Blue on Lavender tint</span></div>
+<div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-radius: 0.625rem; background: #fff4d6; color: #23262f; font-size: 0.875rem"><span style="font-weight: 700; font-size: 1.125rem">Aa</span><span>Ink on Cream</span></div>
+<div style="display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0.875rem; border-radius: 0.625rem; background: #b7f7d4; color: #23262f; font-size: 0.875rem"><span style="font-weight: 700; font-size: 1.125rem">Aa</span><span>Ink on Mint · Peach · Lavender</span></div>
+<div style="font-size: 0.8125rem; line-height: 1.5; color: #23262f">Peach, mint aur lavender par white text kabhi nahi — hamesha Ink ya Blue.</div>
+</div>
+
+<div style="border: 1px solid #e8deff; border-radius: 1rem; padding: 1.5rem; display: flex; flex-direction: column; gap: 0.875rem">
+<h2 class="font-display" style="font-size: 1.25rem; font-weight: 700">Typography</h2>
+<div style="display: flex; flex-direction: column; gap: 0.25rem; padding-bottom: 0.75rem; border-bottom: 1px solid #e8deff">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #263baa">font-display</div>
+<div class="font-display" style="font-size: 1.875rem; font-weight: 700; line-height: 1.15">Playfair Display</div>
+<div style="font-size: 0.8125rem; line-height: 1.5">Sirf wordmark aur page / section headings</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 0.25rem">
+<div style="font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #263baa">font-sans · global body</div>
+<div style="font-size: 1.625rem; font-weight: 700; line-height: 1.2">Lato</div>
+<div style="font-size: 0.8125rem; line-height: 1.5">Body, buttons, chips, inputs, prices — sab kuch baaki. Koi component apna font set nahi karta.</div>
+</div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1320,"height":940}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

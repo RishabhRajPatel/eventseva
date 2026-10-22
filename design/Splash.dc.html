@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Splash</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+h1,h2,h3{margin:0}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #263baa; color: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; padding: 2rem; box-sizing: border-box; position: relative">
+<div style="display: flex; gap: 0.5rem">
+<span style="width: 0.75rem; height: 0.75rem; border-radius: 999px; background: #d9b8ff"></span>
+<span style="width: 0.75rem; height: 0.75rem; border-radius: 999px; background: #ffd6a5"></span>
+<span style="width: 0.75rem; height: 0.75rem; border-radius: 999px; background: #b7f7d4"></span>
+</div>
+<h1 class="font-display" style="font-size: 2.75rem; font-weight: 700">EventSeva</h1>
+<div style="font-size: 1rem; text-align: center; line-height: 1.5">From weddings to birthdays,<br>every service in one place</div>
+<div style="position: absolute; bottom: 2.5rem; font-size: 0.8125rem">Prayagraj</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

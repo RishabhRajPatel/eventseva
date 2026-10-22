@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Complaints</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input,select,textarea{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.side{flex:1 1 15rem;background:#23262f;color:#ffffff;padding:1.5rem 1rem;box-sizing:border-box;display:flex;flex-direction:column;gap:0.25rem}
+.side a{display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border-radius:0.75rem;color:#ffffff;text-decoration:none;font-size:0.9375rem}
+.side a.on{background:#263baa;font-weight:700}
+.side .n{background:#ffd6a5;color:#23262f;border-radius:999px;padding:0.125rem 0.5rem;font-size:0.75rem;font-weight:700}
+.main{flex:999 1 560px;min-width:0;padding:2rem;box-sizing:border-box;display:flex;flex-direction:column;gap:1.5rem}
+.box{background:#ffffff;border-radius:1rem;padding:1.25rem;box-sizing:border-box}
+.q{display:flex;flex-direction:column;gap:0.25rem;padding:0.875rem 1rem;border-radius:0.75rem;color:#23262f;text-decoration:none;font-size:0.8125rem}
+.pill{display:inline-block;padding:0.125rem 0.5rem;border-radius:999px;font-size:0.75rem;font-weight:700}
+.btn{height:2.75rem;padding:0 1.25rem;border-radius:0.75rem;font-size:0.9375rem;font-weight:700}
+</style>
+</helmet>
+<div class="font-sans" style="min-height: 100vh; background: #fff4d6; color: #23262f; display: flex; flex-wrap: wrap">
+
+<nav class="side" aria-label="Admin">
+<div class="font-display" style="font-size: 1.5rem; font-weight: 700; padding: 0 0.75rem 1.25rem">EventSeva <span class="font-sans" style="font-size: 0.75rem; font-weight: 700; color: #d9b8ff">ADMIN</span></div>
+<a href="AdminDashboard.dc.html">Dashboard</a>
+<a href="AdminVendors.dc.html">Vendor verification <span class="n">[N]</span></a>
+<a href="AdminModeration.dc.html">Photo moderation <span class="n">[N]</span></a>
+<a href="AdminBookings.dc.html">Bookings</a>
+<a href="AdminPayments.dc.html">Payments + payouts</a>
+<a href="#" class="on">Complaints <span class="n">[N]</span></a>
+<a href="#">Categories + cities</a>
+<a href="#">Audit log</a>
+</nav>
+
+<main class="main">
+<h1 class="font-display" style="font-size: 2rem; font-weight: 700">Complaints</h1>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-start">
+
+<section class="box" style="flex: 1 1 18rem; display: flex; flex-direction: column; gap: 0.5rem">
+<div style="display: flex; gap: 0.5rem; padding-bottom: 0.25rem; flex-wrap: wrap">
+<span class="pill" style="background: #263baa; color: #ffffff; padding: 0.375rem 0.75rem">Open ([N])</span><span class="pill" style="border: 1px solid #d9b8ff; padding: 0.375rem 0.75rem">In progress</span><span class="pill" style="border: 1px solid #d9b8ff; padding: 0.375rem 0.75rem">Resolved</span>
+</div>
+<a href="#" class="q" style="background: #e8deff; outline: 2px solid #263baa"><b style="font-size: 0.9375rem">Vendor time par nahi aaya</b><span>EV-[1030] · Suresh → [Halwai naam] · 2 ghante pehle</span><span class="pill" style="align-self: flex-start; background: #ffd6a5">Payout hold</span></a>
+<a href="#" class="q" style="background: #ffffff; border: 1px solid #e8deff"><b style="font-size: 0.9375rem">Refund abhi tak nahi aaya</b><span>EV-[1021] · Kavita · 1 din pehle</span></a>
+<a href="#" class="q" style="background: #ffffff; border: 1px solid #e8deff"><b style="font-size: 0.9375rem">Customer ne baaki paisa nahi diya</b><span>EV-[1019] · [Band naam] → Rohit · 2 din pehle</span></a>
+</section>
+
+<section class="box" style="flex: 2 1 30rem; min-width: 0; display: flex; flex-direction: column; gap: 1rem">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.75rem">
+<div style="display: flex; flex-direction: column; gap: 0.25rem"><h2 class="font-display" style="font-size: 1.5rem; font-weight: 700">Vendor time par nahi aaya</h2><span style="font-size: 0.875rem">Booking EV-[1030] · Halwai · 3 Feb · Suresh (customer)</span></div>
+<a href="AdminBookings.dc.html" style="font-size: 0.875rem; font-weight: 700; text-decoration: none">Booking kholo</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.9375rem; line-height: 1.5">
+<div style="border-radius: 0.75rem; background: #fff4d6; padding: 0.75rem 1rem"><b>Suresh:</b> Halwai 2 ghante late aaya, khana der se bana. [Customer ki baat]</div>
+<div style="border-radius: 0.75rem; background: #e8deff; padding: 0.75rem 1rem"><b>[Halwai naam]:</b> [Vendor ka jawab]</div>
+<div style="border-radius: 0.75rem; background: #ffffff; border: 1px solid #e8deff; padding: 0.75rem 1rem; font-size: 0.8125rem">Admin note (sirf team ko dikhega): Payout hold kiya, dono se phone par baat karni hai.</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="res" style="font-size: 0.875rem; font-weight: 700">Faisla / resolution</label>
+<textarea id="res" rows="3" placeholder="Kya tay hua, dono ko ye message jayega" style="border-radius: 0.75rem; border: 1.5px solid #d9b8ff; padding: 0.75rem 1rem; font-size: 0.9375rem; color: #23262f; resize: vertical"></textarea>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #e8deff">
+<button type="button" class="btn" style="border: none; background: #263baa; color: #ffffff">Resolve, payout release</button>
+<button type="button" class="btn" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Partial refund</button>
+<button type="button" class="btn" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Vendor ko hold par</button>
+</div>
+</section>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

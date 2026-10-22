@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Photo moderation</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input,select{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.side{flex:1 1 15rem;background:#23262f;color:#ffffff;padding:1.5rem 1rem;box-sizing:border-box;display:flex;flex-direction:column;gap:0.25rem}
+.side a{display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border-radius:0.75rem;color:#ffffff;text-decoration:none;font-size:0.9375rem}
+.side a.on{background:#263baa;font-weight:700}
+.side .n{background:#ffd6a5;color:#23262f;border-radius:999px;padding:0.125rem 0.5rem;font-size:0.75rem;font-weight:700}
+.main{flex:999 1 560px;min-width:0;padding:2rem;box-sizing:border-box;display:flex;flex-direction:column;gap:1.5rem}
+.ph{background:#ffffff;border-radius:1rem;overflow:hidden;display:flex;flex-direction:column}
+.ph .i{aspect-ratio:4/3}
+.ph .b{padding:0.75rem;display:flex;flex-direction:column;gap:0.5rem;font-size:0.8125rem}
+.ph .a{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem}
+.ph button{height:2.5rem;border-radius:0.625rem;font-size:0.8125rem;font-weight:700}
+</style>
+</helmet>
+<div class="font-sans" style="min-height: 100vh; background: #fff4d6; color: #23262f; display: flex; flex-wrap: wrap">
+
+<nav class="side" aria-label="Admin">
+<div class="font-display" style="font-size: 1.5rem; font-weight: 700; padding: 0 0.75rem 1.25rem">EventSeva <span class="font-sans" style="font-size: 0.75rem; font-weight: 700; color: #d9b8ff">ADMIN</span></div>
+<a href="AdminDashboard.dc.html">Dashboard</a>
+<a href="AdminVendors.dc.html">Vendor verification <span class="n">[N]</span></a>
+<a href="#" class="on">Photo moderation <span class="n">[N]</span></a>
+<a href="AdminBookings.dc.html">Bookings</a>
+<a href="AdminPayments.dc.html">Payments + payouts</a>
+<a href="AdminComplaints.dc.html">Complaints <span class="n">[N]</span></a>
+<a href="#">Categories + cities</a>
+<a href="#">Audit log</a>
+</nav>
+
+<main class="main">
+<div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem">
+<div style="display: flex; flex-direction: column; gap: 0.25rem"><h1 class="font-display" style="font-size: 2rem; font-weight: 700">Photo moderation</h1><span style="font-size: 0.875rem">[N] photos pending · auto-check ne jo flag kiye wo pehle</span></div>
+<button type="button" style="height: 2.75rem; padding: 0 1.25rem; border-radius: 0.75rem; border: none; background: #263baa; color: #ffffff; font-size: 0.9375rem; font-weight: 700">Bina flag wale sab approve</button>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 1rem">
+
+<div class="ph" style="outline: 2px solid #ffd6a5"><div class="i" style="background: #d9b8ff"></div><div class="b"><span><b>[Vendor] DJ</b> · DJ</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ffd6a5; font-size: 0.75rem; font-weight: 700">Flag: dhundhli</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+<div class="ph" style="outline: 2px solid #ffd6a5"><div class="i" style="background: #e8deff"></div><div class="b"><span><b>[Hall naam]</b> · Hall</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ffd6a5; font-size: 0.75rem; font-weight: 700">Flag: duplicate</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+<div class="ph"><div class="i" style="background: #d9b8ff"></div><div class="b"><span><b>[Studio naam]</b> · Camera</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ddfbef; font-size: 0.75rem; font-weight: 700">Auto-check pass</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+<div class="ph"><div class="i" style="background: #e8deff"></div><div class="b"><span><b>[Halwai naam]</b> · Halwai</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ddfbef; font-size: 0.75rem; font-weight: 700">Auto-check pass</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+<div class="ph"><div class="i" style="background: #d9b8ff"></div><div class="b"><span><b>[Band naam]</b> · Band · video 0:48</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ddfbef; font-size: 0.75rem; font-weight: 700">Auto-check pass</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+<div class="ph"><div class="i" style="background: #e8deff"></div><div class="b"><span><b>[Decor naam]</b> · Decoration</span><span style="align-self: flex-start; padding: 0.125rem 0.5rem; border-radius: 999px; background: #ddfbef; font-size: 0.75rem; font-weight: 700">Auto-check pass</span><div class="a"><button type="button" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button><button type="button" style="border: none; background: #263baa; color: #ffffff">Approve</button></div></div></div>
+
+</div>
+
+<div style="font-size: 0.8125rem">Reject par wajah chunni hogi (dhundhli, duplicate, galat content, screenshot); vendor ko wahi dikhegi.</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

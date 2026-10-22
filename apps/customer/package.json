@@ -1,0 +1,57 @@
+{
+  "name": "@eventseva/customer",
+  "version": "1.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@eventseva/app-shared": "workspace:*",
+    "@eventseva/core": "workspace:*",
+    "@expo-google-fonts/lato": "^0.4.1",
+    "@expo-google-fonts/noto-sans-devanagari": "^0.4.1",
+    "@expo-google-fonts/noto-serif-devanagari": "^0.4.1",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@tanstack/react-query": "^5.104.5",
+    "expo": "~58.0.17",
+    "expo-constants": "~58.0.13",
+    "expo-device": "~58.0.5",
+    "expo-font": "~58.0.9",
+    "expo-haptics": "~58.0.7",
+    "expo-image": "~58.0.16",
+    "expo-linking": "~58.0.14",
+    "expo-router": "~58.0.25",
+    "expo-secure-store": "~58.0.2",
+    "expo-splash-screen": "~58.0.11",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.6",
+    "i18next": "^26.5.4",
+    "react": "19.3.0",
+    "react-i18next": "^17.1.0",
+    "react-native": "0.88.0",
+    "react-native-razorpay": "^3.0.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0",
+    "react-native-svg": "15.16.0"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^14.1.0",
+    "@types/jest": "^30.0.0",
+    "@types/react": "~19.3.0",
+    "jest": "^30.5.2",
+    "typescript": "~6.0.3",
+    "jest-expo": "~58.0.12"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "tsc --noEmit",
+    "test": "jest"
+  },
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "testMatch": [
+      "<rootDir>/src/**/*.test.ts?(x)"
+    ]
+  }
+}

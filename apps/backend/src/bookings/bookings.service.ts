@@ -1,0 +1,484 @@
+import { HttpStatus, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import type { BookingStatus } from '@eventseva/core';
+import { AppConfig, CONFIG } from '../config';
+import { AppError } from '../common/errors';
+import { Db, Queryable } from '../db/db.service';
+import { notify } from '../notifications/notify';
+import { PAYMENT_GATEWAY, PaymentGateway } from '../payments/gateway';
+import type { PricingUnit } from '../vendors/vendor.queries';
+import {
+  daysUntil,
+  MAX_BOOKING_PAISE,
+  needsQuantity,
+  NEW_VENDOR_BOOKINGS,
+  PAY_HOURS,
+  priceBooking,
+  refundPaise,
+  refundPercent,
+  RESPOND_HOURS,
+  Slot,
+  todayIst,
+} from './booking.rules';
+
+export interface BookingRequest {
+  eventId: string;
+  vendorId: string;
+  serviceId?: string;
+  packageId?: string;
+  slot: Slot;
+  quantity?: number;
+  note?: string;
+}
+
+interface BookingRow {
+  id: string;
+  event_id: string;
+  customer_id: string;
+  vendor_id: string;
+  vendor_user_id: string;
+  status: BookingStatus;
+  day: string;
+  slot: Slot;
+  amount_paise: number;
+  advance_paise: number;
+  commission_paise: number;
+  respond_by: Date;
+  pay_by: Date | null;
+}
+
+const rupees = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN')}`;
+const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
+
+/**
+ * Booking life cycle:
+ *   requested ──vendor accepts──▶ accepted ──customer pays advance──▶ confirmed ──event day over──▶ completed
+ *       │ vendor rejects / 24 h no reply      │ 24 h no payment                 │ cancelled (refund by policy)
+ *       ▼                                     ▼                                 ▼
+ *   rejected / expired                     expired                 cancelled_by_customer / _vendor
+ * The vendor's slot is held from "accepted" until the booking ends or is cancelled.
+ */
+@Injectable()
+export class BookingsService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger('Bookings');
+  private timer?: NodeJS.Timeout;
+
+  constructor(
+    private readonly db: Db,
+    @Inject(CONFIG) private readonly config: AppConfig,
+    @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
+  ) {}
+
+  onModuleInit() {
+    if (this.config.bookingSweepSec > 0) {
+      this.timer = setInterval(() => {
+        this.sweep().catch((err) => this.logger.error(`sweep failed: ${err.stack ?? err}`));
+      }, this.config.bookingSweepSec * 1000);
+    }
+  }
+
+  onModuleDestroy() {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  // ---------- customer ----------
+
+  async request(customerId: string, body: BookingRequest): Promise<string> {
+    if (!body.serviceId === !body.packageId) {
+      throw new AppError('VALIDATION', 'Choose either a service or a package.');
+    }
+    return this.db.tx(async (client) => {
+      const event = await this.db.one<{ event_date: string }>(
+        client,
+        'SELECT event_date FROM events WHERE id = $1 AND customer_id = $2',
+        [body.eventId, customerId],
+      );
+      if (!event) throw new AppError('EVENT_NOT_FOUND', 'Event not found.', HttpStatus.NOT_FOUND);
+      if (event.event_date < todayIst()) throw new AppError('EVENT_IN_PAST', 'This event date has already passed.');
+
+      // Locking the vendor row puts all bookings for one vendor in a queue, so two customers
+      // can never get the same slot.
+      const vendor = await this.db.one<{ user_id: string; business_name: string }>(
+        client,
+        `SELECT user_id, business_name FROM vendors WHERE id = $1 AND status = 'approved' FOR UPDATE`,
+        [body.vendorId],
+      );
+      if (!vendor) throw new AppError('VENDOR_NOT_FOUND', 'This vendor is not available.', HttpStatus.NOT_FOUND);
+      if (vendor.user_id === customerId) throw new AppError('OWN_VENDOR', 'You cannot book your own business.');
+
+      const item = body.serviceId
+        ? await this.db.one<{ title: string; price_paise: number; unit: PricingUnit }>(
+            client,
+            'SELECT title, price_paise, unit FROM services WHERE id = $1 AND vendor_id = $2 AND is_active',
+            [body.serviceId, body.vendorId],
+          )
+        : await this.db.one<{ title: string; price_paise: number; unit: 'package' }>(
+            client,
+            `SELECT title, price_paise, 'package' AS unit FROM packages WHERE id = $1 AND vendor_id = $2 AND is_active`,
+            [body.packageId, body.vendorId],
+          );
+      if (!item) throw new AppError('ITEM_NOT_FOUND', 'This service or package is no longer offered.', HttpStatus.NOT_FOUND);
+
+      let quantity = 1;
+      if (needsQuantity(item.unit)) {
+        if (!body.quantity) throw new AppError('QUANTITY_REQUIRED', 'Tell us how many (plates, hours, rooms …).');
+        quantity = body.quantity;
+      }
+      const money = priceBooking(item.price_paise, quantity, this.config.advancePercent, this.config.commissionPercent);
+      if (money.amountPaise > MAX_BOOKING_PAISE) throw new AppError('AMOUNT_TOO_HIGH', 'Please split this into smaller bookings.');
+
+      const open = await this.db.one(
+        client,
+        'SELECT 1 FROM bookings WHERE event_id = $1 AND vendor_id = $2 AND status = ANY($3)',
+        [body.eventId, body.vendorId, ACTIVE],
+      );
+      if (open) throw new AppError('BOOKING_EXISTS', 'You already have a booking with this vendor for this event.', HttpStatus.CONFLICT);
+      await this.assertSlotFree(client, body.vendorId, event.event_date, body.slot);
+
+      const booking = await this.db.one<{ id: string }>(
+        client,
+        `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, package_id, day, slot, quantity, details,
+                               amount_paise, advance_paise, commission_paise, respond_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now() + make_interval(hours => $13))
+         RETURNING id`,
+        [body.eventId, customerId, body.vendorId, body.serviceId ?? null, body.packageId ?? null, event.event_date, body.slot,
+          quantity, { note: body.note?.trim() || null }, money.amountPaise, money.advancePaise, money.commissionPaise, RESPOND_HOURS],
+      );
+      await notify(client, vendor.user_id, 'booking_requested', {
+        en: { title: 'New booking request', body: `${item.title} on ${event.event_date}. Reply within ${RESPOND_HOURS} hours.` },
+        hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${event.event_date}। ${RESPOND_HOURS} घंटे में जवाब दें।` },
+      }, { bookingId: booking!.id });
+      return booking!.id;
+    });
+  }
+
+  /** Starts (or resumes) the advance payment: returns what the Razorpay checkout needs. */
+  async startPayment(customerId: string, bookingId: string) {
+    return this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, { customerId });
+      if (b.status !== 'accepted') {
+        throw new AppError('BOOKING_BAD_STATUS', 'This booking is not waiting for payment.', HttpStatus.CONFLICT, { status: b.status });
+      }
+      if (b.pay_by && b.pay_by < new Date()) throw new AppError('PAYMENT_TIME_OVER', 'The time to pay has run out.', HttpStatus.CONFLICT);
+
+      // Reuse an open order: two taps on "Pay" must never create two charges.
+      let payment = await this.db.one<{ razorpay_order_id: string }>(
+        client,
+        `SELECT razorpay_order_id FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'created'`,
+        [bookingId],
+      );
+      if (!payment) {
+        const { orderId } = await this.gateway.createOrder(b.advance_paise, bookingId, { bookingId });
+        await client.query(
+          `INSERT INTO payments (booking_id, type, amount_paise, razorpay_order_id) VALUES ($1, 'advance', $2, $3)`,
+          [bookingId, b.advance_paise, orderId],
+        );
+        payment = { razorpay_order_id: orderId };
+      }
+      return { orderId: payment.razorpay_order_id, amountPaise: b.advance_paise, currency: 'INR', keyId: this.gateway.keyId };
+    });
+  }
+
+  /** Called by the app after checkout. The webhook confirms the same payment too; whichever comes first wins. */
+  async verifyPayment(customerId: string, bookingId: string, orderId: string, paymentId: string, signature: string) {
+    if (!this.gateway.verifyPayment(orderId, paymentId, signature)) {
+      throw new AppError('PAYMENT_INVALID', 'We could not verify this payment.');
+    }
+    const owner = await this.db.one(
+      this.db,
+      'SELECT 1 FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE p.razorpay_order_id = $1 AND b.id = $2 AND b.customer_id = $3',
+      [orderId, bookingId, customerId],
+    );
+    if (!owner) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found.', HttpStatus.NOT_FOUND);
+    await this.paymentCaptured(orderId, paymentId);
+  }
+
+  /**
+   * Development only (PAYMENT_PROVIDER=fake): pays the open order without a checkout, so the
+   * apps can be tested end to end before Razorpay keys exist. Production refuses fake mode.
+   */
+  async devPay(customerId: string, bookingId: string) {
+    if (this.config.paymentProvider !== 'fake') throw new AppError('NOT_FOUND', 'Not found.', HttpStatus.NOT_FOUND);
+    const { orderId } = await this.startPayment(customerId, bookingId);
+    await this.paymentCaptured(orderId, `pay_dev_${Date.now()}`);
+  }
+
+  /**
+   * Marks a payment as paid and confirms the booking. Safe to call twice. If the booking was
+   * cancelled or expired before the money arrived, the whole amount goes straight back.
+   */
+  async paymentCaptured(orderId: string, paymentId: string): Promise<'confirmed' | 'refunded' | 'already_done' | 'unknown_order'> {
+    return this.db.tx(async (client) => {
+      const p = await this.db.one<{ id: string; booking_id: string; amount_paise: number; status: string }>(
+        client,
+        `SELECT id, booking_id, amount_paise, status FROM payments WHERE razorpay_order_id = $1 FOR UPDATE`,
+        [orderId],
+      );
+      if (!p) return 'unknown_order';
+      if (p.status === 'paid') return 'already_done';
+
+      const b = await this.lockBooking(client, p.booking_id, {});
+      await client.query(`UPDATE payments SET status = 'paid', razorpay_payment_id = $2, paid_at = now() WHERE id = $1`, [p.id, paymentId]);
+
+      if (b.status === 'accepted') {
+        await client.query(`UPDATE bookings SET status = 'confirmed', updated_at = now() WHERE id = $1`, [b.id]);
+        await notify(client, b.customer_id, 'booking_confirmed', {
+          en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${b.day} is confirmed.` },
+          hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${b.day} की बुकिंग पक्की है।` },
+        }, { bookingId: b.id });
+        await notify(client, b.vendor_user_id, 'booking_confirmed', {
+          en: { title: 'Booking confirmed', body: `The customer paid the advance for ${b.day}. Their phone number is now visible.` },
+          hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${b.day} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
+        }, { bookingId: b.id });
+        return 'confirmed';
+      }
+
+      await this.refund(client, b.id, paymentId, p.amount_paise, 'late_payment');
+      await notify(client, b.customer_id, 'payment_refunded', {
+        en: { title: 'Payment refunded', body: `This booking was no longer open, so ${rupees(p.amount_paise)} is being refunded in full.` },
+        hi: { title: 'पैसा वापस', body: `यह बुकिंग अब खुली नहीं थी, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
+      }, { bookingId: b.id });
+      return 'refunded';
+    });
+  }
+
+  async cancelByCustomer(customerId: string, bookingId: string, reason: string) {
+    return this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, { customerId });
+      if (!ACTIVE.includes(b.status)) {
+        throw new AppError('BOOKING_BAD_STATUS', 'This booking cannot be cancelled.', HttpStatus.CONFLICT, { status: b.status });
+      }
+      const days = daysUntil(b.day);
+      if (days < 0) throw new AppError('BOOKING_BAD_STATUS', 'The event date has passed.', HttpStatus.CONFLICT, { status: b.status });
+
+      const refunded = b.status === 'confirmed' ? await this.refundAdvance(client, b, refundPercent('customer', days)) : 0;
+      await this.close(client, b.id, 'cancelled_by_customer', reason);
+      await notify(client, b.vendor_user_id, 'booking_cancelled', {
+        en: { title: 'Booking cancelled', body: `The customer cancelled the booking for ${b.day}. Your calendar is free again.` },
+        hi: { title: 'बुकिंग रद्द', body: `ग्राहक ने ${b.day} की बुकिंग रद्द कर दी। आपकी तारीख़ फिर खाली है।` },
+      }, { bookingId: b.id });
+      return { refundPaise: refunded };
+    });
+  }
+
+  // ---------- vendor ----------
+
+  async accept(vendorUserId: string, bookingId: string) {
+    return this.db.tx(async (client) => {
+      const vendor = await this.db.one<{ id: string; status: string }>(
+        client,
+        'SELECT id, status FROM vendors WHERE user_id = $1 FOR UPDATE',
+        [vendorUserId],
+      );
+      const b = await this.lockBooking(client, bookingId, { vendorUserId });
+      if (vendor!.status !== 'approved') {
+        throw new AppError('VENDOR_NOT_ACTIVE', 'Your profile is not live, so you cannot accept bookings.', HttpStatus.CONFLICT);
+      }
+      this.assertRequested(b);
+      await this.assertSlotFree(client, b.vendor_id, b.day, b.slot);
+      await client.query(
+        `INSERT INTO availability (vendor_id, day, slot, status, booking_id) VALUES ($1, $2, $3, 'booked', $4)`,
+        [b.vendor_id, b.day, b.slot, b.id],
+      );
+      await client.query(
+        `UPDATE bookings SET status = 'accepted', pay_by = now() + make_interval(hours => $2), updated_at = now() WHERE id = $1`,
+        [b.id, PAY_HOURS],
+      );
+      await notify(client, b.customer_id, 'booking_accepted', {
+        en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise)} within ${PAY_HOURS} hours to confirm ${b.day}.` },
+        hi: { title: 'वेंडर ने मंज़ूर किया', body: `${b.day} पक्का करने के लिए ${PAY_HOURS} घंटे में ${rupees(b.advance_paise)} एडवांस दें।` },
+      }, { bookingId: b.id });
+    });
+  }
+
+  async reject(vendorUserId: string, bookingId: string, reason: string) {
+    await this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, { vendorUserId });
+      this.assertRequested(b);
+      await this.close(client, b.id, 'rejected', reason);
+      await notify(client, b.customer_id, 'booking_rejected', {
+        en: { title: 'Vendor is not available', body: `${reason}. You can book another vendor for ${b.day}.` },
+        hi: { title: 'वेंडर उपलब्ध नहीं', body: `${reason}। आप ${b.day} के लिए दूसरा वेंडर चुन सकते हैं।` },
+      }, { bookingId: b.id });
+    });
+  }
+
+  /** After accepting. A confirmed booking gets the full advance back. */
+  async cancelByVendor(vendorUserId: string, bookingId: string, reason: string) {
+    return this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, { vendorUserId });
+      if (!['accepted', 'confirmed'].includes(b.status) || daysUntil(b.day) < 0) {
+        throw new AppError('BOOKING_BAD_STATUS', 'This booking cannot be cancelled.', HttpStatus.CONFLICT, { status: b.status });
+      }
+      const refunded = b.status === 'confirmed' ? await this.refundAdvance(client, b, refundPercent('vendor', daysUntil(b.day))) : 0;
+      await this.close(client, b.id, 'cancelled_by_vendor', reason);
+      await notify(client, b.customer_id, 'booking_cancelled', {
+        en: {
+          title: 'Vendor cancelled',
+          body: refunded ? `${rupees(refunded)} is being refunded in full. Sorry! Please book another vendor.` : 'Sorry! Please book another vendor.',
+        },
+        hi: {
+          title: 'वेंडर ने रद्द किया',
+          body: refunded ? `${rupees(refunded)} पूरा वापस किया जा रहा है। माफ़ कीजिए! दूसरा वेंडर चुनें।` : 'माफ़ कीजिए! दूसरा वेंडर चुनें।',
+        },
+      }, { bookingId: b.id });
+      return { refundPaise: refunded };
+    });
+  }
+
+  // ---------- calendar ----------
+
+  async block(vendorUserId: string, day: string, slot: Slot) {
+    if (day < todayIst()) throw new AppError('DATE_IN_PAST', 'This date has already passed.');
+    await this.db.tx(async (client) => {
+      const vendor = await this.db.one<{ id: string }>(client, 'SELECT id FROM vendors WHERE user_id = $1 FOR UPDATE', [vendorUserId]);
+      await this.assertSlotFree(client, vendor!.id, day, slot);
+      await client.query(`INSERT INTO availability (vendor_id, day, slot, status) VALUES ($1, $2, $3, 'blocked')`, [vendor!.id, day, slot]);
+    });
+  }
+
+  async unblock(vendorUserId: string, day: string, slot: Slot) {
+    const res = await this.db.query(
+      `DELETE FROM availability a USING vendors v
+        WHERE a.vendor_id = v.id AND v.user_id = $1 AND a.day = $2 AND a.slot = $3 AND a.status = 'blocked'`,
+      [vendorUserId, day, slot],
+    );
+    if (!res.rowCount) throw new AppError('NOT_FOUND', 'This date is not blocked.', HttpStatus.NOT_FOUND);
+  }
+
+  // ---------- background job ----------
+
+  /**
+   * Runs every minute: expires unanswered requests and unpaid acceptances, and completes
+   * bookings whose event day is over (which schedules the vendor payout).
+   */
+  async sweep(): Promise<{ expired: number; completed: number }> {
+    let expired = 0;
+    const noReply = await this.db.query<{ id: string; customer_id: string; day: string }>(
+      `UPDATE bookings SET status = 'expired', updated_at = now()
+        WHERE status = 'requested' AND respond_by < now() RETURNING id, customer_id, day`,
+    );
+    for (const b of noReply.rows) {
+      expired++;
+      await notify(this.db, b.customer_id, 'booking_expired', {
+        en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${b.day}.` },
+        hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${b.day} के लिए दूसरा वेंडर चुनें।` },
+      }, { bookingId: b.id });
+    }
+
+    const unpaid = await this.db.query<{ id: string; customer_id: string; vendor_user_id: string; day: string }>(
+      `WITH e AS (
+         UPDATE bookings SET status = 'expired', updated_at = now()
+          WHERE status = 'accepted' AND pay_by < now() RETURNING id, customer_id, vendor_id, day
+       ), freed AS (DELETE FROM availability WHERE booking_id IN (SELECT id FROM e))
+       SELECT e.id, e.customer_id, v.user_id AS vendor_user_id, e.day FROM e JOIN vendors v ON v.id = e.vendor_id`,
+    );
+    for (const b of unpaid.rows) {
+      expired++;
+      await notify(this.db, b.customer_id, 'booking_expired', {
+        en: { title: 'Booking expired', body: `The advance for ${b.day} was not paid in time.` },
+        hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${b.day} का एडवांस समय पर नहीं दिया गया।` },
+      }, { bookingId: b.id });
+      await notify(this.db, b.vendor_user_id, 'booking_expired', {
+        en: { title: 'Date free again', body: `The customer did not pay for ${b.day}, so the date is free again.` },
+        hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${b.day} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
+      }, { bookingId: b.id });
+    }
+
+    // Payout = advance − commission. Newer vendors are paid 3 days after the event (time for
+    // complaints), regular vendors the next day, at 10 am India time.
+    const done = await this.db.query<{ id: string; vendor_user_id: string; payout_paise: number; release_after: Date }>(
+      `WITH c AS (
+         UPDATE bookings SET status = 'completed', updated_at = now()
+          WHERE status = 'confirmed' AND day < (now() AT TIME ZONE 'Asia/Kolkata')::date
+          RETURNING id, vendor_id, day, advance_paise - commission_paise AS payout_paise
+       ), p AS (
+         INSERT INTO payouts (booking_id, vendor_id, amount_paise, release_after)
+         SELECT c.id, c.vendor_id, c.payout_paise,
+                ((c.day + CASE WHEN (SELECT count(*) FROM bookings x WHERE x.vendor_id = c.vendor_id AND x.status = 'completed'
+                                       AND x.id NOT IN (SELECT id FROM c)) < $1 THEN 3 ELSE 1 END)
+                  + time '10:00') AT TIME ZONE 'Asia/Kolkata'
+           FROM c
+         ON CONFLICT (booking_id) DO NOTHING
+         RETURNING booking_id, release_after
+       )
+       SELECT c.id, v.user_id AS vendor_user_id, c.payout_paise, p.release_after
+         FROM c JOIN vendors v ON v.id = c.vendor_id JOIN p ON p.booking_id = c.id`,
+      [NEW_VENDOR_BOOKINGS],
+    );
+    for (const b of done.rows) {
+      const when = new Date(b.release_after).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
+      await notify(this.db, b.vendor_user_id, 'payout_scheduled', {
+        en: { title: 'Payout scheduled', body: `${rupees(b.payout_paise)} will reach your bank on ${when}.` },
+        hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
+      }, { bookingId: b.id });
+    }
+    return { expired, completed: done.rows.length };
+  }
+
+  // ---------- helpers ----------
+
+  private async lockBooking(
+    client: Queryable,
+    bookingId: string,
+    who: { customerId?: string; vendorUserId?: string },
+  ): Promise<BookingRow> {
+    const b = await this.db.one<BookingRow>(
+      client,
+      `SELECT b.id, b.event_id, b.customer_id, b.vendor_id, v.user_id AS vendor_user_id, b.status, b.day, b.slot,
+              b.amount_paise, b.advance_paise, b.commission_paise, b.respond_by, b.pay_by
+         FROM bookings b JOIN vendors v ON v.id = b.vendor_id
+        WHERE b.id = $1 AND ($2::uuid IS NULL OR b.customer_id = $2) AND ($3::uuid IS NULL OR v.user_id = $3)
+        FOR UPDATE OF b`,
+      [bookingId, who.customerId ?? null, who.vendorUserId ?? null],
+    );
+    if (!b) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
+    return b;
+  }
+
+  private assertRequested(b: BookingRow) {
+    if (b.status === 'requested' && b.respond_by < new Date()) {
+      throw new AppError('BOOKING_EXPIRED', 'This request has expired.', HttpStatus.CONFLICT);
+    }
+    if (b.status !== 'requested') {
+      throw new AppError('BOOKING_BAD_STATUS', 'This request has already been answered.', HttpStatus.CONFLICT, { status: b.status });
+    }
+  }
+
+  private async assertSlotFree(q: Queryable, vendorId: string, day: string, slot: Slot) {
+    const taken = await this.db.one<{ status: string }>(
+      q,
+      `SELECT status FROM availability
+        WHERE vendor_id = $1 AND day = $2 AND (slot = $3 OR slot = 'full' OR $3 = 'full') LIMIT 1`,
+      [vendorId, day, slot],
+    );
+    if (taken) throw new AppError('SLOT_TAKEN', 'The vendor is not free at this time.', HttpStatus.CONFLICT);
+  }
+
+  /** Ends a booking and frees the vendor's slot. */
+  private async close(q: Queryable, bookingId: string, status: BookingStatus, reason: string) {
+    await q.query(`UPDATE bookings SET status = $2, cancel_reason = $3, updated_at = now() WHERE id = $1`, [bookingId, status, reason]);
+    await q.query('DELETE FROM availability WHERE booking_id = $1', [bookingId]);
+  }
+
+  private async refundAdvance(q: Queryable, b: BookingRow, percent: number): Promise<number> {
+    const amount = refundPaise(b.advance_paise, percent);
+    if (amount === 0) return 0;
+    const paid = await this.db.one<{ razorpay_payment_id: string }>(
+      q,
+      `SELECT razorpay_payment_id FROM payments WHERE booking_id = $1 AND type = 'advance' AND status = 'paid'`,
+      [b.id],
+    );
+    await this.refund(q, b.id, paid!.razorpay_payment_id, amount, 'cancellation');
+    return amount;
+  }
+
+  /** The provider call is inside the transaction: if it fails, nothing is cancelled. */
+  private async refund(q: Queryable, bookingId: string, paymentId: string, amountPaise: number, why: string) {
+    const { refundId } = await this.gateway.refund(paymentId, amountPaise, { bookingId, reason: why });
+    await q.query(
+      `INSERT INTO payments (booking_id, type, amount_paise, razorpay_refund_id, status) VALUES ($1, 'refund', $2, $3, 'refunded')`,
+      [bookingId, amountPaise, refundId],
+    );
+    await q.query('UPDATE bookings SET refund_paise = refund_paise + $2 WHERE id = $1', [bookingId, amountPaise]);
+  }
+}

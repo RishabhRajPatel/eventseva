@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Vendor verification</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input,select,textarea{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.side{flex:1 1 15rem;background:#23262f;color:#ffffff;padding:1.5rem 1rem;box-sizing:border-box;display:flex;flex-direction:column;gap:0.25rem}
+.side a{display:flex;align-items:center;justify-content:space-between;padding:0.75rem;border-radius:0.75rem;color:#ffffff;text-decoration:none;font-size:0.9375rem}
+.side a.on{background:#263baa;font-weight:700}
+.side .n{background:#ffd6a5;color:#23262f;border-radius:999px;padding:0.125rem 0.5rem;font-size:0.75rem;font-weight:700}
+.main{flex:999 1 560px;min-width:0;padding:2rem;box-sizing:border-box;display:flex;flex-direction:column;gap:1.5rem}
+.box{background:#ffffff;border-radius:1rem;padding:1.25rem;box-sizing:border-box}
+.q{display:flex;flex-direction:column;gap:0.125rem;padding:0.875rem 1rem;border-radius:0.75rem;color:#23262f;text-decoration:none;font-size:0.875rem}
+.doc{display:flex;justify-content:space-between;align-items:center;gap:0.75rem;padding:0.75rem 1rem;border-radius:0.75rem;background:#fff4d6;font-size:0.9375rem}
+.btn{height:2.75rem;padding:0 1.25rem;border-radius:0.75rem;font-size:0.9375rem;font-weight:700}
+</style>
+</helmet>
+<div class="font-sans" style="min-height: 100vh; background: #fff4d6; color: #23262f; display: flex; flex-wrap: wrap">
+
+<nav class="side" aria-label="Admin">
+<div class="font-display" style="font-size: 1.5rem; font-weight: 700; padding: 0 0.75rem 1.25rem">EventSeva <span class="font-sans" style="font-size: 0.75rem; font-weight: 700; color: #d9b8ff">ADMIN</span></div>
+<a href="AdminDashboard.dc.html">Dashboard</a>
+<a href="#" class="on">Vendor verification <span class="n">[N]</span></a>
+<a href="AdminModeration.dc.html">Photo moderation <span class="n">[N]</span></a>
+<a href="AdminBookings.dc.html">Bookings</a>
+<a href="AdminPayments.dc.html">Payments + payouts</a>
+<a href="AdminComplaints.dc.html">Complaints <span class="n">[N]</span></a>
+<a href="#">Categories + cities</a>
+<a href="#">Audit log</a>
+</nav>
+
+<main class="main">
+<h1 class="font-display" style="font-size: 2rem; font-weight: 700">Vendor verification</h1>
+
+<div style="display: flex; flex-wrap: wrap; gap: 1.25rem; align-items: flex-start">
+
+<section class="box" style="flex: 1 1 16rem; display: flex; flex-direction: column; gap: 0.5rem">
+<div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 0.25rem"><h2 style="font-size: 1rem; font-weight: 700">Queue · purane pehle</h2><span style="font-size: 0.8125rem">[N] pending</span></div>
+<a href="#" class="q" style="background: #e8deff; outline: 2px solid #263baa"><b style="font-size: 0.9375rem">[Vendor naam] DJ</b><span>DJ · Civil Lines · 2 din se</span></a>
+<a href="#" class="q" style="background: #ffffff; border: 1px solid #e8deff"><b style="font-size: 0.9375rem">[Hall naam]</b><span>Hall · Naini · 1 din se</span></a>
+<a href="#" class="q" style="background: #ffffff; border: 1px solid #e8deff"><b style="font-size: 0.9375rem">[Halwai naam]</b><span>Halwai · Katra · 5 ghante se</span></a>
+<a href="#" class="q" style="background: #ffffff; border: 1px solid #e8deff"><b style="font-size: 0.9375rem">[Band naam]</b><span>Band · Jhunsi · 2 ghante se</span></a>
+</section>
+
+<section class="box" style="flex: 3 1 32rem; min-width: 0; display: flex; flex-direction: column; gap: 1.25rem">
+<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 1rem">
+<div style="display: flex; flex-direction: column; gap: 0.25rem"><h2 class="font-display" style="font-size: 1.5rem; font-weight: 700">[Vendor naam] DJ</h2><span style="font-size: 0.875rem">DJ / Sound · Civil Lines, Prayagraj · +91 98XXX XXX21</span></div>
+<span style="padding: 0.25rem 0.75rem; border-radius: 999px; background: #ffd6a5; font-size: 0.8125rem; font-weight: 700">Pending</span>
+</div>
+
+<div style="font-size: 0.9375rem; line-height: 1.5; border-radius: 0.75rem; background: #fff4d6; padding: 0.875rem 1rem">“[Vendor ka about text]”</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<h3 style="font-size: 1rem; font-weight: 700">Documents</h3>
+<div class="doc"><span><b>Aadhaar</b> · XXXX XXXX 4821</span><button type="button" class="btn" style="height: 2.5rem; border: 1.5px solid #263baa; background: #ffffff; color: #263baa">Dekho (5 min link)</button></div>
+<div class="doc"><span><b>PAN</b> · naam match: Haan</span><button type="button" class="btn" style="height: 2.5rem; border: 1.5px solid #263baa; background: #ffffff; color: #263baa">Dekho (5 min link)</button></div>
+<div class="doc"><span><b>Bank account</b> · penny-drop naam match</span><span style="padding: 0.25rem 0.625rem; border-radius: 999px; background: #b7f7d4; font-size: 0.75rem; font-weight: 700">Match</span></div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<h3 style="font-size: 1rem; font-weight: 700">Kaam ki photos (5)</h3>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.5rem">
+<div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #d9b8ff"></div><div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #e8deff"></div><div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #d9b8ff"></div><div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #e8deff"></div><div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #d9b8ff"></div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="rr" style="font-size: 0.875rem; font-weight: 700">Reject / hold ki wajah (vendor ko dikhegi)</label>
+<select id="rr" style="height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; background: #ffffff; padding: 0 1rem; font-size: 0.9375rem; color: #23262f; max-width: 28rem"><option>Wajah chuno…</option><option>Document saaf nahi hai</option><option>Naam match nahi karta</option><option>Photos kaam ki nahi lagti</option><option>Doosra kaaran</option></select>
+</div>
+
+<div style="display: flex; flex-wrap: wrap; gap: 0.75rem; padding-top: 0.5rem; border-top: 1px solid #e8deff">
+<button type="button" class="btn" style="border: none; background: #263baa; color: #ffffff">Approve, profile live karo</button>
+<button type="button" class="btn" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Hold</button>
+<button type="button" class="btn" style="border: 1.5px solid #23262f; background: #ffffff; color: #23262f">Reject</button>
+</div>
+<div style="font-size: 0.8125rem">Har action audit log me naam aur time ke saath record hoga.</div>
+</section>
+
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

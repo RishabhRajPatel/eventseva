@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Partner app – profile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.card{background:#ffffff;border-radius:1rem;padding:0.75rem 1rem;display:flex;flex-direction:column;gap:0.375rem;flex-shrink:0}
+.hd{display:flex;justify-content:space-between;align-items:baseline}
+.row{display:flex;justify-content:space-between;align-items:center;gap:0.75rem;min-height:2.25rem;border-top:1px solid #e8deff;font-size:0.9375rem}
+a.row{min-height:2.75rem}
+.lk{font-size:0.875rem;font-weight:700;text-decoration:none}
+.note{font-size:0.75rem;line-height:1.45}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="padding: 1.75rem 1.25rem 1rem; display: flex; gap: 0.875rem; align-items: center; flex-shrink: 0">
+<div style="width: 3.5rem; height: 3.5rem; border-radius: 1rem; background: #d9b8ff; flex-shrink: 0"></div>
+<div style="display: flex; flex-direction: column; gap: 0.25rem; flex-grow: 1; min-width: 0">
+<h1 class="font-display" style="font-size: 1.375rem; font-weight: 700">[Vendor name] DJ</h1>
+<div style="display: flex; gap: 0.375rem; align-items: center; font-size: 0.8125rem"><span style="padding: 0.125rem 0.5rem; border-radius: 999px; background: #b7f7d4; font-size: 0.75rem; font-weight: 700">Verified</span>★ [rating] · DJ / Sound</div>
+</div>
+</div>
+
+<div style="padding: 0 1.25rem 1rem; display: flex; flex-direction: column; gap: 0.75rem; flex-grow: 1; min-height: 0; overflow-y: auto">
+
+<a href="Vendor.dc.html" style="flex-shrink: 0; height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #263baa; background: #ffffff; color: #263baa; font-size: 0.9375rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 0.5rem"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg>See how customers see you</a>
+
+<section class="card">
+<div class="hd"><h2 style="font-size: 1rem; font-weight: 700">Services &amp; packages</h2><a href="#" class="lk">+ New</a></div>
+<div class="row"><span>Wedding night · DJ + lights · 5 hours</span><span style="font-weight: 700; color: #263baa">₹[price]</span></div>
+<div class="row"><span>Birthday party · DJ · 3 hours</span><span style="font-weight: 700; color: #263baa">₹[price]</span></div>
+<div class="note">Price and package changes go live instantly.</div>
+</section>
+
+<section class="card">
+<div class="hd"><h2 style="font-size: 1rem; font-weight: 700">Photos &amp; videos</h2><span style="font-size: 0.8125rem">[N] / 30</span></div>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.375rem">
+<div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #d9b8ff; position: relative"><span style="position: absolute; left: 0.25rem; bottom: 0.25rem; padding: 0 0.25rem; border-radius: 0.25rem; background: #ffffff; font-size: 0.75rem; font-weight: 700">Cover</span></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #e8deff"></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #d9b8ff"></div>
+<div style="aspect-ratio: 1 / 1; border-radius: 0.5rem; background: #ffd6a5; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; text-align: center; line-height: 1.2">In<br>review</div>
+<button type="button" aria-label="Add photo or video" style="aspect-ratio: 1 / 1; border-radius: 0.5rem; border: 1.5px dashed #263baa; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+</div>
+</section>
+
+<section class="card">
+<div class="hd"><h2 style="font-size: 1rem; font-weight: 700">Business info</h2><a href="#" class="lk">Change</a></div>
+<div class="row"><span>Category</span><span style="font-weight: 700">DJ / Sound</span></div>
+<div class="row"><span>Area</span><span style="font-weight: 700">Civil Lines, Prayagraj</span></div>
+<div class="note">Changing name, category or area needs admin approval again.</div>
+</section>
+
+<section class="card">
+<div class="hd"><h2 style="font-size: 1rem; font-weight: 700">Bank account</h2><a href="#" class="lk">Change</a></div>
+<div class="row"><span>[Bank name] · XXXX 4521</span><span style="padding: 0.125rem 0.5rem; border-radius: 999px; background: #b7f7d4; font-size: 0.75rem; font-weight: 700">Name match</span></div>
+<div class="note">If you change bank, payouts pause until it's verified.</div>
+</section>
+
+<section class="card" style="padding-top: 0.25rem; padding-bottom: 0.25rem; gap: 0">
+<a href="VendorEarnings.dc.html" class="row" style="border-top: none; color: #23262f; text-decoration: none"><span>Earnings &amp; payouts</span><span style="font-weight: 700; color: #263baa">₹[X] this month</span></a>
+<a href="Language.dc.html" class="row" style="color: #23262f; text-decoration: none"><span>Language</span><span style="font-size: 0.875rem">English · <span lang="hi" style="font-family: 'Noto Sans Devanagari', sans-serif">हिंदी</span></span></a>
+<a href="PartnerChat.dc.html" class="row" style="color: #23262f; text-decoration: none"><span>Help &amp; EventSeva team</span><span aria-hidden="true">›</span></a>
+<a href="PartnerLogin.dc.html" class="row" style="color: #23262f; text-decoration: none"><span>Logout</span><span aria-hidden="true">›</span></a>
+</section>
+
+</div>
+
+<nav aria-label="Vendor" style="background: #ffffff; border-top: 1px solid #e8deff; height: 4.25rem; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: center; text-align: center; font-size: 0.75rem; flex-shrink: 0">
+<a href="VendorDash.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>Dashboard</a>
+<a href="VendorRequests.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6v3H9zM6 6h12v15H6z"></path></svg>Bookings</a>
+<a href="VendorCalendar.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg>Calendar</a>
+<a href="PartnerChat.dc.html" style="color: #23262f; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path></svg>Chat</a>
+<a href="#" style="color: #263baa; text-decoration: none; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; font-weight: 700"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"></path></svg>Profile</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

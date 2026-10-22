@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="hi-Latn">
+<head>
+<meta charset="utf-8">
+<title>Admin login</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="min-height: 100vh; background: #23262f; color: #23262f; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem; box-sizing: border-box">
+<div style="width: 100%; max-width: 26rem; background: #ffffff; border-radius: 1.25rem; padding: 2rem; box-sizing: border-box; display: flex; flex-direction: column; gap: 1.25rem">
+
+<div style="display: flex; flex-direction: column; gap: 0.25rem">
+<div class="font-display" style="font-size: 1.75rem; font-weight: 700; color: #263baa">EventSeva</div>
+<h1 style="font-size: 1.125rem; font-weight: 700">Admin panel</h1>
+<div style="font-size: 0.875rem">Sirf EventSeva team ke liye</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="em" style="font-size: 0.875rem; font-weight: 700">Email</label>
+<input id="em" type="email" placeholder="naam@eventseva.in" style="height: 3rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; padding: 0 1rem; font-size: 1rem; color: #23262f; box-sizing: border-box">
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="pw" style="font-size: 0.875rem; font-weight: 700">Password</label>
+<input id="pw" type="password" value="password" style="height: 3rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; padding: 0 1rem; font-size: 1rem; color: #23262f; box-sizing: border-box">
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 0.5rem">
+<label for="totp" style="font-size: 0.875rem; font-weight: 700">2FA code (Authenticator app)</label>
+<input id="totp" type="text" inputmode="numeric" maxlength="6" placeholder="6 digit" style="height: 3rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; padding: 0 1rem; font-size: 1.125rem; letter-spacing: 0.3em; color: #23262f; box-sizing: border-box">
+</div>
+
+<a href="AdminDashboard.dc.html" style="height: 3.25rem; border-radius: 0.75rem; background: #263baa; color: #ffffff; font-size: 1rem; font-weight: 700; text-decoration: none; display: flex; align-items: center; justify-content: center">Login</a>
+
+<div style="display: flex; gap: 0.5rem; align-items: center; font-size: 0.8125rem; line-height: 1.45; border-radius: 0.75rem; background: #fff4d6; padding: 0.75rem">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+<span>5 galat koshish par account 15 minute ke liye lock. Har login record hota hai.</span>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

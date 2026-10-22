@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Partner app – chat</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+</style>
+</helmet>
+<div class="font-sans" style="width: 390px; height: 844px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="padding: 1.5rem 1.25rem 0.75rem; display: flex; gap: 0.75rem; align-items: center; background: #ffffff; border-bottom: 1px solid #e8deff">
+<a href="VendorRequests.dc.html" aria-label="Back" style="width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; background: #e8deff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></a>
+<div style="width: 2.5rem; height: 2.5rem; border-radius: 999px; background: #d9b8ff; flex-shrink: 0"></div>
+<div style="display: flex; flex-direction: column; flex-grow: 1"><h1 style="font-size: 1.0625rem; font-weight: 700">Rahul (customer)</h1><span style="font-size: 0.75rem">Rahul's Wedding · 12 Feb</span></div>
+<button type="button" aria-label="Call via app" style="width: 2.75rem; height: 2.75rem; border-radius: 0.75rem; border: 1.5px solid #263baa; background: #ffffff; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"></path></svg></button>
+</div>
+
+<div style="margin: 0.75rem 1.25rem 0; border-radius: 0.75rem; background: #e8deff; padding: 0.625rem 0.875rem; font-size: 0.75rem; line-height: 1.45; display: flex; gap: 0.5rem; align-items: center">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+<span>Phone numbers are shared once the booking is confirmed. Until then, chat and call in the app.</span>
+</div>
+
+<div style="padding: 1rem 1.25rem; display: flex; flex-direction: column; gap: 0.625rem; flex-grow: 1; font-size: 0.9375rem; line-height: 1.45">
+<div style="align-self: center; font-size: 0.75rem; padding: 0.25rem 0.625rem; border-radius: 999px; background: #ffffff">Today</div>
+<div style="align-self: flex-start; max-width: 75%; background: #ffffff; padding: 0.625rem 0.875rem; border-radius: 1rem 1rem 1rem 0.25rem">Hi, I need a DJ for the night of 12 Feb. Do you provide lights too?</div>
+<div style="align-self: flex-end; max-width: 75%; background: #263baa; color: #ffffff; padding: 0.625rem 0.875rem; border-radius: 1rem 1rem 0.25rem 1rem">Yes, lights are included in the Wedding night package.</div>
+<div style="align-self: flex-start; max-width: 75%; background: #ffffff; padding: 0.625rem 0.875rem; border-radius: 1rem 1rem 1rem 0.25rem">Can you arrive by 7? The baraat starts at 7:30.</div>
+<div style="align-self: flex-end; max-width: 75%; background: #263baa; color: #ffffff; padding: 0.625rem 0.875rem; border-radius: 1rem 1rem 0.25rem 1rem">Sure, we'll be set up by 6:30.</div>
+<div style="align-self: flex-end; font-size: 0.75rem">10:42 · Seen</div>
+</div>
+
+<div style="padding: 0.75rem 1.25rem 1.25rem; background: #ffffff; border-top: 1px solid #e8deff; display: flex; gap: 0.5rem; align-items: center">
+<label style="flex-grow: 1; height: 3rem; border-radius: 999px; background: #fff4d6; display: flex; align-items: center; padding: 0 1rem"><input type="text" placeholder="Type a message…" aria-label="Message" style="border: none; outline: none; background: transparent; flex-grow: 1; font-size: 1rem; color: #23262f"></label>
+<button type="button" aria-label="Send" style="width: 3rem; height: 3rem; border-radius: 999px; border: none; background: #263baa; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-6z"></path></svg></button>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

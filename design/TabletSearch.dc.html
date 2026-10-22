@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tablet search</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&amp;family=Playfair+Display:wght@600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+.font-sans{font-family:'Lato',system-ui,sans-serif}
+.font-display{font-family:'Playfair Display',Georgia,serif}
+button,input{font-family:inherit}
+h1,h2,h3{margin:0}
+a{color:#263baa}a:hover{color:#23262f}
+.card{background:#ffffff;border-radius:1rem;overflow:hidden}
+.card .b{padding:0.75rem 1rem;display:flex;flex-direction:column;gap:0.25rem}
+.chip{flex-shrink:0;padding:0.5rem 1rem;border-radius:999px;border:1px solid #d9b8ff;font-size:0.875rem;font-weight:700}
+.tab{color:#23262f;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:0.25rem}
+</style>
+</helmet>
+<div class="font-sans" style="width: 834px; height: 1194px; overflow: hidden; background: #fff4d6; color: #23262f; display: flex; flex-direction: column">
+
+<div style="padding: 2rem 1.5rem 1rem; background: #ffffff; border-bottom: 1px solid #e8deff; display: flex; flex-direction: column; gap: 1rem">
+<div style="display: flex; gap: 1rem; align-items: center">
+<a href="TabletHome.dc.html" aria-label="Back" style="width: 3rem; height: 3rem; border-radius: 0.75rem; background: #e8deff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg></a>
+<label style="flex-grow: 1; height: 3rem; border-radius: 0.75rem; border: 1.5px solid #d9b8ff; display: flex; align-items: center; gap: 0.625rem; padding: 0 1rem"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input type="text" value="DJ" aria-label="Search" style="border: none; outline: none; flex-grow: 1; font-size: 1.0625rem; color: #23262f; background: transparent"></label>
+</div>
+<div style="display: flex; gap: 0.625rem; flex-wrap: wrap">
+<span class="chip" style="background: #263baa; color: #ffffff; border-color: #263baa">12 Feb</span>
+<span class="chip">Budget</span><span class="chip">★ 4+</span><span class="chip">Verified</span><span class="chip">Nearby</span><span class="chip">Sort: Popular</span>
+</div>
+</div>
+
+<div style="padding: 1.25rem 1.5rem 0.75rem; display: flex; justify-content: space-between; align-items: baseline">
+<h1 class="font-display" style="font-size: 1.75rem; font-weight: 700">DJ · Prayagraj</h1>
+<span style="font-size: 0.875rem">[N] vendors free on 12 Feb</span>
+</div>
+
+<div style="padding: 0.5rem 1.5rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; align-items: start; flex-grow: 1; overflow: hidden">
+<div style="display: flex; flex-direction: column; gap: 1.25rem">
+<div class="card"><div style="aspect-ratio: 3 / 4; background: #d9b8ff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name] DJ</span><span style="font-size: 0.8125rem">★ [rating] · Civil Lines</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+<div class="card"><div style="aspect-ratio: 4 / 3; background: #e8deff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name] Sound</span><span style="font-size: 0.8125rem">★ [rating] · Naini</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1.25rem">
+<div class="card"><div style="aspect-ratio: 1 / 1; background: #e8deff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name]</span><span style="font-size: 0.8125rem">★ [rating] · Katra</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+<div class="card"><div style="aspect-ratio: 3 / 4; background: #d9b8ff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name] Events</span><span style="font-size: 0.8125rem">★ [rating] · Jhunsi</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 1.25rem">
+<div class="card"><div style="aspect-ratio: 4 / 5; background: #d9b8ff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name] Beats</span><span style="font-size: 0.8125rem">★ [rating] · Kydganj</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+<div class="card"><div style="aspect-ratio: 16 / 9; background: #e8deff"></div><div class="b"><span style="font-size: 1rem; font-weight: 700">[Vendor name] Music</span><span style="font-size: 0.8125rem">★ [rating] · Phaphamau</span><span style="font-size: 0.9375rem; font-weight: 700; color: #263baa">From ₹[price]</span></div></div>
+</div>
+</div>
+
+<nav aria-label="Main" style="background: #ffffff; border-top: 1px solid #e8deff; height: 4.5rem; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; text-align: center; font-size: 0.8125rem">
+<a href="TabletHome.dc.html" class="tab" style="color: #263baa; font-weight: 700"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#263baa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7v9H3z"></path></svg>Home</a>
+<a href="Bookings.dc.html" class="tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"></rect><path d="M4 10h16M9 3v4M15 3v4"></path></svg>My Events</a>
+<a href="Chat.dc.html" class="tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"></path></svg>Chat</a>
+<a href="Profile.dc.html" class="tab"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#23262f" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"></path></svg>Profile</a>
+</nav>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":834,"height":1194}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
