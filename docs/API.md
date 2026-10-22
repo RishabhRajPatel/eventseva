@@ -71,7 +71,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 | Route | Notes |
 |---|---|
-| `GET /v1/vendors?category=dj&cityId=1&page=1&limit=20` | `Paged<VendorCard>`, approved only. Featured first, then by rating |
+| `GET /v1/vendors?category=dj&cityId=1&q=raj&page=1&limit=20` | `Paged<VendorCard>`, approved only. `q` searches name and area. Featured first, then by rating |
 | `GET /v1/vendors/:id` | `VendorDetail` (address hidden; approved media only). `VENDOR_NOT_FOUND` 404 |
 | `GET /v1/vendors/:id/reviews?page=` | `Paged<Review>` |
 | `GET /v1/vendors/:id/availability?month=2026-11` | `{month, busy: [{day, slot}]}` for the date picker |
@@ -118,6 +118,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 - **Venue:** `event.guestCount` is always shown. The vendor sees `event.venueAddress` only once the booking is
   `confirmed`.
 - **Chat:** `conversationId` is the chat between the two, or null if there is none yet.
+- **Other fields:** `vendor.categorySlug` is used for the icon. `reviewed` tells whether a completed booking already has a review.
 - **Money shown:** `amountPaise` total, `advancePaise` paid in the app (25%), `balancePaise` paid to the vendor
   after the event.
 

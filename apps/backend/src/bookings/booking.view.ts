@@ -9,13 +9,15 @@ const SELECT = `
          b.refund_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
          e.id AS event_id, e.title AS event_title, e.event_type, e.guest_count, e.venue_address,
          (SELECT c.id FROM conversations c WHERE c.customer_id = b.customer_id AND c.vendor_id = b.vendor_id) AS conversation_id,
-         v.id AS vendor_id, v.business_name, vu.phone AS vendor_phone,
+         v.id AS vendor_id, v.business_name, vu.phone AS vendor_phone, cat.slug AS category_slug,
+         EXISTS (SELECT 1 FROM reviews r WHERE r.booking_id = b.id) AS reviewed,
          cu.name AS customer_name, cu.phone AS customer_phone,
          COALESCE(s.title, p.title) AS item_title, CASE WHEN s.id IS NULL THEN 'package' ELSE 'service' END AS item_type,
          COALESCE(s.id, p.id) AS item_id, COALESCE(s.unit::text, 'package') AS unit
     FROM bookings b
     JOIN events e ON e.id = b.event_id
     JOIN vendors v ON v.id = b.vendor_id
+    JOIN categories cat ON cat.id = v.category_id
     JOIN users vu ON vu.id = v.user_id
     JOIN users cu ON cu.id = b.customer_id
     LEFT JOIN services s ON s.id = b.service_id
@@ -50,7 +52,14 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     respondBy: r.status === 'requested' ? r.respond_by : null,
     payBy: r.status === 'accepted' ? r.pay_by : null,
     cancelReason: r.cancel_reason,
-    vendor: { id: r.vendor_id, businessName: r.business_name, phone: viewer === 'customer' && share ? r.vendor_phone : null },
+    vendor: {
+      id: r.vendor_id,
+      businessName: r.business_name,
+      categorySlug: r.category_slug,
+      phone: viewer === 'customer' && share ? r.vendor_phone : null,
+    },
+    /** Completed bookings: whether the customer has already written a review. */
+    reviewed: r.reviewed,
     customer: viewer === 'vendor' ? { name: r.customer_name, phone: share ? r.customer_phone : null } : undefined,
     createdAt: r.created_at,
   };

@@ -1,0 +1,174 @@
+// Home (Home / HomeHindi / TabletHome boards).
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { api } from '../../lib/api';
+import { CITY } from '../../lib/config';
+import { keys } from '../../lib/queryClient';
+import { useMe } from '../../lib/session';
+import { c, radius, space } from '../../lib/theme';
+import { useCategories, useNotificationsBadge } from '../../hooks/useCatalog';
+import { useLayout } from '../../hooks/useLayout';
+import { AppText } from '../../components/AppText';
+import { Pill, SectionTitle } from '../../components/Bits';
+import { Button, IconButton } from '../../components/Button';
+import { CategoryTile, useCategoryLabel } from '../../components/CategoryTile';
+import { Icon } from '../../components/Icon';
+import { ErrorState, isOffline, Loading } from '../../components/States';
+import { VendorCard, VendorRow } from '../../components/VendorCards';
+
+const openSearch = (params: { category?: string; focus?: string } = {}) => router.navigate({ pathname: '/search', params });
+
+export default function HomeScreen() {
+  const { t } = useTranslation();
+  const me = useMe();
+  const { isTablet, gridColumns, gutter, width, hasRail } = useLayout();
+  const categories = useCategories();
+  const top = useQuery({ queryKey: [...keys.vendors(), 'top'], queryFn: () => api.vendors({ limit: isTablet ? 8 : 5 }) });
+  const unread = useNotificationsBadge();
+  const label = useCategoryLabel();
+  const [showAll, setShowAll] = useState(false);
+
+  const refresh = () => Promise.all([categories.refetch(), top.refetch()]);
+  if (isOffline(categories.error) && isOffline(top.error)) {
+    return (
+      <SafeAreaView style={styles.flex} edges={['top']}>
+        <ErrorState error={categories.error} onRetry={refresh} />
+      </SafeAreaView>
+    );
+  }
+
+  const perRow = isTablet ? 8 : 4;
+  const cats = categories.data?.items ?? [];
+  const visible = showAll || cats.length <= perRow ? cats : cats.slice(0, perRow - 1);
+  const firstName = (me.name ?? '').split(' ')[0];
+  const contentWidth = width - (hasRail ? 96 : 0) - gutter * 2;
+  const cardWidth = Math.floor((contentWidth - 20 * (gridColumns - 1)) / gridColumns);
+
+  const searchBox = (
+    <Pressable
+      accessibilityRole="search"
+      accessibilityLabel={t('home.searchLabel')}
+      onPress={() => openSearch({ focus: '1' })}
+      style={[styles.search, isTablet && styles.searchTablet]}
+    >
+      <Icon name="search" size={18} />
+      <AppText size="md" color={c.textMuted} numberOfLines={1}>
+        {t('home.searchPlaceholder')}
+      </AppText>
+    </Pressable>
+  );
+
+  return (
+    <View style={styles.flex}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={top.isRefetching} onRefresh={() => void refresh()} colors={[c.royal]} />}
+      >
+        {isTablet ? (
+          <SafeAreaView edges={['top']} style={[styles.tabletHead, { paddingHorizontal: gutter }]}>
+            <View style={styles.flex}>
+              <AppText size={14}>{t('common.city')}</AppText>
+              <AppText variant="display" size={32} accessibilityRole="header">
+                {t('home.hello', { name: firstName })}
+              </AppText>
+            </View>
+            {searchBox}
+            <IconButton icon="bell" label={t('notifications.title')} onPress={() => router.push('/notifications')} tone="lavender" badge={unread} />
+          </SafeAreaView>
+        ) : (
+          <SafeAreaView edges={['top']} style={[styles.header, { paddingHorizontal: gutter }]}>
+            <View style={styles.headRow}>
+              <View style={styles.flex}>
+                <View style={styles.city}>
+                  <Icon name="pin" size={14} color={c.white} />
+                  <AppText size="sm" color={c.white}>
+                    {t('common.city')}
+                  </AppText>
+                </View>
+                <AppText variant="display" size="xxl" color={c.white} accessibilityRole="header" numberOfLines={1}>
+                  {t('home.hello', { name: firstName })}
+                </AppText>
+              </View>
+              <IconButton icon="bell" label={t('notifications.title')} onPress={() => router.push('/notifications')} iconColor={c.royal} badge={unread} />
+            </View>
+            {searchBox}
+          </SafeAreaView>
+        )}
+
+        <View style={[styles.body, { paddingHorizontal: gutter }]}>
+          <View style={styles.section}>
+            <SectionTitle title={t('home.services')} />
+            {categories.isPending ? (
+              <Loading />
+            ) : (
+              <View style={styles.grid}>
+                {visible.map((cat) => (
+                  <View key={cat.slug} style={{ width: `${100 / perRow}%` }}>
+                    <CategoryTile slug={cat.slug} label={label(cat.slug, cat.name)} onPress={() => openSearch({ category: cat.slug })} size={isTablet ? 72 : 60} />
+                  </View>
+                ))}
+                {cats.length > perRow ? (
+                  <View style={{ width: `${100 / perRow}%` }}>
+                    <CategoryTile slug="more" more label={showAll ? t('home.less') : t('home.more')} onPress={() => setShowAll((s) => !s)} size={isTablet ? 72 : 60} />
+                  </View>
+                ) : null}
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.banner, isTablet && styles.bannerTablet]}>
+            <View style={[styles.bannerText, isTablet && styles.flex]}>
+              <Pill label={t('home.bannerTag')} tone="peach" />
+              <AppText variant="display" size={22}>
+                {t('home.bannerTitle')}
+              </AppText>
+            </View>
+            <Button label={t('home.bannerAction')} variant="dark" size="md" onPress={() => router.push('/event/new')} style={styles.bannerButton} />
+          </View>
+
+          <View style={styles.section}>
+            <SectionTitle title={t('home.topVendors')} action={t('home.seeAll')} onAction={() => openSearch()} />
+            {top.isPending ? (
+              <Loading />
+            ) : top.error ? (
+              <ErrorState error={top.error} onRetry={() => top.refetch()} />
+            ) : top.data.items.length === 0 ? (
+              <AppText size="md">{t('home.noVendors')}</AppText>
+            ) : isTablet ? (
+              <View style={styles.cardGrid}>
+                {top.data.items.map((v) => (
+                  <VendorCard key={v.id} vendor={v} width={cardWidth} />
+                ))}
+              </View>
+            ) : (
+              top.data.items.map((v) => <VendorRow key={v.id} vendor={v} city={CITY.name} />)
+            )}
+          </View>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  scroll: { paddingBottom: space.xxxl },
+  header: { backgroundColor: c.royal, paddingTop: space.xxl, paddingBottom: space.xxl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl, gap: space.lg },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  city: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  tabletHead: { flexDirection: 'row', alignItems: 'center', gap: space.xxl, paddingTop: space.xxxl },
+  search: { minHeight: 48, borderRadius: radius.md, backgroundColor: c.white, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
+  searchTablet: { flexBasis: 448, flexShrink: 1, minHeight: 52, borderWidth: 1.5, borderColor: c.lilac },
+  body: { paddingTop: space.xl, gap: space.xl },
+  section: { gap: space.md },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.md },
+  banner: { borderRadius: 18, backgroundColor: c.lilac, padding: 18, gap: 10 },
+  bannerTablet: { flexDirection: 'row', alignItems: 'center', gap: space.lg, padding: space.xxl },
+  bannerText: { gap: 10 },
+  bannerButton: { alignSelf: 'flex-start' },
+  cardGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 },
+});

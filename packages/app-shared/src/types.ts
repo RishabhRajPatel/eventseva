@@ -254,7 +254,9 @@ export interface Booking {
   payBy: string | null;
   cancelReason: string | null;
   /** phone is null until the advance is paid. */
-  vendor: { id: string; businessName: string; phone: string | null };
+  vendor: { id: string; businessName: string; categorySlug: string; phone: string | null };
+  /** Whether the customer already reviewed this (completed) booking. */
+  reviewed: boolean;
   customer?: { name: string | null; phone: string | null };
   createdAt: string;
 }

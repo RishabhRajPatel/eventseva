@@ -290,6 +290,9 @@ describe('vendor onboarding and approval', () => {
       expect(all.hasMore).toBe(false);
 
       expect((await t.http().get('/v1/vendors?category=hall').expect(200)).body.items).toEqual([]);
+      expect((await t.http().get('/v1/vendors?q=raj').expect(200)).body.items).toHaveLength(1);
+      expect((await t.http().get('/v1/vendors?q=civil').expect(200)).body.items).toHaveLength(1);
+      expect((await t.http().get('/v1/vendors?q=100%25').expect(200)).body.items).toEqual([]);
       expect((await t.http().get(`/v1/vendors?category=dj&cityId=${cityId}`).expect(200)).body.items).toHaveLength(1);
 
       const hi = (await t.http().get('/v1/vendors').set('Accept-Language', 'hi').expect(200)).body;

@@ -8,6 +8,8 @@ import { loadVendor } from './vendor.queries';
 
 class VendorSearchQuery {
   @IsOptional() @IsString() @MaxLength(40) category?: string;
+  /** Text search on business name and area. */
+  @IsOptional() @IsString() @MaxLength(60) q?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) cityId?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number;
@@ -41,9 +43,10 @@ export class VendorsController {
         WHERE v.status = 'approved'
           AND ($1::text IS NULL OR c.slug = $1)
           AND ($2::int IS NULL OR v.city_id = $2)
+          AND ($5::text IS NULL OR v.business_name ILIKE '%' || $5 || '%' OR v.area ILIKE '%' || $5 || '%')
         ORDER BY (v.featured_until > now()) IS TRUE DESC, v.rating_avg DESC, v.rating_count DESC, v.approved_at DESC, v.id
         LIMIT $3 OFFSET $4`,
-      [query.category ?? null, query.cityId ?? null, limit + 1, (page - 1) * limit],
+      [query.category ?? null, query.cityId ?? null, limit + 1, (page - 1) * limit, query.q?.trim().replace(/[%_\\]/g, '\\$&') || null],
     );
     return {
       items: rows.slice(0, limit).map((r) => ({ ...r, isFeatured: !!r.isFeatured })),

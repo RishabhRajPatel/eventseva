@@ -70,7 +70,9 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
       await sweep();
 
       await as(customer).post(`/v1/bookings/${early}/review`, { rating: 6 }).expect(400);
+      expect((await as(customer).get(`/v1/bookings/${early}`)).body).toMatchObject({ reviewed: false, vendor: { categorySlug: 'dj' } });
       const r = (await as(customer).post(`/v1/bookings/${early}/review`, { rating: 4, comment: 'Great sound, came on time' }).expect(201)).body;
+      expect((await as(customer).get(`/v1/bookings/${early}`)).body.reviewed).toBe(true);
       expect((await as(customer).post(`/v1/bookings/${early}/review`, { rating: 5 }).expect(409)).body.error.code).toBe('REVIEW_EXISTS');
 
       const v = (await t.http().get(`/v1/vendors/${vendorId}`).expect(200)).body;
