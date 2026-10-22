@@ -108,12 +108,12 @@ export default function HomeScreen() {
               <View style={styles.grid}>
                 {visible.map((cat) => (
                   <View key={cat.slug} style={{ width: `${100 / perRow}%` }}>
-                    <CategoryTile slug={cat.slug} label={label(cat.slug, cat.name)} onPress={() => openSearch({ category: cat.slug })} size={isTablet ? 72 : 60} />
+                    <CategoryTile icon={cat.icon} label={label(cat.slug, cat.name)} onPress={() => openSearch({ category: cat.slug })} size={isTablet ? 72 : 60} />
                   </View>
                 ))}
                 {cats.length > perRow ? (
                   <View style={{ width: `${100 / perRow}%` }}>
-                    <CategoryTile slug="more" more label={showAll ? t('home.less') : t('home.more')} onPress={() => setShowAll((s) => !s)} size={isTablet ? 72 : 60} />
+                    <CategoryTile icon="more" more label={showAll ? t('home.less') : t('home.more')} onPress={() => setShowAll((s) => !s)} size={isTablet ? 72 : 60} />
                   </View>
                 ) : null}
               </View>

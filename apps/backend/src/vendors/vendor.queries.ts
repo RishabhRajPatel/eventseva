@@ -23,6 +23,7 @@ interface VendorRow {
   category_id: number;
   category_slug: string;
   category_name: string;
+  category_icon: string;
   city_id: number;
   city_name: string;
   area: string | null;
@@ -51,7 +52,7 @@ export async function loadVendor(
   audience: 'public' | 'owner' | 'admin',
 ) {
   const { rows } = await q.query<VendorRow>(
-    `SELECT v.*, c.slug AS category_slug, ${categoryName(lang)} AS category_name, ci.name AS city_name
+    `SELECT v.*, c.slug AS category_slug, c.icon AS category_icon, ${categoryName(lang)} AS category_name, ci.name AS city_name
        FROM vendors v JOIN categories c ON c.id = v.category_id JOIN cities ci ON ci.id = v.city_id
       WHERE v.id = $1 ${audience === 'public' ? "AND v.status = 'approved'" : ''}`,
     [vendorId],
@@ -85,7 +86,7 @@ export async function loadVendor(
   return {
     id: v.id,
     businessName: v.business_name,
-    category: { id: v.category_id, slug: v.category_slug, name: v.category_name },
+    category: { id: v.category_id, slug: v.category_slug, name: v.category_name, icon: v.category_icon },
     city: { id: v.city_id, name: v.city_name },
     area: v.area,
     address: audience === 'public' ? null : v.address,

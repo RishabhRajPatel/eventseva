@@ -49,7 +49,7 @@ export default function PhotosScreen() {
           >
             <VendorImage
               media={item}
-              slug={vendor.data.category.slug}
+              icon={vendor.data.category.icon}
               width={width}
               height={Math.min(height, (width * item.height) / Math.max(1, item.width))}
               mode="zoom"

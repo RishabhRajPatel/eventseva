@@ -31,7 +31,7 @@ export class VendorsController {
     const limit = query.limit ?? 20;
     const { rows } = await this.db.query(
       `SELECT v.id, v.business_name AS "businessName", v.area,
-              json_build_object('slug', c.slug, 'name', ${lang === 'hi' ? 'c.name_hi' : 'c.name_en'}) AS category,
+              json_build_object('slug', c.slug, 'icon', c.icon, 'name', ${lang === 'hi' ? 'c.name_hi' : 'c.name_en'}) AS category,
               v.rating_avg::float AS "ratingAvg", v.rating_count AS "ratingCount",
               v.featured_until > now() AS "isFeatured",
               (SELECT json_build_object('publicId', m.public_id, 'width', m.width, 'height', m.height, 'blurhash', m.blurhash)

@@ -103,7 +103,7 @@ export interface VendorCard {
   id: string;
   businessName: string;
   area: string | null;
-  category: { slug: string; name: string };
+  category: { slug: string; name: string; icon: string };
   ratingAvg: number;
   ratingCount: number;
   isFeatured: boolean;
@@ -133,7 +133,7 @@ export interface Package {
 export interface VendorDetail {
   id: string;
   businessName: string;
-  category: { id: number; slug: string; name: string };
+  category: { id: number; slug: string; name: string; icon: string };
   city: { id: number; name: string };
   area: string | null;
   /** null for the public. */
@@ -254,7 +254,7 @@ export interface Booking {
   payBy: string | null;
   cancelReason: string | null;
   /** phone is null until the advance is paid. */
-  vendor: { id: string; businessName: string; categorySlug: string; phone: string | null };
+  vendor: { id: string; businessName: string; categorySlug: string; categoryIcon: string; phone: string | null };
   /** Whether the customer already reviewed this (completed) booking. */
   reviewed: boolean;
   customer?: { name: string | null; phone: string | null };

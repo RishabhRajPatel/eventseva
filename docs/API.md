@@ -64,7 +64,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `PATCH /v1/me` | `{name?, language?: 'en'\|'hi', cityId?}` → `Me`. `CITY_NOT_FOUND` |
 | `DELETE /v1/me` | `{confirm: 'DELETE'}` → 204. Deletes the account (Google Play requirement). `ACCOUNT_HAS_ACTIVE_BOOKINGS` 409 (with `bookings` count), `ACCOUNT_HAS_PENDING_PAYOUT` 409 |
 | `GET /v1/cities` | `{items: City[]}` (only Prayagraj for now) |
-| `GET /v1/categories` | `{items: Category[], language}`, 12 items, icons by `slug`: hall, dj, camera, halwai, catering, band, car, decor, hotel, bartender, makeup, other |
+| `GET /v1/categories` | `{items: Category[], language}`, active categories in admin order. Today: DJ & Sound, Lighting & Decoration, Cook & Catering, Bartan & Kitchen Equipment, Tent & Furniture, Wedding & Event Planners, Photography & Entertainment. Draw `icon` (one of `CATEGORY_ICONS` in `@eventseva/core`, unknown → `other`); never hard-code slugs, because admins add categories |
 
 ## Customer app
 
@@ -228,6 +228,10 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere |
 | `GET /v1/admin/media?status=pending&page=` · `POST …/:id/approve` · `POST …/:id/reject {reason}` | verifier | photo moderation |
 | `POST /v1/admin/reviews/:id/hide {reason}` | support | |
+| `GET /v1/admin/categories` | super | all categories (hidden too) with vendor counts, plus allowed `icons` and `units` |
+| `POST /v1/admin/categories` | super | `{nameEn, nameHi, icon, defaultUnit, slug?}`; added at the end. `CATEGORY_EXISTS` 409 |
+| `PATCH /v1/admin/categories/:id` | super | `{nameEn?, nameHi?, icon?, defaultUnit?, isActive?}`; hide instead of delete |
+| `PUT /v1/admin/categories/order` | super | `{ids}`: the order shown in the apps |
 
 ## Running locally
 

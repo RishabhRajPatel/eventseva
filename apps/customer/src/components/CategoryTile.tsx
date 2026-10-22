@@ -4,22 +4,22 @@ import { c, radius, space } from '../lib/theme';
 import { AppText } from './AppText';
 import { categoryIcon, Icon } from './Icon';
 
-const SHORT = ['hall', 'dj', 'camera', 'halwai', 'catering', 'band', 'car', 'decor', 'hotel', 'bartender', 'makeup', 'other'] as const;
+const SHORT = ['dj', 'decor', 'catering', 'bartan', 'tent', 'planner', 'camera', 'hall', 'halwai', 'band', 'car', 'hotel', 'bartender', 'makeup', 'other'] as const;
 type ShortSlug = (typeof SHORT)[number];
 const hasShort = (slug: string): slug is ShortSlug => (SHORT as readonly string[]).includes(slug);
 
-/** Short label for the grid ("Cook" instead of "Cook (halwai)"); the API name otherwise. */
+/** Short label for the grid ("Bartan" instead of "Bartan & Kitchen Equipment"); the API name for categories an admin added. */
 export function useCategoryLabel() {
   const { t } = useTranslation();
   return (slug: string, apiName: string) => (hasShort(slug) ? t(`categoryShort.${slug}`) : apiName);
 }
 
 /** Lavender rounded square with the category icon and its name (Home board). */
-export function CategoryTile({ slug, label, onPress, size = 60, more }: { slug: string; label: string; onPress: () => void; size?: number; more?: boolean }) {
+export function CategoryTile({ icon, label, onPress, size = 60, more }: { icon: string; label: string; onPress: () => void; size?: number; more?: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={({ pressed }) => [styles.tile, pressed && { opacity: 0.8 }]}>
       <View style={[styles.square, { width: size, height: size }, more && styles.more]}>
-        <Icon name={more ? 'more' : categoryIcon(slug)} size={Math.round(size * 0.44)} color={c.royal} strokeWidth={1.8} />
+        <Icon name={more ? 'more' : categoryIcon(icon)} size={Math.round(size * 0.44)} color={c.royal} strokeWidth={1.8} />
       </View>
       <AppText size="xs" align="center" numberOfLines={2}>
         {label}

@@ -15,7 +15,7 @@ describe('vendor onboarding and approval', () => {
     t = await createTestApp();
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
     djId = (await t.db.one(t.db, `SELECT id FROM categories WHERE slug = 'dj'`)).id;
-    hallId = (await t.db.one(t.db, `SELECT id FROM categories WHERE slug = 'hall'`)).id;
+    hallId = (await t.db.one(t.db, `SELECT id FROM categories WHERE slug = 'tent'`)).id;
   });
   afterAll(() => t.app.close());
   beforeEach(async () => {
@@ -211,7 +211,7 @@ describe('vendor onboarding and approval', () => {
 
       const queue = (await as(admin).get('/v1/admin/vendors').expect(200)).body;
       expect(queue.items).toHaveLength(1);
-      expect(queue.items[0]).toMatchObject({ id: v.id, phone: '+919811111111', category: 'dj', categoryName: 'DJ & sound', serviceCount: 1, packageCount: 0 });
+      expect(queue.items[0]).toMatchObject({ id: v.id, phone: '+919811111111', category: 'dj', categoryName: 'DJ & Sound', serviceCount: 1, packageCount: 0 });
 
       // Not public before approval.
       await t.http().get(`/v1/vendors/${v.id}`).expect(404);
@@ -251,7 +251,7 @@ describe('vendor onboarding and approval', () => {
       // Rejected vendors can still change category, then resubmit.
       await as(partner).patch('/v1/partner/vendor', { businessName: 'Raj DJ & Sound Prayagraj', categoryId: hallId }).expect(200);
       const again = (await as(partner).post('/v1/partner/vendor/submit').expect(200)).body;
-      expect(again).toMatchObject({ status: 'pending', rejectReason: null, category: { slug: 'hall' } });
+      expect(again).toMatchObject({ status: 'pending', rejectReason: null, category: { slug: 'tent' } });
     });
 
     it('hold hides an approved vendor; category is locked once approved', async () => {
@@ -286,7 +286,7 @@ describe('vendor onboarding and approval', () => {
 
       const all = (await t.http().get('/v1/vendors').expect(200)).body;
       expect(all.items).toHaveLength(1);
-      expect(all.items[0]).toMatchObject({ id: v.id, startingPricePaise: 600_000, isFeatured: false, category: { slug: 'dj', name: 'DJ & sound' } });
+      expect(all.items[0]).toMatchObject({ id: v.id, startingPricePaise: 600_000, isFeatured: false, category: { slug: 'dj', name: 'DJ & Sound' } });
       expect(all.hasMore).toBe(false);
 
       expect((await t.http().get('/v1/vendors?category=hall').expect(200)).body.items).toEqual([]);

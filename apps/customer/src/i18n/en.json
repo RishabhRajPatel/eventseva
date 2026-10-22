@@ -69,17 +69,20 @@
   },
   "categoryShort": {
     "hall": "Hall",
-    "dj": "DJ",
-    "camera": "Camera",
+    "dj": "DJ & Sound",
+    "camera": "Photo & Fun",
     "halwai": "Cook",
-    "catering": "Catering",
+    "catering": "Cook & Catering",
     "band": "Band",
     "car": "Car",
-    "decor": "Decor",
+    "decor": "Lights & Decor",
     "hotel": "Hotel",
     "bartender": "Bartender",
     "makeup": "Makeup",
-    "other": "Pandit & more"
+    "other": "Pandit & more",
+    "bartan": "Bartan",
+    "tent": "Tent & Furniture",
+    "planner": "Planners"
   },
   "search": {
     "label": "Search",

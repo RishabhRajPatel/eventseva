@@ -180,3 +180,34 @@ const HISTORY_ACTIONS: Record<string, string> = {
 
 /** Audit log action for the vendor history list, e.g. 'vendor.hold' → 'Put on hold'. */
 export const historyLabel = (action: string) => HISTORY_ACTIONS[action] ?? humanize(action.replace(/\./g, ' '));
+
+/** What each category icon looks like, for the picker (the apps draw them). */
+export const CATEGORY_ICON_LABELS: Record<string, string> = {
+  dj: 'Music note (DJ)',
+  decor: 'Star (decoration)',
+  catering: 'Covered dish (catering)',
+  bartan: 'Cooking pot (bartan)',
+  tent: 'Tent',
+  planner: 'Clipboard (planner)',
+  camera: 'Camera',
+  hall: 'Building (hall)',
+  halwai: 'Bowl (cook)',
+  band: 'Drum (band)',
+  car: 'Car',
+  hotel: 'Bed (hotel)',
+  bartender: 'Glass (bartender)',
+  makeup: 'Lipstick (makeup)',
+  other: 'Lamp (other)',
+};
+
+export const PRICING_UNIT_LABELS: Record<string, string> = {
+  per_event: 'Per event',
+  per_day: 'Per day',
+  per_shift: 'Per shift',
+  per_plate: 'Per plate',
+  per_hour: 'Per hour',
+  per_km: 'Per km',
+  per_room_night: 'Per room per night',
+  per_person: 'Per person',
+  package: 'Package price',
+};

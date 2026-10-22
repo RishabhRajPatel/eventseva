@@ -21,7 +21,7 @@ export function booking(id: string, status: BookingStatus, extra: Partial<Bookin
     respondBy: null,
     payBy: null,
     cancelReason: null,
-    vendor: { id: 'v1', businessName: 'Raj DJ', categorySlug: 'dj', phone: null },
+    vendor: { id: 'v1', businessName: 'Raj DJ', categorySlug: 'dj', categoryIcon: 'dj', phone: null },
     reviewed: false,
     customer: { name: 'Rahul', phone: null },
     createdAt: '2026-11-09T06:00:00Z',

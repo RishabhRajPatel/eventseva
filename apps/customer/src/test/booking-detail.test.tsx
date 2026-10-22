@@ -33,7 +33,7 @@ test('accepted: pay the advance before payBy', async () => {
 });
 
 test('confirmed: vendor phone and Call; cancelling shows the refund estimate first', async () => {
-  mockedApi.booking.mockResolvedValue(booking({ status: 'confirmed', day: inDays(20), vendor: { id: 'v1', businessName: 'Shree Ram Caterers', categorySlug: 'catering', phone: '+919876543210' } }));
+  mockedApi.booking.mockResolvedValue(booking({ status: 'confirmed', day: inDays(20), vendor: { id: 'v1', businessName: 'Shree Ram Caterers', categorySlug: 'catering', categoryIcon: 'catering', phone: '+919876543210' } }));
   mockedApi.cancelBooking.mockResolvedValue(booking({ status: 'cancelled_by_customer', refundPaise: 3_037_500 }));
   const user = userEvent.setup();
   await open();

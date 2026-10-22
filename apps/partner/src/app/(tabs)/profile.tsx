@@ -121,7 +121,7 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
     <>
       <View style={styles.head}>
         <View style={styles.avatar}>
-          {coverUrl ? <Image source={{ uri: coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <CategoryIcon slug={vendor.category.slug} size={26} color={c.indigo} />}
+          {coverUrl ? <Image source={{ uri: coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <CategoryIcon icon={vendor.category.icon} size={26} color={c.indigo} />}
         </View>
         <View style={{ flex: 1, gap: space.xs }}>
           <Txt variant="display" size="xxl" numberOfLines={2} accessibilityRole="header">

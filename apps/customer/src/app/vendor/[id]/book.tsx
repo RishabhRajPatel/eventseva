@@ -143,7 +143,7 @@ export default function BookingFormScreen() {
       <ScreenHeader title={t('book.title')} />
 
       <Card style={styles.vendorCard}>
-        <VendorImage media={v.media.find((m) => m.type === 'photo') ?? null} slug={v.category.slug} width={48} height={48} style={styles.thumb} />
+        <VendorImage media={v.media.find((m) => m.type === 'photo') ?? null} icon={v.category.icon} width={48} height={48} style={styles.thumb} />
         <View style={styles.flex}>
           <AppText variant="bold" size={16}>
             {v.businessName}

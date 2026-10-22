@@ -132,7 +132,7 @@ export class SocialController {
     const lang = pickLanguage(acceptLanguage);
     const { rows } = await this.db.query(
       `SELECT v.id, v.business_name AS "businessName", v.area, v.rating_avg::float AS "ratingAvg", v.rating_count AS "ratingCount",
-              json_build_object('slug', c.slug, 'name', ${lang === 'hi' ? 'c.name_hi' : 'c.name_en'}) AS category,
+              json_build_object('slug', c.slug, 'icon', c.icon, 'name', ${lang === 'hi' ? 'c.name_hi' : 'c.name_en'}) AS category,
               (SELECT json_build_object('publicId', m.public_id, 'width', m.width, 'height', m.height, 'blurhash', m.blurhash)
                  FROM media m WHERE m.vendor_id = v.id AND m.status = 'approved' AND m.type = 'photo'
                 ORDER BY m.is_cover DESC, m.sort_order LIMIT 1) AS cover,

@@ -1,4 +1,5 @@
 // Line icons copied from the design boards (24×24 viewBox, round caps), drawn with react-native-svg.
+import { CATEGORY_ICONS } from '@eventseva/core';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { c } from '../lib/theme';
 
@@ -136,6 +137,11 @@ const ICONS = {
   hotel: <Path d="M3 19V6M3 15h18v4M21 15v-2a3 3 0 0 0-3-3h-7v5M7 12.5a1.5 1.5 0 1 0 0-.01" />,
   bartender: <Path d="M6 4h12l-6 8zM12 12v8M8 20h8" />,
   makeup: <Path d="M9 21h6v-9H9zM10 12V7l4-3v8" />,
+  // Bartan & kitchen equipment: a cooking pot with handles and steam.
+  bartan: <Path d="M4 10h16v4a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6zM2 10h2M20 10h2M9 7c0-1 1-1.5 1-3M14 7c0-1 1-1.5 1-3" />,
+  tent: <Path d="M2 20L12 4l10 16zM12 4v16M8.5 20L12 13l3.5 7" />,
+  // Wedding & event planners: a clipboard with a tick.
+  planner: <Path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4" />,
   other: (
     <>
       <Circle cx="5" cy="12" r="1.5" />
@@ -155,9 +161,10 @@ export function Icon({ name, size = 20, color = c.text, strokeWidth = 2 }: { nam
   );
 }
 
-const CATEGORY_SLUGS = ['hall', 'dj', 'camera', 'halwai', 'catering', 'band', 'car', 'decor', 'hotel', 'bartender', 'makeup', 'other'] as const;
+// Category icons come from the API (`category.icon`), chosen by an admin from CATEGORY_ICONS.
+const CATEGORY_SLUGS = CATEGORY_ICONS;
 
-export function CategoryIcon({ slug, size = 24, color = c.royal }: { slug: string; size?: number; color?: string }) {
-  const name: IconName = (CATEGORY_SLUGS as readonly string[]).includes(slug) ? (slug as IconName) : 'other';
+export function CategoryIcon({ icon, size = 24, color = c.royal }: { icon: string; size?: number; color?: string }) {
+  const name: IconName = (CATEGORY_SLUGS as readonly string[]).includes(icon) ? (icon as IconName) : 'other';
   return <Icon name={name} size={size} color={color} strokeWidth={1.8} />;
 }

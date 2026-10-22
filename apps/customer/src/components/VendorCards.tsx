@@ -37,7 +37,7 @@ export function VendorCard({ vendor, width }: { vendor: CardVendor; width: numbe
       onPress={() => openVendor(vendor.id)}
       style={({ pressed }) => [styles.card, { width }, pressed && styles.pressed]}
     >
-      <VendorImage media={vendor.cover} slug={vendor.category.slug} width={width} height={photoHeight} />
+      <VendorImage media={vendor.cover} icon={vendor.category.icon} width={width} height={photoHeight} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={saved ? t('vendor.unsave') : t('vendor.save')}
@@ -80,7 +80,7 @@ export function VendorRow({ vendor, city }: { vendor: CardVendor; city: string }
       onPress={() => openVendor(vendor.id)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
-      <VendorImage media={vendor.cover} slug={vendor.category.slug} width={64} height={64} style={styles.thumb} />
+      <VendorImage media={vendor.cover} icon={vendor.category.icon} width={64} height={64} style={styles.thumb} />
       <View style={[styles.flex, styles.rowBody]}>
         <AppText variant="bold" size="md" numberOfLines={1}>
           {vendor.businessName}

@@ -5,7 +5,7 @@ export const inDays = (n: number) => addDays(todayIst(), n);
 export const vendor: VendorDetail = {
   id: 'v1',
   businessName: 'Shree Ram Caterers',
-  category: { id: 5, slug: 'halwai', name: 'Cook (halwai)' },
+  category: { id: 3, slug: 'catering', name: 'Cook & Catering', icon: 'catering' },
   city: { id: 1, name: 'Prayagraj' },
   area: 'Civil Lines',
   address: null,
@@ -52,7 +52,7 @@ export function booking(over: Partial<Booking> = {}): Booking {
     respondBy: new Date(Date.now() + 5 * 3600_000 + 20 * 60_000).toISOString(),
     payBy: null,
     cancelReason: null,
-    vendor: { id: 'v1', businessName: 'Shree Ram Caterers', categorySlug: 'catering', phone: null },
+    vendor: { id: 'v1', businessName: 'Shree Ram Caterers', categorySlug: 'catering', categoryIcon: 'catering', phone: null },
     reviewed: false,
     createdAt: '2026-10-01T00:00:00Z',
     ...over,

@@ -97,12 +97,12 @@ export default function VendorScreen() {
                   accessibilityLabel={t('vendor.photoOf', { n: index + 1, total: photos.length })}
                   onPress={() => router.push({ pathname: '/vendor/[id]/photos', params: { id: v.id, index: String(index) } })}
                 >
-                  <VendorImage media={item} slug={v.category.slug} width={width} height={heroHeight} mode="wide" />
+                  <VendorImage media={item} icon={v.category.icon} width={width} height={heroHeight} mode="wide" />
                 </Pressable>
               )}
             />
           ) : (
-            <VendorImage media={null} slug={v.category.slug} width={width} height={heroHeight} label={t('vendor.noPhotos')} />
+            <VendorImage media={null} icon={v.category.icon} width={width} height={heroHeight} label={t('vendor.noPhotos')} />
           )}
           <View style={[styles.heroButtons, { top: insets.top + space.md, paddingHorizontal: gutter }]}>
             <IconButton icon="back" label={t('common.back')} onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />

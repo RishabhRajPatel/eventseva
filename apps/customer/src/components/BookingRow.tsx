@@ -16,7 +16,7 @@ export function BookingRow({ booking: b }: { booking: Booking }) {
     <View style={styles.card}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${b.item.title}, ${b.vendor.businessName}, ${t(`status.${b.status}.pill`)}`} onPress={open} style={styles.row}>
         <View style={styles.avatar}>
-          <Icon name={categoryIcon(b.vendor.categorySlug)} size={22} color={c.royal} />
+          <Icon name={categoryIcon(b.vendor.categoryIcon)} size={22} color={c.royal} />
         </View>
         <View style={styles.text}>
           <AppText variant="bold" size="md" numberOfLines={1}>

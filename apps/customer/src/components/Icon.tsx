@@ -1,4 +1,5 @@
 // Line icons copied from the design boards (24×24, round caps). Category icons by slug at the end.
+import { CATEGORY_ICONS } from '@eventseva/core';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { c } from '../lib/theme';
 
@@ -140,12 +141,18 @@ const paths = {
   ),
   bartender: <Path d="M6 3h12l-1.5 8a4.5 4.5 0 0 1-9 0zM12 15.5V21M8 21h8M7 7h10" />,
   makeup: <Path d="M9 21h6M10 21v-9h4v9M10.5 12V6.5L13.5 4v8" />,
+  // Bartan & kitchen equipment: a cooking pot with handles and steam.
+  bartan: <Path d="M4 10h16v4a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6zM2 10h2M20 10h2M9 7c0-1 1-1.5 1-3M14 7c0-1 1-1.5 1-3" />,
+  tent: <Path d="M2 20L12 4l10 16zM12 4v16M8.5 20L12 13l3.5 7" />,
+  // Wedding & event planners: a clipboard with a tick.
+  planner: <Path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4" />,
   other: <Path d="M12 3c2 3 3 4.5 3 6.5a3 3 0 0 1-6 0C9 7.5 10 6 12 3zM4 15h16l-2 5H6z" />,
 } as const;
 
 export type IconName = keyof typeof paths;
 
-const CATEGORY_SLUGS = ['hall', 'dj', 'camera', 'halwai', 'catering', 'band', 'car', 'decor', 'hotel', 'bartender', 'makeup', 'other'] as const;
+// Category icons come from the API (`category.icon`), chosen by an admin from CATEGORY_ICONS.
+const CATEGORY_SLUGS = CATEGORY_ICONS;
 
 /** Unknown slugs fall back to the "other" icon. */
 export const categoryIcon = (slug: string): IconName =>

@@ -37,7 +37,15 @@ describe('profile and catalog', () => {
   it('categories come back in the requested language', async () => {
     const en = (await t.http().get('/v1/categories').expect(200)).body;
     expect(en.language).toBe('en');
-    expect(en.items).toHaveLength(12);
+    expect(en.items.map((c: { name: string }) => c.name)).toEqual([
+      'DJ & Sound',
+      'Lighting & Decoration',
+      'Cook & Catering',
+      'Bartan & Kitchen Equipment',
+      'Tent & Furniture',
+      'Wedding & Event Planners',
+      'Photography & Entertainment',
+    ]);
     const hi = (await t.http().get('/v1/categories').set('Accept-Language', 'hi-IN,hi;q=0.9').expect(200)).body;
     expect(hi.language).toBe('hi');
     expect(hi.items[0].slug).toBe(en.items[0].slug);

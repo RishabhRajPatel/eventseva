@@ -25,7 +25,7 @@ const dj: VendorCard = {
   id: 'v9',
   businessName: 'Beat Box DJ',
   area: 'Naini',
-  category: { slug: 'dj', name: 'DJ & sound' },
+  category: { slug: 'dj', name: 'DJ & Sound', icon: 'dj' },
   ratingAvg: 4.5,
   ratingCount: 8,
   isFeatured: false,
@@ -48,7 +48,7 @@ test('home shows the greeting, services, top vendors and the unread bell', async
   expect(await screen.findByText('Hello, Rahul')).toBeOnTheScreen();
   expect(await screen.findByRole('button', { name: 'Hall' })).toBeOnTheScreen();
   expect(await screen.findByText('Beat Box DJ')).toBeOnTheScreen();
-  expect(screen.getByText('DJ & sound · Naini · ★ 4.5')).toBeOnTheScreen();
+  expect(screen.getByText('DJ & Sound · Naini · ★ 4.5')).toBeOnTheScreen();
   expect(screen.getByText(rupees(1_500_000))).toBeOnTheScreen();
   expect(await screen.findByText('2')).toBeOnTheScreen();
 });

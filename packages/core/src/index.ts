@@ -29,3 +29,28 @@ export const toRupees = (paise: number): number => paise / 100;
 export interface ApiError {
   error: { code: string; message: string };
 }
+
+/**
+ * Icons the apps can draw for a category. An admin picks one of these for a new category; anything
+ * else falls back to 'other'.
+ */
+export const CATEGORY_ICONS = [
+  'dj',
+  'decor',
+  'catering',
+  'bartan',
+  'tent',
+  'planner',
+  'camera',
+  'hall',
+  'halwai',
+  'band',
+  'car',
+  'hotel',
+  'bartender',
+  'makeup',
+  'other',
+] as const;
+export type CategoryIcon = (typeof CATEGORY_ICONS)[number];
+export const categoryIconOf = (icon?: string | null): CategoryIcon =>
+  (CATEGORY_ICONS as readonly string[]).includes(icon ?? '') ? (icon as CategoryIcon) : 'other';

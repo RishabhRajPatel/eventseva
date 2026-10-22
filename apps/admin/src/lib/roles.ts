@@ -14,7 +14,7 @@ export const ROLE_LABELS: Record<AdminRole, string> = {
   finance: 'Finance',
 };
 
-export type Section = 'dashboard' | 'vendors' | 'photos' | 'bookings' | 'payouts' | 'complaints' | 'users';
+export type Section = 'dashboard' | 'vendors' | 'photos' | 'bookings' | 'payouts' | 'complaints' | 'users' | 'categories';
 
 export interface NavItem {
   section: Section;
@@ -32,6 +32,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'payouts', href: '/payouts', label: 'Payouts', badge: 'duePayouts' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
+  // Super admins only: categories change both apps at once.
+  { section: 'categories', href: '/categories', label: 'Categories' },
 ];
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {

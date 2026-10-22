@@ -151,3 +151,22 @@ export interface AdminMedia {
   vendorId: string;
   vendorName: string;
 }
+
+export interface AdminCategory {
+  id: number;
+  slug: string;
+  nameEn: string;
+  nameHi: string;
+  icon: string;
+  defaultUnit: string;
+  sortOrder: number;
+  isActive: boolean;
+  liveVendors: number;
+  allVendors: number;
+}
+
+export interface AdminCategoryList {
+  items: AdminCategory[];
+  icons: string[];
+  units: string[];
+}

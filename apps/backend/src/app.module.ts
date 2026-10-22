@@ -24,6 +24,7 @@ import { PublicReviewsController, SocialController } from './social/social.contr
 import { ChatController } from './chat/chat.controller';
 import { PartnerHomeController } from './partner/partner-home.controller';
 import { AdminOpsController } from './admin/admin-ops.controller';
+import { AdminCategoriesController } from './admin/categories.controller';
 import { MediaController } from './media/media.controller';
 import { CloudinaryService } from './media/cloudinary.service';
 import { ConsolePushSender, FcmPushSender, PUSH_SENDER } from './push/push-sender';
@@ -73,6 +74,7 @@ class ConfigModule {}
     ChatController,
     PartnerHomeController,
     AdminOpsController,
+    AdminCategoriesController,
     MediaController,
   ],
   providers: [

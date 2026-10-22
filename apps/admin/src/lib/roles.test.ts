@@ -5,7 +5,7 @@ import { ADMIN_ROLES, can, canVisit, isAdminRole, navFor, sectionOf, type AdminA
 const labels = (role: (typeof ADMIN_ROLES)[number]) => navFor(role).map((item) => item.label);
 
 test('nav is filtered by role', () => {
-  assert.deepEqual(labels('super'), ['Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Complaints', 'Users']);
+  assert.deepEqual(labels('super'), ['Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Complaints', 'Users', 'Categories']);
   assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos']);
   assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Complaints', 'Users']);
   assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts']);
