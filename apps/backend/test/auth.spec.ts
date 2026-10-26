@@ -1,3 +1,4 @@
+import { CONFIG, type AppConfig } from '../src/config';
 import { createTestApp, TestApp } from './helpers';
 
 const PHONE = '9876543210';
@@ -93,18 +94,18 @@ describe('auth (phone + OTP)', () => {
   it('allows at most 5 codes per phone per hour', async () => {
     for (let i = 0; i < 5; i++) {
       await send().expect(200);
-      await ageLastOtp(31);
+      await ageLastOtp(601); // past the longest resend wait, still inside the hour
     }
     expect((await send().expect(429)).body.error.code).toBe('OTP_LIMIT');
   });
 
   it('daily limits are rolling 24 hours, so midnight resets nothing (5 at 11:59 pm still block 12:01 am)', async () => {
-    // Five codes sent "at 11:59 pm": 2 minutes ago, spaced so the 30-second wait never applies.
+    // Five codes sent "at 11:59 pm": 11–15 minutes ago, so the resend wait (up to 10 min) never applies.
     for (let i = 0; i < 5; i++) {
       await t.db.query(
         `INSERT INTO otp_requests (phone, code_hash, expires_at, created_at)
          VALUES ($1, 'x', now(), now() - make_interval(secs => $2))`,
-        [E164, 120 + i * 40],
+        [E164, 660 + i * 60],
       );
     }
     // "12:01 am": the hourly limit blocks first, and says when to come back.
@@ -115,13 +116,95 @@ describe('auth (phone + OTP)', () => {
     await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '2 hours'`);
     res = await send().expect(429);
     expect(res.body.error.code).toBe('OTP_LIMIT');
-    // Free again ~22 hours from now, when the oldest of the five is 24 hours old.
+    // Free again ~21.7 hours from now, when the oldest of the five is 24 hours old.
     expect(res.body.error.retryAfterSec).toBeGreaterThan(21.5 * 3600);
     expect(res.body.error.retryAfterSec).toBeLessThan(22 * 3600);
 
     // A full day after the oldest one, a slot opens.
     await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '22 hours'`);
     await send().expect(200);
+  });
+
+  it('each new code waits longer (30 s, 1, 2, 5, 10 min); a successful login starts again at 30 s', async () => {
+    const waits: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const res = await send().expect(200);
+      waits.push(res.body.resendAfterSec);
+      // Asking again at once is refused with the current step's wait.
+      const early = await send().expect(429);
+      expect(early.body.error).toMatchObject({ code: 'OTP_TOO_SOON' });
+      expect(early.body.error.retryAfterSec).toBeGreaterThan(res.body.resendAfterSec - 3);
+      await ageLastOtp(res.body.resendAfterSec + 1);
+    }
+    expect(waits).toEqual([30, 60, 120, 300, 600]);
+
+    // A day later (the 5-per-day phone limit is used up until then), the ladder starts again,
+    // and a successful login resets it too.
+    await ageLastOtp(24 * 3600);
+    const first = await send().expect(200);
+    expect(first.body.resendAfterSec).toBe(30);
+    await verify(t.sms.lastCode(E164)!).expect(200);
+    await ageLastOtp(31);
+    expect((await send().expect(200)).body.resendAfterSec).toBe(30);
+  });
+
+  describe('daily SMS budget', () => {
+    let config: AppConfig;
+    let saved: AppConfig['smsBudget'];
+    const sentSms = (n: number) =>
+      t.db.query(
+        `INSERT INTO otp_requests (phone, code_hash, expires_at, created_at)
+         SELECT '+9170000000' || lpad(i::text, 2, '0'), 'x', now(), now() - interval '2 hours' FROM generate_series(1, $1) i`,
+        [n],
+      );
+    beforeAll(() => {
+      config = t.app.get<AppConfig>(CONFIG);
+      saved = config.smsBudget;
+    });
+    beforeEach(async () => {
+      config.smsBudget = { perDay: 10, alertPercent: 80 };
+      await t.db.query('TRUNCATE system_alerts');
+    });
+    afterAll(() => {
+      config.smsBudget = saved;
+    });
+
+    it('warns at 80%, then only registered users get codes, then nobody; alerts reach the admin dashboard', async () => {
+      // A registered customer.
+      await t.login('9811111111');
+      await sentSms(7);
+      // The 8th SMS of the day crosses 80%: still sent, and the team is warned.
+      await send('9822222222').expect(200);
+      expect((await t.db.query('SELECT kind FROM system_alerts')).rows).toEqual([{ kind: 'sms_budget_warning' }]);
+
+      await sentSms(1); // 10 of 10 used
+      const stranger = await send('9833333333').expect(503);
+      expect(stranger.body.error.code).toBe('OTP_SERVICE_BUSY');
+      // The alert survives the failed request.
+      expect((await t.db.query(`SELECT kind FROM system_alerts ORDER BY id`)).rows.map((r) => r.kind)).toEqual(['sms_budget_warning', 'sms_budget_reached']);
+      await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '1 hour' WHERE phone = '+919811111111'`);
+      await send('9811111111').expect(200); // existing users can still log in
+
+      await sentSms(4); // over 150%
+      await t.db.query(`UPDATE otp_requests SET created_at = created_at - interval '1 hour' WHERE phone = '+919811111111'`);
+      expect((await send('9811111111').expect(503)).body.error.code).toBe('OTP_SERVICE_BUSY');
+
+      const admin = await t.adminLogin('super');
+      const dash = (await t.http().get('/v1/admin/dashboard').set('Authorization', `Bearer ${admin}`).expect(200)).body;
+      expect(dash).toMatchObject({ smsBudgetPerDay: 10, openAlerts: 3 });
+      expect(dash.smsLast24h).toBeGreaterThanOrEqual(15);
+      const alerts = (await t.http().get('/v1/admin/alerts').set('Authorization', `Bearer ${admin}`).expect(200)).body.items;
+      expect(alerts.map((a: { kind: string }) => a.kind)).toEqual(['sms_budget_hard_stop', 'sms_budget_reached', 'sms_budget_warning']);
+      await t.http().post(`/v1/admin/alerts/${alerts[0].id}/resolve`).set('Authorization', `Bearer ${admin}`).expect(200);
+      expect((await t.http().get('/v1/admin/dashboard').set('Authorization', `Bearer ${admin}`)).body.openAlerts).toBe(2);
+    });
+
+    it('the Play Store reviewer number sends no SMS, so it neither counts nor gets blocked', async () => {
+      await sentSms(20);
+      await send('9000000001').expect(200);
+      const { rows } = await t.db.query(`SELECT sms_sent FROM otp_requests WHERE phone = '+919000000001'`);
+      expect(rows).toEqual([{ sms_sent: false }]);
+    });
   });
 
   it('two requests at the same moment cannot both slip under the limit', async () => {

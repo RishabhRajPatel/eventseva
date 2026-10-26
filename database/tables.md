@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-29 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+30 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -13,6 +13,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Events and bookings:** [events](#events), [bookings](#bookings), [reviews](#reviews), [shortlists](#shortlists)
 - **Money:** [payments](#payments), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log)
+- **Other:** [system_alerts](#system_alerts)
 
 ## Allowed values (enums)
 
@@ -65,10 +66,12 @@ One row per OTP sent. Only an HMAC of the code is stored; attempts and created_a
 | `expires_at` | timestamp with time zone | yes |  |  |
 | `used_at` | timestamp with time zone |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `sms_sent` | boolean | yes | `true` | false when no SMS went out (Play Store reviewer number) |
 
 <details><summary>Rules and indexes</summary>
 
 - Index: `CREATE INDEX ON otp_requests USING btree (phone, created_at DESC)`
+- Index: `CREATE INDEX ON otp_requests USING btree (created_at) WHERE sms_sent`
 
 </details>
 
@@ -733,5 +736,27 @@ Every admin action (approve, refund, block, export …) with who, when, and the 
 
 - Index: `CREATE INDEX ON admin_audit_log USING btree (created_at DESC)`
 - Index: `CREATE INDEX ON admin_audit_log USING btree (target_type, target_id)`
+
+</details>
+
+## Other
+
+### system_alerts
+
+Problems the system raises for the team (e.g. the daily SMS budget running out), shown on the admin dashboard until someone marks them resolved.
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('system_alerts_id_seq'::regclass)` | primary key |
+| `kind` | text | yes |  |  |
+| `message` | text | yes |  |  |
+| `data` | jsonb | yes | `'{}'::jsonb` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `resolved_at` | timestamp with time zone |  |  |  |
+| `resolved_by` | uuid |  |  | → [admin_users](#admin_users).id |
+
+<details><summary>Rules and indexes</summary>
+
+- Index: `CREATE INDEX ON system_alerts USING btree (created_at DESC) WHERE (resolved_at IS NULL)`
 
 </details>

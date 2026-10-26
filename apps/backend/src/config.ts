@@ -34,6 +34,11 @@ export interface AppConfig {
   /** OTP send limits (rolling windows). Phone limits are the real protection; IP limits catch bots. */
   otpLimits: { phonePerHour: number; phonePerDay: number; ipPerHour: number; ipPerDay: number };
   /**
+   * SMS budget for the whole app over any 24 hours. At `alertPercent` the admin dashboard warns; at 100%
+   * only already-registered users still get codes; at 150% nobody does. Protects against SMS-pumping fraud.
+   */
+  smsBudget: { perDay: number; alertPercent: number };
+  /**
    * How many proxies sit in front of the API (load balancer, Nginx …). Without it every request looks
    * like it comes from the proxy, and IP limits would count all users as one.
    */
@@ -45,7 +50,7 @@ export interface AppConfig {
 function positiveInt(value: string | undefined, fallback: number): number {
   if (value === undefined || value === '') return fallback;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 1) throw new Error(`OTP limits must be whole numbers of 1 or more (got "${value}")`);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`OTP limits and the SMS budget must be whole numbers of 1 or more (got "${value}")`);
   return n;
 }
 
@@ -120,6 +125,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       phonePerDay: positiveInt(env.OTP_MAX_PER_PHONE_PER_DAY, 5),
       ipPerHour: positiveInt(env.OTP_MAX_PER_IP_PER_HOUR, 5),
       ipPerDay: positiveInt(env.OTP_MAX_PER_IP_PER_DAY, 5),
+    },
+    smsBudget: {
+      perDay: positiveInt(env.OTP_DAILY_SMS_BUDGET, 2000),
+      alertPercent: Math.min(99, positiveInt(env.OTP_BUDGET_ALERT_PERCENT, 80)),
     },
     trustProxy: Number(env.TRUST_PROXY || 0),
     isProduction,

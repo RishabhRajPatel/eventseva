@@ -34,7 +34,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 | Route | Body → Response |
 |---|---|
-| `POST /v1/auth/otp/send` | `{phone}` → `{sent, expiresInSec: 300, resendAfterSec: 30}` |
+| `POST /v1/auth/otp/send` | `{phone}` → `{sent, expiresInSec: 300, resendAfterSec}`. `resendAfterSec` grows with each code: 30, 60, 120, 300, 600; it is back to 30 after a successful login. Use it for the resend countdown |
 | `POST /v1/auth/otp/verify` | `{phone, code, app: 'customer'\|'partner', deviceName?}` → `LoginResult` |
 | `POST /v1/auth/refresh` | `{refreshToken}` → `TokenPair` (rotation) |
 | `POST /v1/auth/logout` · `/logout-all` | → 204 |
@@ -49,6 +49,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
     - `retryAt` is when the oldest counted code leaves the window.
     - Behind a proxy, set `TRUST_PROXY` so the real user IP is counted.
   - `OTP_LOCKED` 429 (15 minutes after 5 wrong codes)
+  - `OTP_SERVICE_BUSY` 503: the daily SMS budget is used up. New numbers wait; registered users can still log in until 150% of the budget.
 - **otp/verify errors:**
   - `OTP_INVALID` 400 with `attemptsLeft`
   - `OTP_EXPIRED` 400 (also returned for a reused code)
@@ -243,6 +244,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere |
 | `GET /v1/admin/media?status=pending&page=` · `POST …/:id/approve` · `POST …/:id/reject {reason}` | verifier | photo moderation |
 | `POST /v1/admin/reviews/:id/hide {reason}` | support | |
+| `GET /v1/admin/alerts` · `POST /v1/admin/alerts/:id/resolve` | all view, support resolves | system alerts (SMS budget at 80%, used up, hard stop). The dashboard has `smsLast24h`, `smsBudgetPerDay`, `openAlerts` |
 | `GET /v1/admin/coupons?page=` · `POST /v1/admin/coupons` · `PATCH /v1/admin/coupons/:id` | finance | create `{code, titleEn, titleHi, discountType: percent\|flat, discountValue (percent or paise), maxDiscountPaise?, minAmountPaise?, categoryId?, firstBookingOnly?, isPublic?, maxUses?, perCustomerLimit?, validFrom?, validUntil?}`; the list has `usedCount`, `heldCount`, `discountGivenPaise`; update `{titleEn?, titleHi?, isActive?, isPublic?, maxUses?, validUntil?}` (code and discount are fixed) |
 | `GET /v1/admin/featured-plans` · `POST` · `PATCH /:id` | finance views, super edits | `{nameEn, nameHi, days, pricePaise}`; update `{nameEn?, nameHi?, pricePaise?, isActive?}` |
 | `GET /v1/admin/featured-purchases?page=` | finance | sales and free grants |

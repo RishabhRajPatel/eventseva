@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, ParseIntPipe, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Length, MaxLength, Min } from 'class-validator';
 import { BOOKING_STATUSES, type BookingStatus } from '@eventseva/core';
@@ -95,7 +95,9 @@ export class AdminOpsController {
            WHERE r.status = 'used' AND to_char(b.day, 'YYYY-MM') = $1) AS "monthDiscountPaise",
          (SELECT COALESCE(sum(amount_paise), 0)::bigint FROM featured_purchases
            WHERE status = 'paid' AND to_char(paid_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM') = $1) AS "monthFeaturedPaise",
-         (SELECT count(*)::int FROM vendors WHERE featured_until > now()) AS "featuredVendors"`,
+         (SELECT count(*)::int FROM vendors WHERE featured_until > now()) AS "featuredVendors",
+         (SELECT count(*)::int FROM otp_requests WHERE sms_sent AND created_at > now() - interval '24 hours') AS "smsLast24h",
+         (SELECT count(*)::int FROM system_alerts WHERE resolved_at IS NULL) AS "openAlerts"`,
       [month],
     );
     const byStatus = await this.db.query(
@@ -120,6 +122,7 @@ export class AdminOpsController {
       ...stats,
       monthGmvPaise: Number(stats!.monthGmvPaise),
       monthCommissionPaise: Number(stats!.monthCommissionPaise),
+      smsBudgetPerDay: this.config.smsBudget.perDay,
       monthDiscountPaise: Number(stats!.monthDiscountPaise),
       monthFeaturedPaise: Number(stats!.monthFeaturedPaise),
       // What EventSeva earned: commission − coupon discounts + featured sales.
@@ -128,6 +131,31 @@ export class AdminOpsController {
       last14Days: daily.rows,
       topCategories: topCategories.rows,
     };
+  }
+
+  /** Problems the system raised (SMS budget …), newest first; open ones first. */
+  @Get('alerts')
+  async alerts() {
+    const { rows } = await this.db.query(
+      `SELECT al.id::int, al.kind, al.message, al.data, al.created_at AS "createdAt", al.resolved_at AS "resolvedAt", a.email AS "resolvedBy"
+         FROM system_alerts al LEFT JOIN admin_users a ON a.id = al.resolved_by
+        ORDER BY (al.resolved_at IS NULL) DESC, al.id DESC LIMIT 50`,
+    );
+    return { items: rows };
+  }
+
+  @AdminRoles('support')
+  @Post('alerts/:id/resolve')
+  @HttpCode(HttpStatus.OK)
+  async resolveAlert(@Admin() admin: AdminContext, @Param('id', ParseIntPipe) id: number) {
+    const row = await this.db.one(
+      this.db,
+      `UPDATE system_alerts SET resolved_at = now(), resolved_by = $2 WHERE id = $1 AND resolved_at IS NULL RETURNING id::int`,
+      [id, admin.adminId],
+    );
+    if (!row) throw new AppError('NOT_FOUND', 'Alert not found or already resolved.', HttpStatus.NOT_FOUND);
+    await audit(this.db, admin.adminId, 'alert.resolve', 'alert', String(id), null, null);
+    return { id, resolved: true };
   }
 
   @AdminRoles('support', 'finance')

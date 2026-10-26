@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { createHmac, randomInt, timingSafeEqual } from 'node:crypto';
 import { AppConfig, CONFIG } from '../config';
 import { AppError } from '../common/errors';
@@ -8,10 +8,20 @@ import { OTP_SENDER, OtpSender } from './otp-sender';
 // Rules from the Security Plan.
 export const OTP_RULES = {
   ttlSec: 5 * 60,
-  resendAfterSec: 30,
   maxAttempts: 5,
   lockMin: 15,
 } as const;
+
+/**
+ * Each new code for the same number waits longer: 30 s, 1 min, 2 min, 5 min, then 10 min. The ladder
+ * counts unused codes from the last hour, so a successful login starts it again at 30 s.
+ */
+export const RESEND_STEPS_SEC = [30, 60, 120, 300, 600] as const;
+export const resendWaitAfter = (codesSent: number) =>
+  codesSent <= 0 ? 0 : RESEND_STEPS_SEC[Math.min(codesSent, RESEND_STEPS_SEC.length) - 1];
+
+/** Past this share of the budget, codes stop for everyone (a runaway attack, not normal growth). */
+const HARD_STOP_PERCENT = 150;
 
 /**
  * All limits are rolling windows ("the last 24 hours"), never calendar days, so waiting for midnight
@@ -30,6 +40,8 @@ export function normalizePhone(input: string): string {
 
 @Injectable()
 export class OtpService {
+  private readonly logger = new Logger('OTP');
+
   constructor(
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
@@ -50,24 +62,28 @@ export class OtpService {
     const review = this.isReviewPhone(phone);
     const code = review ? this.config.reviewOtp! : String(randomInt(0, 1_000_000)).padStart(6, '0');
 
-    await this.db.tx(async (client) => {
+    const resendAfterSec = await this.db.tx(async (client) => {
       // One request per phone at a time, so two parallel taps cannot both slip under a limit.
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [phone]);
-      const stats = await this.db.one<{ last_at: Date | null; locked: boolean }>(
+      const stats = await this.db.one<{ last_at: Date | null; locked: boolean; recent: number }>(
         client,
         `SELECT max(created_at) AS last_at,
-                bool_or(attempts >= $2 AND created_at > now() - make_interval(mins => $3)) AS locked
+                bool_or(attempts >= $2 AND created_at > now() - make_interval(mins => $3)) AS locked,
+                -- Unused codes in the last hour since the last successful login: the resend ladder step.
+                count(*) FILTER (WHERE created_at > now() - interval '1 hour' AND used_at IS NULL
+                                   AND created_at > COALESCE((SELECT max(used_at) FROM otp_requests WHERE phone = $1), '-infinity'))::int AS recent
            FROM otp_requests WHERE phone = $1`,
         [phone, OTP_RULES.maxAttempts, OTP_RULES.lockMin],
       );
       if (stats?.locked) {
         throw new AppError('OTP_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
       }
-      if (stats?.last_at) {
+      const wait = resendWaitAfter(stats?.recent ?? 0);
+      if (stats?.last_at && wait > 0) {
         const waited = (Date.now() - new Date(stats.last_at).getTime()) / 1000;
-        if (waited < OTP_RULES.resendAfterSec) {
+        if (waited < wait) {
           throw new AppError('OTP_TOO_SOON', 'Please wait before requesting a new code.', HttpStatus.TOO_MANY_REQUESTS, {
-            retryAfterSec: Math.ceil(OTP_RULES.resendAfterSec - waited),
+            retryAfterSec: Math.ceil(wait - waited),
           });
         }
       }
@@ -78,15 +94,64 @@ export class OtpService {
         await this.limit(client, 'ip', ip, WINDOWS.hour, max.ipPerHour);
         await this.limit(client, 'ip', ip, WINDOWS.day, max.ipPerDay);
       }
+      if (!review) await this.checkBudget(client, phone);
       await client.query(
-        `INSERT INTO otp_requests (phone, code_hash, ip, expires_at)
-         VALUES ($1, $2, $3, now() + make_interval(secs => $4))`,
-        [phone, this.hash(phone, code), ip ?? null, OTP_RULES.ttlSec],
+        `INSERT INTO otp_requests (phone, code_hash, ip, expires_at, sms_sent)
+         VALUES ($1, $2, $3, now() + make_interval(secs => $4), $5)`,
+        [phone, this.hash(phone, code), ip ?? null, OTP_RULES.ttlSec, !review],
       );
+      // The wait before the *next* code, so the app's countdown is right.
+      return resendWaitAfter((stats?.recent ?? 0) + 1);
     });
     if (!review) await this.sender.send(phone, code, language);
 
-    return { phone, expiresInSec: OTP_RULES.ttlSec, resendAfterSec: OTP_RULES.resendAfterSec };
+    return { phone, expiresInSec: OTP_RULES.ttlSec, resendAfterSec };
+  }
+
+  /**
+   * Daily SMS budget (whole app, any 24 hours). Over 100% only registered users still get codes,
+   * because SMS-pumping fraud texts new, random numbers; over 150% codes stop for everyone. The team
+   * is alerted on the admin dashboard on the way up.
+   */
+  private async checkBudget(q: Queryable, phone: string) {
+    const { perDay, alertPercent } = this.config.smsBudget;
+    const used = (await this.db.one<{ n: number }>(
+      q,
+      `SELECT count(*)::int AS n FROM otp_requests WHERE sms_sent AND created_at > now() - interval '24 hours'`,
+    ))!.n;
+    const percent = (used * 100) / perDay;
+    if (percent >= HARD_STOP_PERCENT) {
+      await this.alert('sms_budget_hard_stop', `OTP SMS stopped for everyone: ${used} sent in 24 hours (budget ${perDay}).`, { used, perDay });
+      throw new AppError('OTP_SERVICE_BUSY', 'Login codes are paused for a short while. Please try again later.', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+    if (percent >= 100) {
+      const known = await this.db.one(q, 'SELECT 1 FROM users WHERE phone = $1 AND deleted_at IS NULL AND NOT is_blocked', [phone]);
+      await this.alert('sms_budget_reached', `Daily SMS budget used up (${used}/${perDay}). New sign-ups are paused; existing users can still log in.`, {
+        used,
+        perDay,
+      });
+      if (!known) {
+        throw new AppError('OTP_SERVICE_BUSY', 'New sign-ups are paused for a short while. Please try again later.', HttpStatus.SERVICE_UNAVAILABLE);
+      }
+      return;
+    }
+    if (percent + 100 / perDay >= alertPercent) {
+      await this.alert('sms_budget_warning', `${alertPercent}% of the daily SMS budget used (${used + 1}/${perDay}).`, { used: used + 1, perDay });
+    }
+  }
+
+  /**
+   * One alert of each kind per 24 hours, so a busy day does not flood the dashboard. Written on its own
+   * connection, outside the request's transaction: the request may fail right after, and the alert
+   * must survive that rollback.
+   */
+  private async alert(kind: string, message: string, data: object) {
+    const res = await this.db.query(
+      `INSERT INTO system_alerts (kind, message, data)
+       SELECT $1, $2, $3 WHERE NOT EXISTS (SELECT 1 FROM system_alerts WHERE kind = $1 AND created_at > now() - interval '24 hours')`,
+      [kind, message, data],
+    );
+    if (res.rowCount) this.logger.warn(`${kind}: ${message}`);
   }
 
   /**

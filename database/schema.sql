@@ -698,7 +698,8 @@ CREATE TABLE public.otp_requests (
     ip inet,
     expires_at timestamp with time zone NOT NULL,
     used_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    sms_sent boolean DEFAULT true NOT NULL
 );
 
 --
@@ -706,6 +707,12 @@ CREATE TABLE public.otp_requests (
 --
 
 COMMENT ON TABLE public.otp_requests IS 'One row per OTP sent. Only an HMAC of the code is stored; attempts and created_at drive the 5-wrong-tries lock and the resend limits.';
+
+--
+-- Name: COLUMN otp_requests.sms_sent; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.otp_requests.sms_sent IS 'false when no SMS went out (Play Store reviewer number)';
 
 --
 -- Name: packages; Type: TABLE; Schema: public; Owner: -
@@ -860,6 +867,43 @@ CREATE TABLE public.shortlists (
 COMMENT ON TABLE public.shortlists IS 'Vendors a customer saved (the heart button).';
 
 --
+-- Name: system_alerts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.system_alerts (
+    id bigint NOT NULL,
+    kind text NOT NULL,
+    message text NOT NULL,
+    data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone,
+    resolved_by uuid
+);
+
+--
+-- Name: TABLE system_alerts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.system_alerts IS 'Problems the system raises for the team (e.g. the daily SMS budget running out), shown on the admin dashboard until someone marks them resolved.';
+
+--
+-- Name: system_alerts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.system_alerts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: system_alerts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.system_alerts_id_seq OWNED BY public.system_alerts.id;
+
+--
 -- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1010,6 +1054,12 @@ ALTER TABLE ONLY public.messages ALTER COLUMN id SET DEFAULT nextval('public.mes
 --
 
 ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('public.notifications_id_seq'::regclass);
+
+--
+-- Name: system_alerts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_alerts ALTER COLUMN id SET DEFAULT nextval('public.system_alerts_id_seq'::regclass);
 
 --
 -- Name: admin_audit_log admin_audit_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1299,6 +1349,13 @@ ALTER TABLE ONLY public.shortlists
     ADD CONSTRAINT shortlists_pkey PRIMARY KEY (customer_id, vendor_id);
 
 --
+-- Name: system_alerts system_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_alerts
+    ADD CONSTRAINT system_alerts_pkey PRIMARY KEY (id);
+
+--
 -- Name: users users_phone_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1479,6 +1536,12 @@ CREATE INDEX notifications_user_id_id_idx ON public.notifications USING btree (u
 CREATE INDEX otp_requests_phone_created_at_idx ON public.otp_requests USING btree (phone, created_at DESC);
 
 --
+-- Name: otp_requests_sms_sent_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX otp_requests_sms_sent_idx ON public.otp_requests USING btree (created_at) WHERE sms_sent;
+
+--
 -- Name: payments_booking_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1501,6 +1564,12 @@ CREATE INDEX payouts_status_release_after_idx ON public.payouts USING btree (sta
 --
 
 CREATE INDEX reviews_vendor_id_created_at_idx ON public.reviews USING btree (vendor_id, created_at DESC) WHERE (NOT is_hidden);
+
+--
+-- Name: system_alerts_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX system_alerts_open_idx ON public.system_alerts USING btree (created_at DESC) WHERE (resolved_at IS NULL);
 
 --
 -- Name: vendor_documents_vendor_id_created_at_idx; Type: INDEX; Schema: public; Owner: -
@@ -1765,6 +1834,13 @@ ALTER TABLE ONLY public.shortlists
 
 ALTER TABLE ONLY public.shortlists
     ADD CONSTRAINT shortlists_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: system_alerts system_alerts_resolved_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.system_alerts
+    ADD CONSTRAINT system_alerts_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.admin_users(id);
 
 --
 -- Name: users users_city_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
