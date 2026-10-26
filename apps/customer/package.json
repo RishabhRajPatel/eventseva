@@ -9,6 +9,7 @@
     "@expo-google-fonts/noto-sans-devanagari": "^0.4.1",
     "@expo-google-fonts/noto-serif-devanagari": "^0.4.1",
     "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@shopify/flash-list": "2.3.2",
     "@tanstack/react-query": "^5.104.5",
     "expo": "~58.0.17",
     "expo-constants": "~58.0.13",
