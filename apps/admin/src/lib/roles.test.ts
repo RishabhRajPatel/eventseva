@@ -6,12 +6,12 @@ const labels = (role: (typeof ADMIN_ROLES)[number]) => navFor(role).map((item) =
 
 test('nav is filtered by role', () => {
   assert.deepEqual(labels('super'), [
-    'Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
+    'Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
   ]);
   // Every admin manages their own 2FA recovery codes.
   assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos', 'My security']);
-  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Complaints', 'Users', 'My security']);
-  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Coupons', 'Featured', 'My security']);
+  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Disputes', 'Complaints', 'Users', 'My security']);
+  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Coupons', 'Featured', 'My security']);
 });
 
 test('page access follows the nav, including detail pages', () => {
@@ -29,15 +29,15 @@ test('page access follows the nav, including detail pages', () => {
 test('actions per role', () => {
   const actions: AdminAction[] = [
     'vendor.decide', 'media.moderate', 'review.hide', 'payout.manage', 'complaint.manage', 'user.block',
-    'coupon.manage', 'featured.plans', 'featured.grant', 'booking.refund',
+    'coupon.manage', 'featured.plans', 'featured.grant', 'booking.refund', 'charge.resolve',
   ];
   const allowed = (role: (typeof ADMIN_ROLES)[number]) => actions.filter((a) => can(role, a));
   assert.deepEqual(allowed('super'), actions);
   assert.deepEqual(allowed('verifier'), ['vendor.decide', 'media.moderate']);
   // Support can view vendors but never approve, reject or hold them.
-  assert.deepEqual(allowed('support'), ['review.hide', 'complaint.manage', 'user.block']);
+  assert.deepEqual(allowed('support'), ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve']);
   // Finance runs coupons and refunds, but plans and free featured days are super only.
-  assert.deepEqual(allowed('finance'), ['payout.manage', 'coupon.manage', 'booking.refund']);
+  assert.deepEqual(allowed('finance'), ['payout.manage', 'coupon.manage', 'booking.refund', 'charge.resolve']);
 });
 
 test('role guard', () => {
@@ -64,4 +64,12 @@ test('CSV downloads follow EXPORT_ROLES on the API', () => {
   assert.deepEqual(kinds('finance'), ['bookings', 'payouts', 'coupons', 'featured']);
   assert.deepEqual(kinds('support'), ['bookings', 'users', 'vendors']);
   assert.deepEqual(kinds('verifier'), ['vendors']);
+});
+
+test('disputes for support and finance, refunds for finance only', () => {
+  assert.equal(canVisit('support', '/disputes'), true);
+  assert.equal(canVisit('finance', '/disputes'), true);
+  assert.equal(canVisit('verifier', '/disputes'), false);
+  assert.equal(canVisit('finance', '/refunds'), true);
+  assert.equal(canVisit('support', '/refunds'), false);
 });

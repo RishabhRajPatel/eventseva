@@ -270,7 +270,7 @@ delivery steps.
 | `POST /v1/quotes` | `{eventId, serviceId, startsAt, endsAt, lines: [{itemId, qty}]}` → `Quote`: rent × qty (× days for per-day items), delivery, GST, total, advance, balance and the refundable deposit (paid apart). Nothing is held |
 | `POST /v1/engine-bookings` | Same body (+ `note`), header `Idempotency-Key` (8–64 letters, digits, `-`, `_`): the same key returns the same booking. → `{id}`. Holds the stock until the vendor answers |
 | `GET /v1/bookings/:id/rental` | `RentalView`: lines as booked, counts at each step, photos, charges, deposit |
-| `POST /v1/bookings/:id/pay?part=deposit` · `?part=balance` | Confirmed rentals: the security deposit / the balance through the same checkout (`/pay/verify`, `/pay/dev` take `part` too). `NOTHING_TO_PAY` 409 |
+| `POST /v1/bookings/:id/pay?part=deposit` · `?part=balance` | Confirmed rentals and car trips: the security deposit / the balance through the same checkout (`/pay/verify`, `/pay/dev` take `part` too). The balance is the rest of the price plus agreed charges the deposit did not cover (`balanceDuePaise` in the rental / trip view); it can still be paid after the booking completed, and is then added to the vendor's payout. `NOTHING_TO_PAY` 409 |
 | `POST /v1/bookings/:id/charges/:chargeId` | `{decision: 'accept'\|'dispute', note}` (a dispute needs a note). `CHARGE_ALREADY_ANSWERED` 409. Unanswered charges count as accepted after 48 h |
 
 Times are ISO with a time zone. Rules: notice (`TOO_SOON`), shortest and longest rental
@@ -285,13 +285,14 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
 |---|---|
 | `GET …/rental` | Items, counts, photos, charges, deposit |
 | `POST …/rental/prepare` · `POST …/rental/load {lines: [{lineId, qty}]}` | Getting the order ready |
-| `POST …/rental/dispatch` | `{lines: [{lineId, qty}], note?, photoIds?}`. From now on the stock counts as out until the return is verified, even past the booking's end |
-| `POST …/rental/deliver` | `{lines: [{lineId, qty}], note?, photoIds?}`: delivered at the venue; the customer is told about any shortfall |
-| `POST …/rental/return` | `{lines: [{lineId, returned, damaged, missing, note?, chargePaise?}], note?, photoIds?}`: the three must add up to what was sent (`RETURN_COUNT_MISMATCH`). Charges come from the rates agreed in the booking; `chargePaise` may only lower them (`CHARGE_TOO_HIGH`). Stock does not change yet |
+| `POST …/rental/dispatch` | `{lines: [{lineId, qty}], note?, photos?}`. From now on the stock counts as out until the return is verified, even past the booking's end |
+| `POST …/rental/deliver` | `{lines: [{lineId, qty}], note?, photos?}`: delivered at the venue; the customer is told about any shortfall |
+| `POST …/rental/return` | `{lines: [{lineId, returned, damaged, missing, note?, chargePaise?}], note?, photos?}`: the three must add up to what was sent (`RETURN_COUNT_MISMATCH`). Charges come from the rates agreed in the booking; `chargePaise` may only lower them (`CHARGE_TOO_HIGH`). Stock does not change yet |
 | `POST …/rental/verify` | After counting (`RETURN_NOT_COUNTED`): returned units are free again, damaged ones go to repair, missing ones leave the stock. Agreed charges come off the deposit and the rest is refunded |
 
-- Steps out of order: `FULFILMENT_BAD_STEP` 409. `photoIds` are the vendor's own Cloudinary uploads
-  (`UPLOAD_INVALID` otherwise).
+- Steps out of order: `FULFILMENT_BAD_STEP` 409. `photos` are `[{publicId, version, signature}]` exactly as
+  Cloudinary returned them for the vendor's own evidence upload; a wrong folder or a forged signature is
+  refused (`UPLOAD_INVALID` 403). The same applies to car handover / return photos.
 - Cancelling once items are on the way: `BOOKING_IN_PROGRESS` 409 (customers from `preparing`, vendors from
   `dispatched`).
 - **Booking fields:** `bookingType` (`slot` or `rental` …), `stage` (`pending_confirmation`,
@@ -299,10 +300,14 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
   `returned_verified`, `completed`, `cancelled`, `rejected`, `expired`), `startsAt`/`endsAt`, `depositPaise`,
   `taxPaise`, `depositSettledAt`.
 - **Completion and payout:** a rental completes once the return is verified and the deposit settled. The
-  payout is the advance plus charges kept from the deposit, minus commission.
+  payout is the advance plus charges kept from the deposit and any balance paid in the app, minus commission.
 - **Admin:** `GET /v1/admin/bookings/:id/rental`; `POST /v1/admin/bookings/:id/charges/:chargeId/resolve`
   `{amountPaise, note}` (support / finance, 2FA re-check) settles a disputed charge (0 waives it; never more
   than asked).
+- **Admin disputes and refunds:** `GET /v1/admin/disputes` (support / finance) → `{charges, inspections}`
+  the customer disputes, oldest first. `GET /v1/admin/refunds?status=` (finance) → `{items}` with the
+  Razorpay result; `POST /v1/admin/refunds/:id/retry` (finance, 2FA re-check) sends a failed refund once more
+  (`NOT_FOUND` 404 when it is not failed or was already retried).
 
 ## Admin panel (`/v1/admin/*`, admin token)
 

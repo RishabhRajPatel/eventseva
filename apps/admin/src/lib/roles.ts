@@ -20,6 +20,8 @@ export type Section =
   | 'photos'
   | 'bookings'
   | 'payouts'
+  | 'disputes'
+  | 'refunds'
   | 'complaints'
   | 'users'
   | 'coupons'
@@ -44,6 +46,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'photos', href: '/photos', label: 'Photos', badge: 'pendingMedia' },
   { section: 'bookings', href: '/bookings', label: 'Bookings' },
   { section: 'payouts', href: '/payouts', label: 'Payouts', badge: 'duePayouts' },
+  // Rental / car charges the customer disputes, and refunds with their Razorpay result.
+  { section: 'disputes', href: '/disputes', label: 'Disputes' },
+  { section: 'refunds', href: '/refunds', label: 'Refunds' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
   { section: 'coupons', href: '/coupons', label: 'Coupons' },
@@ -58,8 +63,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
   verifier: ['dashboard', 'vendors', 'photos', 'security'],
-  support: ['dashboard', 'vendors', 'bookings', 'complaints', 'users', 'security'],
-  finance: ['dashboard', 'bookings', 'payouts', 'coupons', 'featured', 'security'],
+  support: ['dashboard', 'vendors', 'bookings', 'disputes', 'complaints', 'users', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'coupons', 'featured', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {
@@ -92,12 +97,13 @@ export type AdminAction =
   | 'featured.plans'
   | 'featured.grant'
   | 'booking.refund'
+  | 'charge.resolve'
   | 'alert.resolve';
 
 const ACTIONS: Record<Exclude<AdminRole, 'super'>, readonly AdminAction[]> = {
   verifier: ['vendor.decide', 'media.moderate'],
-  support: ['review.hide', 'complaint.manage', 'user.block', 'alert.resolve'],
-  finance: ['payout.manage', 'coupon.manage', 'booking.refund'],
+  support: ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve', 'alert.resolve'],
+  finance: ['payout.manage', 'coupon.manage', 'booking.refund', 'charge.resolve'],
 };
 
 export function can(role: AdminRole, action: AdminAction): boolean {

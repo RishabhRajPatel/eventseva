@@ -743,8 +743,10 @@ export interface RentalView {
   charges: RentalCharge[];
   deposit: { requiredPaise: number; paidPaise: number; keptPaise: number; settledAt: string | null };
   balancePaidPaise: number;
-  /** Agreed charges the online deposit did not cover: settled directly with the vendor. */
+  /** Agreed charges the online deposit did not cover: added to the balance. */
   dueToVendorPaise: number;
+  /** What "Pay balance" charges now: the rest of the price plus charges beyond the deposit. */
+  balanceDuePaise: number;
 }
 
 // ---- booking engine: vendor services, resources, extras, trips, changes, checkout ----
@@ -937,6 +939,7 @@ export interface TripView {
   charges: RentalCharge[];
   deposit: { requiredPaise: number; paidPaise: number; keptPaise: number; settledAt: string | null };
   balancePaidPaise: number;
+  balanceDuePaise: number;
 }
 
 export interface BookingChange {

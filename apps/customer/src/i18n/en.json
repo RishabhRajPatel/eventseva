@@ -813,6 +813,8 @@
     "disputeReason": "What is wrong with this charge?",
     "disputePlaceholder": "e.g. Only 2 plates were missing",
     "sendDispute": "Send dispute",
-    "dueToVendor": "{{amount}} of agreed charges is more than your deposit: settle it with the vendor."
+    "dueToVendor": "{{amount}} of agreed charges is more than your deposit: it is added to your balance.",
+    "payBalance": "Pay balance {{amount}}",
+    "balancePaid": "Balance paid"
   }
 }

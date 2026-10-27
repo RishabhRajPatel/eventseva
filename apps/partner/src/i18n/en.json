@@ -1049,7 +1049,7 @@
     "depositLine": "Deposit paid {{paid}} of {{required}}",
     "depositKept": "{{amount}} kept for charges",
     "noDeposit": "No security deposit",
-    "dueToVendor": "{{amount}} of agreed charges was more than the deposit: collect it from the customer.",
+    "dueToVendor": "{{amount}} of agreed charges was more than the deposit: the customer pays it with the balance in the app, and it is added to your payout.",
     "note": "Note",
     "notePlaceholder": "Vehicle number, who received, anything to remember",
     "addPhotos": "Add photos",

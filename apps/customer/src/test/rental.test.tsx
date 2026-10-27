@@ -122,7 +122,7 @@ describe('rental on the booking screen', () => {
       returnedQty: 48, damagedQty: 2, missingQty: 0, note: null, verifiedAt: null }],
     steps: [], charges: [{ id: 'ch1', kind: 'damage', description: 'Plastic chair: 2 damaged × ₹300', amountPaise: 60_000, status: 'proposed', fromDeposit: true, decisionNote: null,
       createdAt: '2026-11-07T06:00:00Z', replyBy: '2026-11-09T06:00:00Z' }],
-    deposit: { requiredPaise: 25_000, paidPaise: 25_000, keptPaise: 0, settledAt: null }, balancePaidPaise: 0, dueToVendorPaise: 0, ...over,
+    deposit: { requiredPaise: 25_000, paidPaise: 25_000, keptPaise: 0, settledAt: null }, balancePaidPaise: 0, dueToVendorPaise: 0, balanceDuePaise: 0, ...over,
   });
   const rentalBooking = booking({ status: 'confirmed', bookingType: 'rental', stage: 'return_pending', startsAt: '2026-11-06T04:30:00Z', endsAt: '2026-11-07T04:30:00Z', day: inDays(1) });
   const open = () => renderApp({ 'booking/[id]': BookingScreen, 'pay/[id]': Stub, 'chat/[id]': Stub, help: Stub }, '/booking/b1');
@@ -152,5 +152,16 @@ describe('rental on the booking screen', () => {
     await open();
     await user.press(await screen.findByRole('button', { name: `Pay deposit ${rupees(25_000)}` }));
     await waitFor(() => expect(mockedApi.devPay).toHaveBeenCalledWith('b1', 'deposit'));
+  });
+
+  it('lets the customer pay the balance, with charges beyond the deposit, online', async () => {
+    mockedApi.booking.mockResolvedValue({ ...rentalBooking, stage: 'returned_verified' });
+    mockedApi.rental.mockResolvedValue(view({ fulfilment: 'closed', charges: [{ ...view().charges[0], status: 'accepted' }], dueToVendorPaise: 35_000, balanceDuePaise: 85_000 }));
+    mockedApi.devPay.mockResolvedValue(rentalBooking);
+    const user = userEvent.setup();
+    await open();
+    expect(await screen.findByText(`${rupees(35_000)} of agreed charges is more than your deposit: it is added to your balance.`)).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: `Pay balance ${rupees(85_000)}` }));
+    await waitFor(() => expect(mockedApi.devPay).toHaveBeenCalledWith('b1', 'balance'));
   });
 });

@@ -147,7 +147,7 @@ describe('rental panel', () => {
   };
   const view = (over: Partial<RentalView>): RentalView => ({
     fulfilment: 'delivered', startsAt: '2026-11-06T04:30:00Z', endsAt: '2026-11-07T04:30:00Z', returnDueAt: '2026-11-07T04:30:00Z', lines: [line], steps: [],
-    charges: [], deposit: { requiredPaise: 25_000, paidPaise: 25_000, keptPaise: 0, settledAt: null }, balancePaidPaise: 0, dueToVendorPaise: 0, ...over,
+    charges: [], deposit: { requiredPaise: 25_000, paidPaise: 25_000, keptPaise: 0, settledAt: null }, balancePaidPaise: 0, dueToVendorPaise: 0, balanceDuePaise: 0, ...over,
   });
 
   it('counts the return: the numbers must add up, and the charge is shown before saving', async () => {

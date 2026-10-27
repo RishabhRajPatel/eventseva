@@ -70,6 +70,7 @@ export function RentalSection({ booking }: { booking: Booking }) {
       <Deposit booking={booking} rental={r} />
       {r.charges.length ? <Charges booking={booking} charges={r.charges} /> : null}
       {r.dueToVendorPaise ? <Notice tone="peach">{t('rent.dueToVendor', { amount: rupees(r.dueToVendorPaise) })}</Notice> : null}
+      <Balance booking={booking} rental={r} />
     </Card>
   );
 }
@@ -110,6 +111,34 @@ function Deposit({ booking, rental }: { booking: Booking; rental: RentalView }) 
             </AppText>
           ) : null}
         </>
+      ) : null}
+    </View>
+  );
+}
+
+/** The rest of the price, plus agreed charges the deposit did not cover, paid online. */
+function Balance({ booking, rental }: { booking: Booking; rental: RentalView }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const me = useMe();
+  const toast = useToast();
+  const pay = useMutation({
+    mutationFn: () => payAdvance(booking, { name: me.name, phone: me.phone }, choosePaymentPath(), undefined, 'balance'),
+    onSuccess: (result) => {
+      if (result.status !== 'paid') return;
+      toast.success(t('rent.balancePaid'));
+      void qc.invalidateQueries({ queryKey: rentalKey(booking.id) });
+      void qc.invalidateQueries({ queryKey: keys.booking(booking.id) });
+    },
+  });
+  if (!rental.balanceDuePaise) return null;
+  return (
+    <View style={{ gap: space.xs }}>
+      <Button testID="pay-balance" label={t('rent.payBalance', { amount: rupees(rental.balanceDuePaise) })} size="md" onPress={() => pay.mutateAsync()} />
+      {pay.error ? (
+        <AppText size="sm" color={c.danger}>
+          {errorText(t, pay.error)}
+        </AppText>
       ) : null}
     </View>
   );
