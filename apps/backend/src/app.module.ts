@@ -39,6 +39,8 @@ import { AdminFeaturedController, PartnerFeaturedController } from './featured/f
 import { AdminExtrasController } from './admin/admin-extras.controller';
 import { EngineController } from './engine/engine.controller';
 import { EngineCatalogService } from './engine/catalog.service';
+import { TripService } from './engine/trip.service';
+import { AdminLicencesController, PartnerTripController, TripController } from './engine/trip.controller';
 import { AdminResourcesController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
 import { EngineService } from './engine/engine.service';
 import { InventoryService } from './inventory/inventory.service';
@@ -100,6 +102,9 @@ class ConfigModule {}
     PartnerEngineCatalogController,
     PublicEngineServicesController,
     AdminResourcesController,
+    PartnerTripController,
+    TripController,
+    AdminLicencesController,
     PartnerInventoryController,
     PartnerRentalController,
     RentalsController,
@@ -117,6 +122,7 @@ class ConfigModule {}
     BookingsService,
     EngineService,
     EngineCatalogService,
+    TripService,
     InventoryService,
     FulfilmentService,
     RefundsService,

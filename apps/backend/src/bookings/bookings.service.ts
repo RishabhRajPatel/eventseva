@@ -9,6 +9,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { DEFAULT_CANCELLATION } from '../engine/rules';
 import { RefundsService } from '../payments/refunds.service';
 import { FulfilmentService } from '../inventory/fulfilment.service';
+import { TripService } from '../engine/trip.service';
 import { postBookingEvent } from '../chat/booking-events';
 import { pointOf, progressAllowed, REMINDER_HOUR_IST, travelBetween } from './travel';
 import type { PricingUnit } from '../vendors/vendor.queries';
@@ -132,6 +133,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     private readonly coupons: CouponsService,
     private readonly refunds: RefundsService,
     private readonly fulfilment: FulfilmentService,
+    private readonly trips: TripService,
   ) {}
 
   onModuleInit() {
@@ -272,7 +274,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           `SELECT COALESCE(sum(amount_paise), 0)::int AS paid FROM payments WHERE booking_id = $1 AND type = $2 AND status = 'paid'`,
           [b.id, type],
         );
-        payNow = (part === 'balance' ? b.amount_paise - b.advance_paise : b.deposit_paise) - done!.paid;
+        // The balance also covers agreed extra charges (km, hours, damage …) that the deposit does not.
+        const extra = part === 'balance' ? await this.chargesBeyondDeposit(client, b.id) : 0;
+        payNow = (part === 'balance' ? b.amount_paise - b.advance_paise + extra : b.deposit_paise) - done!.paid;
         if (payNow <= 0) throw new AppError('NOTHING_TO_PAY', 'This is already paid.', HttpStatus.CONFLICT);
       }
 
@@ -493,6 +497,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }, { bookingId: b.id }, 'customer');
       await postBookingEvent(client, b, 'accepted', vendorUserId, { payBy });
     });
+  }
+
+  /** Agreed extra charges the paid deposit cannot cover. */
+  private async chargesBeyondDeposit(q: Queryable, bookingId: string): Promise<number> {
+    const r = await this.db.one<{ agreed: number; deposit: number }>(
+      q,
+      `SELECT COALESCE((SELECT sum(amount_paise) FROM booking_charges WHERE booking_id = $1 AND status IN ('accepted', 'resolved')), 0)::int AS agreed,
+              COALESCE((SELECT sum(amount_paise) FROM payments WHERE booking_id = $1 AND type = 'deposit' AND status IN ('paid', 'refunded')), 0)::int AS deposit`,
+      [bookingId],
+    );
+    return Math.max(0, r!.agreed - r!.deposit);
   }
 
   private holding(b: BookingRow) {
@@ -720,6 +735,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
        )
        UPDATE bookings SET discount_paise = 0 WHERE id IN (SELECT booking_id FROM r)`,
     );
+    await this.trips.remindUnassigned();
     const reminded = await this.sendReminders(now);
     return { expired, completed: done.rows.length, reminded };
   }

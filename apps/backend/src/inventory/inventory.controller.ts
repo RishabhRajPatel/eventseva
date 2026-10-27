@@ -25,6 +25,7 @@ import { StepUp } from '../admin/admin-2fa';
 import { AppError } from '../common/errors';
 import { PartnerAppGuard } from '../partner/partner.controller';
 import { FulfilmentService } from './fulfilment.service';
+import { TripService } from '../engine/trip.service';
 import { ITEM_CONDITIONS, ITEM_QUALITIES, InventoryService, RENT_PER } from './inventory.service';
 
 const PAISE = 10_000_000;
@@ -305,6 +306,7 @@ export class RentalsController {
   constructor(
     private readonly inventory: InventoryService,
     private readonly fulfilment: FulfilmentService,
+    private readonly trips: TripService,
   ) {}
 
   @Get('vendors/:id/rentals')
@@ -328,8 +330,8 @@ export class RentalsController {
   @Post('bookings/:id/charges/:chargeId')
   @HttpCode(HttpStatus.OK)
   async answer(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('chargeId', ParseUUIDPipe) chargeId: string, @Body() body: ChargeAnswerDto) {
-    await this.fulfilment.answerCharge(auth.userId, id, chargeId, body.decision, body.note);
-    return this.fulfilment.view(id, { customerId: auth.userId });
+    const type = await this.fulfilment.answerCharge(auth.userId, id, chargeId, body.decision, body.note);
+    return type === 'rental' ? this.fulfilment.view(id, { customerId: auth.userId }) : this.trips.view(id, { customerId: auth.userId });
   }
 }
 
@@ -337,11 +339,19 @@ export class RentalsController {
 @UseGuards(AdminGuard)
 @Controller('v1/admin/bookings/:id')
 export class AdminRentalController {
-  constructor(private readonly fulfilment: FulfilmentService) {}
+  constructor(
+    private readonly fulfilment: FulfilmentService,
+    private readonly trips: TripService,
+  ) {}
 
   @Get('rental')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.fulfilment.view(id, {});
+  }
+
+  @Get('trip')
+  trip(@Param('id', ParseUUIDPipe) id: string) {
+    return this.trips.view(id, {});
   }
 
   @AdminRoles('support', 'finance')
@@ -350,6 +360,6 @@ export class AdminRentalController {
   @HttpCode(HttpStatus.OK)
   async resolve(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Param('chargeId', ParseUUIDPipe) chargeId: string, @Body() body: ResolveChargeDto) {
     await this.fulfilment.resolveCharge(admin.adminId, id, chargeId, body.amountPaise, body.note.trim());
-    return this.fulfilment.view(id, {});
+    return { id: chargeId, resolved: true };
   }
 }

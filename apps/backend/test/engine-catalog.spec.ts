@@ -21,8 +21,14 @@ describe('engine catalogue', () => {
     t = await createTestApp();
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
   });
-  afterAll(() => t.app.close());
+  // Tests switch hidden categories on; put back the owner's seven for the other suites.
+  const restore = () => t.db.query(`UPDATE categories SET is_active = (slug IN ('dj','decor','catering','bartan','tent','planner','camera'))`);
+  afterAll(async () => {
+    await restore();
+    await t.app.close();
+  });
   beforeEach(() => t.reset());
+  afterEach(restore);
 
   const as = (token: string) => ({
     get: (url: string) => t.http().get(url).set('Authorization', `Bearer ${token}`),

@@ -365,6 +365,34 @@ export class EngineService {
     );
   }
 
+  /** Licences waiting for a verifier, oldest first, with the full number (verifiers only). */
+  async pendingLicences() {
+    const { rows } = await this.db.query<{ userId: string; name: string | null; number_enc: string; dateOfBirth: string; expiresOn: string; createdAt: Date }>(
+      `SELECT l.user_id AS "userId", u.name, l.number_enc, l.date_of_birth AS "dateOfBirth", l.expires_on AS "expiresOn", l.updated_at AS "createdAt"
+         FROM customer_licences l JOIN users u ON u.id = l.user_id WHERE l.status = 'pending' ORDER BY l.updated_at LIMIT 200`,
+    );
+    return rows.map(({ number_enc, ...r }) => ({ ...r, number: decrypt(number_enc, this.config.bankDetailsKey) }));
+  }
+
+  async verifyLicence(adminId: string, userId: string, decision: 'verify' | 'reject', reason?: string) {
+    return this.db.tx(async (client) => {
+      const l = await this.db.one<{ status: string }>(client, 'SELECT status FROM customer_licences WHERE user_id = $1 FOR UPDATE', [userId]);
+      if (!l) throw new AppError('NOT_FOUND', 'Licence not found.', HttpStatus.NOT_FOUND);
+      if (decision === 'reject' && !reason?.trim()) throw new AppError('VALIDATION', 'Give a reason.', HttpStatus.BAD_REQUEST, { field: 'reason' });
+      const status = decision === 'verify' ? 'verified' : 'rejected';
+      await client.query('UPDATE customer_licences SET status = $2, reject_reason = $3, updated_at = now() WHERE user_id = $1', [userId, status, decision === 'reject' ? reason!.trim() : null]);
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, $2, 'licence', $3, $4, $5)`,
+        [adminId, `licence.${decision}`, userId, { status: l.status }, { status, reason: reason ?? null }],
+      );
+      await notify(client, userId, 'licence_checked', decision === 'verify'
+        ? { en: { title: 'Licence verified', body: 'You can now take self-drive cars.' }, hi: { title: 'लाइसेंस सत्यापित', body: 'अब आप खुद चलाने वाली गाड़ियाँ ले सकते हैं।' } }
+        : { en: { title: 'Licence not accepted', body: `${reason}. Please check and add it again.` }, hi: { title: 'लाइसेंस स्वीकार नहीं', body: `${reason}। कृपया जाँचकर दोबारा जोड़ें।` } },
+      {}, 'customer');
+      return { userId, status };
+    });
+  }
+
   /** Full licence number, for the vendor at handover or a verifier (audited by the caller). */
   async licenceNumber(userId: string): Promise<string | null> {
     const row = await this.db.one<{ number_enc: string }>(this.db, 'SELECT number_enc FROM customer_licences WHERE user_id = $1', [userId]);

@@ -12,6 +12,9 @@ import { postBookingEvent } from '../chat/booking-events';
 import { RefundsService } from '../payments/refunds.service';
 import { CloudinaryService } from '../media/cloudinary.service';
 
+/** Bookings whose extra charges the customer answers here (rentals: damage; cars: km, hours, fuel …). */
+export const CHARGEABLE = ['rental', 'transport'];
+
 /** Proposed charges the customer has not answered count as accepted after this long. */
 export const CHARGE_REPLY_HOURS = 48;
 const MAX_PHOTOS = 10;
@@ -74,7 +77,7 @@ export class FulfilmentService {
     private readonly cloudinary: CloudinaryService,
   ) {}
 
-  private async lock(q: Queryable, bookingId: string, who: { vendorUserId?: string; customerId?: string }): Promise<RentalBooking> {
+  private async lock(q: Queryable, bookingId: string, who: { vendorUserId?: string; customerId?: string }, types = ['rental']): Promise<RentalBooking> {
     const b = await this.db.one<RentalBooking>(
       q,
       `SELECT b.id, b.customer_id, b.vendor_id, v.user_id AS vendor_user_id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.day
@@ -83,7 +86,7 @@ export class FulfilmentService {
         FOR UPDATE OF b`,
       [bookingId, who.vendorUserId ?? null, who.customerId ?? null],
     );
-    if (!b || b.booking_type !== 'rental') throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
+    if (!b || !types.includes(b.booking_type)) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
     return b;
   }
 
@@ -298,9 +301,10 @@ export class FulfilmentService {
 
   // ---------- customer and admin answers to charges ----------
 
-  async answerCharge(customerId: string, bookingId: string, chargeId: string, decision: 'accept' | 'dispute', note?: string) {
-    await this.db.tx(async (client) => {
-      const b = await this.lock(client, bookingId, { customerId });
+  /** Returns the booking type, so the caller can show the right view. */
+  async answerCharge(customerId: string, bookingId: string, chargeId: string, decision: 'accept' | 'dispute', note?: string): Promise<string> {
+    const type = await this.db.tx(async (client) => {
+      const b = await this.lock(client, bookingId, { customerId }, CHARGEABLE);
       const c = await this.db.one<{ status: string; amount_paise: number }>(
         client,
         'SELECT status, amount_paise FROM booking_charges WHERE id = $1 AND booking_id = $2 FOR UPDATE',
@@ -316,8 +320,10 @@ export class FulfilmentService {
         en: { title: decision === 'accept' ? 'Charge accepted' : 'Charge disputed', body: decision === 'accept' ? `The customer accepted ${rupees(c.amount_paise)}.` : `The customer disputed ${rupees(c.amount_paise)}. EventSeva will look into it.` },
         hi: { title: decision === 'accept' ? 'चार्ज मंज़ूर' : 'चार्ज पर आपत्ति', body: decision === 'accept' ? `ग्राहक ने ${rupees(c.amount_paise)} मान लिया।` : `ग्राहक ने ${rupees(c.amount_paise)} पर आपत्ति की। EventSeva जाँच करेगा।` },
       }, { bookingId: b.id }, 'partner');
+      return b.booking_type;
     });
     await this.settle(bookingId);
+    return type;
   }
 
   /** Admin decision on a disputed charge: the amount that stands (0 waives it). */
@@ -360,13 +366,13 @@ export class FulfilmentService {
     await this.db.query(
       `UPDATE booking_charges c SET status = 'accepted', decision_note = 'No reply within ${CHARGE_REPLY_HOURS} hours'
          FROM bookings b
-        WHERE c.booking_id = b.id AND b.booking_type = 'rental' AND c.status = 'proposed'
+        WHERE c.booking_id = b.id AND b.booking_type IN ('rental', 'transport') AND c.status = 'proposed'
           AND c.created_at < now() - interval '${CHARGE_REPLY_HOURS} hours' AND ($1::uuid IS NULL OR b.id = $1)`,
       [onlyBookingId ?? null],
     );
     const due = await this.db.query<{ id: string }>(
       `SELECT b.id FROM bookings b
-        WHERE b.booking_type = 'rental' AND b.status = 'confirmed' AND b.fulfilment = 'closed' AND b.deposit_settled_at IS NULL
+        WHERE b.booking_type IN ('rental', 'transport') AND b.status = 'confirmed' AND b.fulfilment = 'closed' AND b.deposit_settled_at IS NULL
           AND ($1::uuid IS NULL OR b.id = $1)
           AND NOT EXISTS (SELECT 1 FROM booking_charges c WHERE c.booking_id = b.id AND c.status IN ('proposed', 'disputed'))`,
       [onlyBookingId ?? null],
