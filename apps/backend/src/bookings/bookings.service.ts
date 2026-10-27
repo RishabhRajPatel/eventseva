@@ -266,7 +266,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         // What is paid now: the advance minus any coupon discount (EventSeva pays the discount).
         payNow = b.advance_paise - b.discount_paise;
       } else {
-        if (b.status !== 'confirmed' || !isEngine(b)) {
+        // A completed booking can still owe its balance (extra charges agreed after the return).
+        const open = b.status === 'confirmed' || (b.status === 'completed' && part === 'balance');
+        if (!open || !isEngine(b)) {
           throw new AppError('BOOKING_BAD_STATUS', 'This booking is not waiting for this payment.', HttpStatus.CONFLICT, { status: b.status });
         }
         const done = await this.db.one<{ paid: number }>(
@@ -346,11 +348,25 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       // A replaced order (coupon changed after checkout opened) that still got paid is refunded.
       const replaced = p.status === 'failed';
-      // Balance or security deposit for a confirmed booking.
-      if (p.type !== 'advance' && b.status === 'confirmed' && !replaced) {
+      // Balance or security deposit for a confirmed booking; a late balance for a completed one.
+      const lateBalance = p.type === 'final' && b.status === 'completed';
+      if (p.type !== 'advance' && (b.status === 'confirmed' || lateBalance) && !replaced) {
         await client.query(`INSERT INTO booking_events (booking_id, event, data) VALUES ($1, $2, $3)`, [
           b.id, p.type === 'deposit' ? 'deposit_paid' : 'balance_paid', { amountPaise: p.amount_paise },
         ]);
+        // The payout was made at completion: the late balance is added to it, or flagged if already sent.
+        if (lateBalance) {
+          const payout = await client.query(
+            `UPDATE payouts SET amount_paise = amount_paise + $2 WHERE booking_id = $1 AND status IN ('scheduled', 'held', 'failed') RETURNING id`,
+            [b.id, p.amount_paise],
+          );
+          if (!payout.rowCount) {
+            await client.query(`INSERT INTO system_alerts (kind, message, data) VALUES ('payout_extra_due', $1, $2)`, [
+              `The customer paid ${rupees(p.amount_paise)} more after the vendor's payout was sent. Transfer it to the vendor separately.`,
+              { bookingId: b.id, vendorId: b.vendor_id, amountPaise: p.amount_paise },
+            ]);
+          }
+        }
         const what = p.type === 'deposit' ? { en: 'security deposit', hi: 'सिक्योरिटी डिपॉज़िट' } : { en: 'balance', hi: 'बाकी रकम' };
         await notify(client, b.vendor_user_id, 'payment_received', {
           en: { title: 'Payment received', body: `The customer paid the ${what.en} of ${rupees(p.amount_paise)} for ${niceDay(b.day, 'en')}.` },

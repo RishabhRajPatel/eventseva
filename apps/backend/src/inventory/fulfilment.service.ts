@@ -10,7 +10,7 @@ import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { postBookingEvent } from '../chat/booking-events';
 import { RefundsService } from '../payments/refunds.service';
-import { CloudinaryService } from '../media/cloudinary.service';
+import { CloudinaryService, type SignedUpload } from '../media/cloudinary.service';
 
 /** Bookings whose extra charges the customer answers here (rentals: damage; cars: km, hours, fuel …). */
 export const CHARGEABLE = ['rental', 'transport'];
@@ -34,7 +34,7 @@ export interface ReturnLine {
 }
 export interface StepBody {
   note?: string;
-  photoIds?: string[];
+  photos?: SignedUpload[];
 }
 
 interface RentalBooking {
@@ -99,12 +99,9 @@ export class FulfilmentService {
     if (!steps.includes(b.fulfilment)) throw bad('FULFILMENT_BAD_STEP', `You cannot ${action} at this step.`, { fulfilment: b.fulfilment });
   }
 
-  /** Inspection photos must be the vendor's own uploads. */
-  private checkPhotos(vendorId: string, ids: string[] = []) {
-    if (ids.length > MAX_PHOTOS) throw new AppError('VALIDATION', `Up to ${MAX_PHOTOS} photos.`);
-    const folder = this.cloudinary.folderFor(vendorId, 'photo') + '/';
-    if (ids.some((id) => !id.startsWith(folder) || id.includes('..'))) throw new AppError('UPLOAD_INVALID', 'This upload does not belong to your account.', HttpStatus.FORBIDDEN);
-    return ids;
+  /** Inspection photos must be the vendor's own signed uploads. */
+  private checkPhotos(vendorId: string, photos: SignedUpload[] = []) {
+    return this.cloudinary.evidencePhotoIds(vendorId, photos, MAX_PHOTOS);
   }
 
   private byId<T extends { lineId: string }>(lines: Line[], input: T[]) {
@@ -120,7 +117,7 @@ export class FulfilmentService {
     await q.query(
       `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, $2, $3, $4, $5, $6)
        ON CONFLICT (booking_id, phase) DO UPDATE SET readings = $3, notes = $4, photo_ids = $5, recorded_by = $6, recorded_at = now()`,
-      [b.id, phase, readings, body.note?.trim() || null, this.checkPhotos(b.vendor_id, body.photoIds), actorId],
+      [b.id, phase, readings, body.note?.trim() || null, this.checkPhotos(b.vendor_id, body.photos), actorId],
     );
   }
 
@@ -247,7 +244,7 @@ export class FulfilmentService {
           `INSERT INTO booking_charges (booking_id, kind, description, qty, amount_paise, from_deposit, evidence_ids, created_by)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [b.id, i.missing ? 'missing' : 'damage', `${line.item_snapshot.name}: ${parts}${amount < listed ? ` (reduced to ${rupees(amount)})` : ''}`,
-            i.damaged + i.missing, amount, deposit > 0, this.checkPhotos(b.vendor_id, body.photoIds), vendorUserId],
+            i.damaged + i.missing, amount, deposit > 0, this.checkPhotos(b.vendor_id, body.photos), vendorUserId],
         );
         charges += amount;
       }
@@ -422,9 +419,10 @@ export class FulfilmentService {
 
   /** Items, counts, photos and charges of one rental booking, for its customer or its vendor. */
   async view(bookingId: string, who: { vendorUserId?: string; customerId?: string }) {
-    const b = await this.db.one<RentalBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; return_due_at: Date | null }>(
+    const b = await this.db.one<RentalBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; return_due_at: Date | null; amount_paise: number; advance_paise: number }>(
       this.db,
-      `SELECT b.id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.return_due_at, b.deposit_paise, b.charges_paise, b.deposit_settled_at
+      `SELECT b.id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.return_due_at, b.deposit_paise, b.charges_paise, b.deposit_settled_at,
+              b.amount_paise, b.advance_paise
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
         WHERE b.id = $1 AND ($2::uuid IS NULL OR v.user_id = $2) AND ($3::uuid IS NULL OR b.customer_id = $3)`,
       [bookingId, who.vendorUserId ?? null, who.customerId ?? null],
@@ -471,8 +469,10 @@ export class FulfilmentService {
         settledAt: b.deposit_settled_at,
       },
       balancePaidPaise: paidOf('final'),
-      /** Agreed charges the online deposit did not cover: settled between customer and vendor. */
-      dueToVendorPaise: Math.max(0, agreed - b.charges_paise),
+      /** Agreed charges the deposit does not cover; they are added to the balance. */
+      dueToVendorPaise: Math.max(0, agreed - paidOf('deposit')),
+      /** What "Pay balance" charges now: the rest of the price plus charges beyond the deposit. */
+      balanceDuePaise: ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - paidOf('deposit')) - paidOf('final')) : 0,
     };
   }
 }

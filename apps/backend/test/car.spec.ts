@@ -199,7 +199,7 @@ describe('wedding car booking', () => {
     expect((await as(c.token).get(`/v1/bookings/${id}/trip`).expect(200)).body.driver).toEqual({ id: drivers[0], name: 'Ramesh' });
     // Handover only from 24 h before: move the trip to start soon.
     await t.db.query(`UPDATE bookings SET starts_at = now() + interval '1 hour', ends_at = now() + interval '9 hours 30 minutes' WHERE id = $1`, [id]);
-    await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, photoIds: [`eventseva/vendors/${vendor.id}/media/front`] }).expect(200);
+    await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, photos: [{ publicId: `eventseva/vendors/${vendor.id}/media/front`, version: 1, signature: signParams({ public_id: `eventseva/vendors/${vendor.id}/media/front`, version: 1 }, SECRET) }] }).expect(200);
     await as(c.token).post(`/v1/bookings/${id}/inspections/handover/ack`, { decision: 'agreed' }).expect(200);
     await as(c.token).post(`/v1/bookings/${id}/inspections/handover/ack`, { decision: 'agreed' }).expect(409);
     // Returned 2 h after the booked end with 150 km on the clock.

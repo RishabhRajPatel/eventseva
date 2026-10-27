@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
+import { SignedPhotoDto } from '../media/signed-photo.dto';
 import { AppError } from '../common/errors';
 import type { AuthContext } from '../auth/token.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
@@ -17,7 +18,7 @@ class InspectionDto {
   @IsInt() @Min(0) @Max(2_000_000) odometerKm: number;
   @IsInt() @Min(0) @Max(8) fuelEighths: number;
   @IsOptional() @IsString() @MaxLength(500) notes?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsString({ each: true }) @MaxLength(255, { each: true }) photoIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
 }
 
 class DamageDto {

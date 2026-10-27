@@ -6,6 +6,12 @@ import { AppError } from '../common/errors';
 export type UploadKind = 'photo' | 'video' | 'document';
 
 type Params = Record<string, string | number>;
+/** Fields from Cloudinary's upload response that prove a file was uploaded with our signature. */
+export interface SignedUpload {
+  publicId: string;
+  version: number;
+  signature: string;
+}
 
 /**
  * Cloudinary's request signature: parameters sorted by name, joined as k=v&k=v, the API
@@ -72,6 +78,21 @@ export class CloudinaryService {
       signature: signParams(params, apiSecret),
       maxBytes: rule.maxBytes,
     };
+  }
+
+  /**
+   * Photos sent as evidence (delivery, return, handover): each must be the vendor's own upload with
+   * Cloudinary's signed response, so nobody can point at someone else's file. Returns the public ids.
+   */
+  evidencePhotoIds(vendorId: string, photos: SignedUpload[] = [], max = 12): string[] {
+    if (photos.length > max) throw new AppError('VALIDATION', `Up to ${max} photos.`, HttpStatus.BAD_REQUEST, { field: 'photos' });
+    const folder = this.folderFor(vendorId, 'photo') + '/';
+    for (const p of photos) {
+      if (!p.publicId.startsWith(folder) || p.publicId.includes('..') || !this.verifyUploadResponse(p.publicId, p.version, p.signature)) {
+        throw new AppError('UPLOAD_INVALID', 'This upload does not belong to your account.', HttpStatus.FORBIDDEN);
+      }
+    }
+    return photos.map((p) => p.publicId);
   }
 
   /** Cloudinary signs its upload response; checking it proves the file really was uploaded. */

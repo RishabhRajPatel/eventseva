@@ -10,7 +10,7 @@ import { errorText } from '../lib/errors';
 import { invalidateInventory, inventoryKeys, itemUnit, nextStep, useRental } from '../lib/inventory';
 import { invalidateBookings } from '../lib/queries';
 import { toast } from '../lib/toast';
-import { uploadEvidencePhoto } from '../lib/upload';
+import { uploadEvidencePhoto, type SignedPhoto } from '../lib/upload';
 import { c, space } from '../lib/theme';
 import { toPicked } from '../hooks/usePhotoUpload';
 import { useLang } from '../hooks/useLang';
@@ -41,7 +41,7 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [counts, setCounts] = useState<Counts>({});
   const [note, setNote] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<SignedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
 
   const done = (r: RentalView) => {
@@ -77,8 +77,8 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
     setUploading(true);
     try {
       for (const a of result.assets) {
-        const id = await uploadEvidencePhoto(toPicked(a));
-        setPhotos((p) => [...p, id]);
+        const photo = await uploadEvidencePhoto(toPicked(a));
+        setPhotos((p) => [...p, photo]);
       }
     } catch (e) {
       toast.error(errorText(t, e));
@@ -94,7 +94,7 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
         disabled={photos.length >= MAX_EVIDENCE} onPress={() => void addPhotos()} />
     </View>
   );
-  const body = () => ({ note: note.trim() || undefined, photoIds: photos.length ? photos : undefined });
+  const body = () => ({ note: note.trim() || undefined, photos: photos.length ? photos : undefined });
 
   return (
     <Card style={{ gap: space.md }} testID="rental-panel">

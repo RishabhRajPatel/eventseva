@@ -7,7 +7,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
-import { CloudinaryService } from '../media/cloudinary.service';
+import { CloudinaryService, type SignedUpload } from '../media/cloudinary.service';
 import { FulfilmentService } from '../inventory/fulfilment.service';
 import { holdResource, Unavailable } from './reservations';
 import type { Pricing } from './types';
@@ -20,7 +20,7 @@ export interface InspectionInput {
   /** Fuel in eighths of a tank (0 empty … 8 full). */
   fuelEighths: number;
   notes?: string;
-  photoIds?: string[];
+  photos?: SignedUpload[];
 }
 
 export interface ReturnInput extends InspectionInput {
@@ -79,11 +79,9 @@ export class TripService {
     if (b.status !== 'confirmed') throw bad('BOOKING_BAD_STATUS', 'Only confirmed bookings.', { status: b.status });
   }
 
-  private checkPhotos(vendorId: string, ids: string[] = []) {
-    if (ids.length > MAX_PHOTOS) throw new AppError('VALIDATION', `Up to ${MAX_PHOTOS} photos.`);
-    const folder = this.cloudinary.folderFor(vendorId, 'photo') + '/';
-    if (ids.some((id) => !id.startsWith(folder) || id.includes('..'))) throw new AppError('UPLOAD_INVALID', 'This upload does not belong to your account.', HttpStatus.FORBIDDEN);
-    return ids;
+  /** Inspection photos must be the vendor's own signed uploads. */
+  private checkPhotos(vendorId: string, photos: SignedUpload[] = []) {
+    return this.cloudinary.evidencePhotoIds(vendorId, photos, MAX_PHOTOS);
   }
 
   private event(q: Queryable, bookingId: string, event: string, actorId: string | null, data: Record<string, unknown> = {}) {
@@ -154,7 +152,7 @@ export class TripService {
       }
       await client.query(
         `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, 'handover', $2, $3, $4, $5)`,
-        [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths }, body.notes?.trim() || null, this.checkPhotos(b.vendor_id, body.photoIds), vendorUserId],
+        [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths }, body.notes?.trim() || null, this.checkPhotos(b.vendor_id, body.photos), vendorUserId],
       );
       await client.query(`UPDATE bookings SET fulfilment = 'in_progress', actual_start_at = now(), updated_at = now() WHERE id = $1`, [b.id]);
       await this.event(client, b.id, 'handover', vendorUserId, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths });
@@ -182,7 +180,7 @@ export class TripService {
       if (body.odometerKm < out!.readings.odometerKm) {
         throw new AppError('ODOMETER_BELOW_START', `The odometer cannot be below ${out!.readings.odometerKm} km.`, HttpStatus.BAD_REQUEST, { minKm: out!.readings.odometerKm });
       }
-      const photos = this.checkPhotos(b.vendor_id, body.photoIds);
+      const photos = this.checkPhotos(b.vendor_id, body.photos);
       const p = b.snapshot.service?.pricing ?? ({} as Pricing);
       const now = new Date();
       const bookedHours = (b.ends_at.getTime() - b.starts_at.getTime()) / 3600_000;
@@ -254,9 +252,10 @@ export class TripService {
 
   /** Driver, car, inspections and charges, for the customer, the vendor or an admin. */
   async view(bookingId: string, who: { vendorUserId?: string; customerId?: string }) {
-    const b = await this.db.one<TripBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; registration: string | null }>(
+    const b = await this.db.one<TripBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; registration: string | null; amount_paise: number; advance_paise: number }>(
       this.db,
       `SELECT b.id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.snapshot, b.deposit_paise, b.charges_paise, b.deposit_settled_at,
+              b.amount_paise, b.advance_paise,
               r.attributes->>'registration' AS registration
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
          LEFT JOIN resources r ON r.id = (b.snapshot->'resource'->>'id')::uuid
@@ -278,6 +277,9 @@ export class TripService {
       `SELECT type, COALESCE(sum(amount_paise), 0)::int AS paid FROM payments WHERE booking_id = $1 AND status IN ('paid', 'refunded') GROUP BY type`,
       [bookingId],
     )).rows;
+    const depositPaid = paid.find((x) => x.type === 'deposit')?.paid ?? 0;
+    const finalPaid = paid.find((x) => x.type === 'final')?.paid ?? 0;
+    const agreed = charges.filter((c: { status: string }) => ['accepted', 'resolved'].includes(c.status)).reduce((s: number, c: { amountPaise: number }) => s + c.amountPaise, 0);
     const snap = b.snapshot as TripBooking['snapshot'] & { driver?: { id: string; name: string }; route?: unknown };
     // The full registration only once the booking is confirmed.
     const showReg = who.vendorUserId || ['confirmed', 'completed'].includes(b.status);
@@ -291,8 +293,10 @@ export class TripService {
       route: snap.route ?? null,
       inspections,
       charges,
-      deposit: { requiredPaise: b.deposit_paise, paidPaise: paid.find((x) => x.type === 'deposit')?.paid ?? 0, keptPaise: b.charges_paise, settledAt: b.deposit_settled_at },
-      balancePaidPaise: paid.find((x) => x.type === 'final')?.paid ?? 0,
+      deposit: { requiredPaise: b.deposit_paise, paidPaise: depositPaid, keptPaise: b.charges_paise, settledAt: b.deposit_settled_at },
+      balancePaidPaise: finalPaid,
+      /** What "Pay balance" charges now: the rest of the price plus agreed extras the deposit does not cover. */
+      balanceDuePaise: ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - depositPaid) - finalPaid) : 0,
     };
   }
 

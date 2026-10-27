@@ -3,7 +3,11 @@
 import { todayIst } from '../src/bookings/booking.rules';
 import { BookingsService } from '../src/bookings/bookings.service';
 import { FakeGateway, PAYMENT_GATEWAY } from '../src/payments/gateway';
+import { signParams } from '../src/media/cloudinary.service';
 import { createTestApp, TestApp } from './helpers';
+
+/** What Cloudinary returns for an upload signed with the test secret. */
+const signed = (publicId: string) => ({ publicId, version: 1, signature: signParams({ public_id: publicId, version: 1 }, 'test-secret') });
 
 const inDays = (n: number) => {
   const d = new Date(`${todayIst()}T00:00:00Z`);
@@ -369,7 +373,7 @@ describe('rentals and inventory', () => {
       ] }).expect(400)).body.error.code).toBe('CHARGE_TOO_HIGH');
       const counted = (await as(vendorToken).post(`${R(id)}/return`, { lines: [
         { lineId: chairLine, returned: 48, damaged: 2, missing: 0, note: 'Two legs broken' }, { lineId: plateLine, returned: 190, damaged: 0, missing: 10, chargePaise: 100_000 },
-      ], photoIds: [`eventseva/vendors/${vendorId}/media/broken1`] }).expect(200)).body;
+      ], photos: [signed(`eventseva/vendors/${vendorId}/media/broken1`)] }).expect(200)).body;
       expect(counted.charges.map((x: { amountPaise: number; kind: string }) => [x.kind, x.amountPaise])).toEqual([['damage', 60_000], ['missing', 100_000]]);
       // Nothing is back in stock until verified.
       expect((await t.db.one(t.db, 'SELECT total_qty, repair_qty FROM inventory_items WHERE id = $1', [chair.id]))).toEqual({ total_qty: 100, repair_qty: 0 });
@@ -405,6 +409,16 @@ describe('rentals and inventory', () => {
       expect(done.status).toBe('completed');
       const payout = (await t.db.one(t.db, 'SELECT amount_paise FROM payouts WHERE booking_id = $1', [id])).amount_paise;
       expect(payout).toBe(done.advancePaise + 25_000 - done.commissionPaise);
+
+      // The customer pays the balance (rest of the rent + ₹850 of charges beyond the deposit) online afterwards;
+      // the vendor's payout grows by that amount.
+      const due = (await as(c.token).get(`/v1/bookings/${id}/rental`).expect(200)).body.balanceDuePaise;
+      expect(due).toBe(done.amountPaise - done.advancePaise + 85_000);
+      const order = (await as(c.token).post(`/v1/bookings/${id}/pay?part=balance`).expect(200)).body;
+      expect(order.amountPaise).toBe(due);
+      await as(c.token).post(`/v1/bookings/${id}/pay/dev?part=balance`).expect(200);
+      expect((await t.db.one(t.db, 'SELECT amount_paise FROM payouts WHERE booking_id = $1', [id])).amount_paise).toBe(payout + order.amountPaise);
+      await as(c.token).post(`/v1/bookings/${id}/pay?part=balance`).expect(409);
     });
 
     it('returns the deposit in full when everything comes back fine', async () => {
@@ -442,7 +456,9 @@ describe('rentals and inventory', () => {
       const stranger = await customer('9866666666');
       await as(stranger.token).get(`/v1/bookings/${id}/rental`).expect(404);
       expect((await as(vendorToken).post(`${R(id)}/return`, { lines: [] }).expect(409)).body.error.code).toBe('FULFILMENT_BAD_STEP');
-      await as(vendorToken).post(`${R(id)}/dispatch`, { lines: [{ lineId: chairLine, qty: 1 }], photoIds: ['eventseva/vendors/someone-else/media/x'] }).expect(403);
+      await as(vendorToken).post(`${R(id)}/dispatch`, { lines: [{ lineId: chairLine, qty: 1 }], photos: [signed('eventseva/vendors/someone-else/media/x')] }).expect(403);
+      // Own folder but a made-up signature: refused too.
+      await as(vendorToken).post(`${R(id)}/dispatch`, { lines: [{ lineId: chairLine, qty: 1 }], photos: [{ ...signed(`eventseva/vendors/${vendorId}/media/x`), signature: 'a'.repeat(40) }] }).expect(403);
     });
 
     it('the vendor can cancel while preparing (full refund, stock free), not after dispatch', async () => {

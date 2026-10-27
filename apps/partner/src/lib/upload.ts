@@ -272,10 +272,19 @@ export async function uploadMedia(file: PickedFile, opts: UploadOptions = {}, it
   );
 }
 
-/** A photo kept with a delivery or return record (not reviewed, not in the gallery): returns its id. */
-export async function uploadEvidencePhoto(file: PickedFile, opts: UploadOptions = {}): Promise<string> {
+export interface SignedPhoto {
+  publicId: string;
+  version: number;
+  signature: string;
+}
+
+/**
+ * A photo kept with a delivery or return record (not reviewed, not in the gallery). Returns Cloudinary's
+ * signed reply, which the server checks so only the vendor's own uploads are accepted.
+ */
+export async function uploadEvidencePhoto(file: PickedFile, opts: UploadOptions = {}): Promise<SignedPhoto> {
   const { result } = await send(file, 'photo', opts);
-  return result.public_id;
+  return { publicId: result.public_id, version: result.version, signature: result.signature };
 }
 
 /** Uploads a private verification document (a photo or a PDF). For Aadhaar only the last 4 digits are sent. */

@@ -19,6 +19,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
+import { SignedPhotoDto } from '../media/signed-photo.dto';
 import type { AuthContext } from '../auth/token.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { StepUp } from '../admin/admin-2fa';
@@ -116,7 +117,7 @@ class LineQtyDto {
 class StepDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => LineQtyDto) lines: LineQtyDto[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(255, { each: true }) photoIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
 }
 
 class ReturnLineDto {
@@ -131,7 +132,7 @@ class ReturnLineDto {
 class ReturnDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => ReturnLineDto) lines: ReturnLineDto[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
-  @IsOptional() @IsArray() @ArrayMaxSize(10) @IsString({ each: true }) @MaxLength(255, { each: true }) photoIds?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
 }
 
 class LoadDto {

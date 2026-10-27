@@ -161,7 +161,7 @@ describe('rental panel', () => {
     expect(screen.getByTestId('charge-l1')).toHaveTextContent('Charge by the agreed rates: ₹1,500');
     await fireEvent.press(screen.getByTestId('rental-return'));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith('/v1/partner/bookings/b1/rental/return', { lines: [{ lineId: 'l1', returned: 45, damaged: 3, missing: 2 }], note: undefined, photoIds: undefined }),
+      expect(post).toHaveBeenCalledWith('/v1/partner/bookings/b1/rental/return', { lines: [{ lineId: 'l1', returned: 45, damaged: 3, missing: 2 }], note: undefined, photos: undefined }),
     );
     expect(await screen.findByTestId('rental-verify')).toBeTruthy();
   });
@@ -173,7 +173,7 @@ describe('rental panel', () => {
     await fireEvent.changeText(await screen.findByTestId('rental-note'), 'Truck UP70 1234');
     await fireEvent.press(screen.getByTestId('rental-dispatch'));
     await waitFor(() =>
-      expect(post).toHaveBeenCalledWith('/v1/partner/bookings/b1/rental/dispatch', { lines: [{ lineId: 'l1', qty: 50 }], note: 'Truck UP70 1234', photoIds: undefined }),
+      expect(post).toHaveBeenCalledWith('/v1/partner/bookings/b1/rental/dispatch', { lines: [{ lineId: 'l1', qty: 50 }], note: 'Truck UP70 1234', photos: undefined }),
     );
   });
 });
