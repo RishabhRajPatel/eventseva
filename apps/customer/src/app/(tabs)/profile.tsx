@@ -11,6 +11,7 @@ import { useLayout } from '../../hooks/useLayout';
 import { useShortlist } from '../../hooks/useShortlist';
 import { AppText } from '../../components/AppText';
 import { ListRow, Pill } from '../../components/Bits';
+import { useCart } from '../../lib/cart';
 import { Button } from '../../components/Button';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/Toast';
@@ -18,6 +19,7 @@ import { openLink } from '../../lib/links';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
+  const cartCount = useCart().items.length;
   const me = useMe();
   const session = useSession();
   const { gutter, isTablet } = useLayout();
@@ -67,6 +69,8 @@ export default function ProfileScreen() {
             onPress={() => router.push('/saved')}
           />
           <ListRow label={t('profile.events')} onPress={() => router.navigate('/bookings')} />
+          <ListRow label={t('cart.title')} value={cartCount ? String(cartCount) : undefined} onPress={() => router.push('/cart')} />
+          <ListRow label={t('licence.title')} onPress={() => router.push('/licence')} />
           <ListRow label={t('profile.city')} value={t('common.city')} onPress={() => toast.info(t('profile.cityOnly'))} />
           <ListRow
             last

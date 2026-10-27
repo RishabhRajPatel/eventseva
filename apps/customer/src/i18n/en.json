@@ -816,5 +816,188 @@
     "dueToVendor": "{{amount}} of agreed charges is more than your deposit: it is added to your balance.",
     "payBalance": "Pay balance {{amount}}",
     "balancePaid": "Balance paid"
+  },
+  "engineBook": {
+    "title": "Book",
+    "sectionTitle": "Book by time",
+    "packages": "Packages",
+    "packageHint_one": "{{count}} service together",
+    "packageHint_other": "{{count}} services together",
+    "off": "{{n}}% off",
+    "service": "Service",
+    "needEventBody": "Bookings belong to an event, so we know the date and the venue.",
+    "noServices": "This vendor has no services to book right now.",
+    "quotePrice": "Price on quotation",
+    "per": {
+      "fixed": "per booking",
+      "hourly": "per hour",
+      "daily": "per day",
+      "per_person": "per person",
+      "per_trip": "per trip",
+      "per_unit": "per item"
+    },
+    "instant": "Confirmed instantly",
+    "gst": "+{{n}}% GST",
+    "day": "Day",
+    "startTime": "Start time",
+    "howLong": "How long",
+    "hours_one": "{{count}} hour",
+    "hours_other": "{{count}} hours",
+    "days_one": "{{count}} day",
+    "days_other": "{{count}} days",
+    "count": {
+      "guests": "Number of guests",
+      "workers": "How many people",
+      "people": "Number of people"
+    },
+    "countRange": "Between {{min}} and {{max}}",
+    "mode": "How you want the car",
+    "modes": {
+      "with_driver": "With driver",
+      "self_drive": "Self-drive"
+    },
+    "selfDriveNote": "Self-drive: you must be at least {{age}}, and your driving licence is checked before the car is handed over. A refundable deposit applies.",
+    "pickup": "Pickup from",
+    "destination": "Drop at",
+    "addressPlaceholder": "House, street, area",
+    "currentLocation": "My current location",
+    "placeFound": "Place found on the map",
+    "extras": "Extras",
+    "extraAsks": "The vendor confirms this extra when they accept.",
+    "includes": "Includes: {{list}}",
+    "addonStatus": {
+      "included": "Included",
+      "pending_approval": "Waiting for the vendor",
+      "approved": "Accepted",
+      "declined": "Declined"
+    },
+    "notePlaceholder": "Anything the vendor should know",
+    "optional": "(optional)",
+    "yes": "Yes",
+    "no": "No",
+    "answerRequired": "Please answer this",
+    "answerInvalid": "Please check this answer",
+    "fillToPrice": "Fill in the details above to see the price.",
+    "indicative": "Indicative price: the vendor confirms it when they accept.",
+    "footerTotal": "Total {{total}} · advance {{advance}} after the vendor accepts",
+    "send": "Send request",
+    "bookNow": "Book now",
+    "sentToast": "Request sent",
+    "problem": {
+      "count": "Enter the {{what}}.",
+      "countRange": "{{what}}: between {{min}} and {{max}}.",
+      "route": "Add the pickup and drop places, and find them on the map.",
+      "answers": "Please answer the vendor's questions."
+    }
+  },
+  "cart": {
+    "title": "Cart",
+    "subtitle_one": "{{count}} service for one event",
+    "subtitle_other": "{{count}} services for one event",
+    "add": "Add to cart",
+    "added": "{{name}} added to the cart",
+    "open": "Cart ({{count}})",
+    "otherEvent": "The cart is for another event. Book those first, or clear the cart.",
+    "full": "The cart is full (10 services).",
+    "empty": "Your cart is empty",
+    "emptyBody": "Add services from one or more vendors and send all the requests together.",
+    "browse": "Find vendors",
+    "bundle": "Package: {{name}}",
+    "bundleOff": "Package: {{name}} — {{n}}% off its services",
+    "indicative": "Price confirmed by the vendor",
+    "remove": "Remove",
+    "advances": "Advances (after vendors accept)",
+    "payLater": "Nothing is paid now. Each vendor accepts their part; then you pay each advance.",
+    "allOrNone": "All requests are sent together, or none if one is not available.",
+    "sendAll_one": "Send {{count}} request",
+    "sendAll_other": "Send {{count}} requests",
+    "sendAllShort": "Send requests",
+    "booked_one": "{{count}} request sent",
+    "booked_other": "{{count}} requests sent",
+    "clear": "Clear cart"
+  },
+  "carTrip": {
+    "title": "Trip",
+    "fulfilment": {
+      "scheduled": "Scheduled",
+      "assigned": "Driver assigned",
+      "in_progress": "On the trip",
+      "closed": "Finished"
+    },
+    "driver": "Driver: {{name}}",
+    "pickup": "Pickup: {{place}}",
+    "drop": "Drop: {{place}}",
+    "phase": {
+      "handover": "Handover",
+      "return": "Return"
+    },
+    "readings": "Odometer {{km}} km · fuel {{fuel}}/8",
+    "driven": "{{km}} km driven",
+    "ack": {
+      "agreed": "You agreed",
+      "disputed": "You disputed this; EventSeva will check"
+    },
+    "agree": "This is right",
+    "notRight": "Not right",
+    "whatIsWrong": "What is wrong?"
+  },
+  "changes": {
+    "title": "Change the booking",
+    "ask": "Ask to move or extend",
+    "kind": {
+      "extension": "Extend",
+      "reschedule": "Move to a new time"
+    },
+    "status": {
+      "requested": "Waiting for the vendor",
+      "approved": "Approved",
+      "rejected": "Declined",
+      "cancelled": "Withdrawn"
+    },
+    "howMuchLonger": "How much longer",
+    "why": "Reason (optional)",
+    "priceNote": "The vendor sees the new price. More is added to your balance; less is refunded.",
+    "send": "Send to the vendor",
+    "sent": "Change sent to the vendor",
+    "withdraw": "Withdraw",
+    "more": "{{amount}} more",
+    "less": "{{amount}} back to you",
+    "same": "Same price"
+  },
+  "licence": {
+    "title": "Driving licence",
+    "open": "Add driving licence",
+    "why": "Needed for self-drive cars. EventSeva checks it before your first trip.",
+    "ending": "Licence ending {{last4}}",
+    "validTill": "Valid till {{date}}",
+    "status": {
+      "pending": "Being checked",
+      "verified": "Verified",
+      "rejected": "Not accepted"
+    },
+    "number": "Licence number",
+    "numberError": "Enter it as printed, e.g. UP70 20190012345",
+    "dob": "Date of birth (YYYY-MM-DD)",
+    "expires": "Valid till (YYYY-MM-DD)",
+    "dateError": "Use YYYY-MM-DD, e.g. 1995-04-23",
+    "expired": "This licence has expired",
+    "privacy": "Stored encrypted. Only EventSeva's checking team sees the full number.",
+    "save": "Save licence",
+    "update": "Update licence",
+    "saving": "Saving…",
+    "saved": "Licence saved. We will check it soon."
+  },
+  "invoice": {
+    "title": "Invoice",
+    "open": "Invoice",
+    "taxInvoice": "Tax invoice",
+    "billOfSupply": "Bill of supply",
+    "date": "Issued {{date}}",
+    "from": "From",
+    "to": "To",
+    "booking": "Booking {{ref}}: {{service}}",
+    "taxable": "Taxable value",
+    "paid": "Paid through EventSeva",
+    "share": "Share invoice"
   }
 }

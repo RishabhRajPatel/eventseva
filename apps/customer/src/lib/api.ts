@@ -18,6 +18,14 @@ import {
   type Paged,
   type PaymentOrder,
   type Quote,
+  type BookingChange,
+  type CheckoutResult,
+  type DriverLicence,
+  type EngineBookingRequest,
+  type Invoice,
+  type PublicEngineService,
+  type ServiceBundle,
+  type TripView,
   type RentalCatalogue,
   type RentalView,
   type Review,
@@ -153,6 +161,28 @@ export const api = {
   rental: (bookingId: string) => client.get<RentalView>(`/v1/bookings/${bookingId}/rental`),
   answerCharge: (bookingId: string, chargeId: string, decision: 'accept' | 'dispute', note?: string) =>
     client.post<RentalView>(`/v1/bookings/${bookingId}/charges/${chargeId}`, { decision, note }),
+  // ---- services booked by time / quantity (DJ, catering, cars, staff …) ----
+  engineServices: (vendorId: string) => client.get<{ items: PublicEngineService[] }>(`/v1/vendors/${vendorId}/engine-services`, undefined, { auth: false }),
+  bundles: (vendorId: string) => client.get<{ items: ServiceBundle[] }>(`/v1/vendors/${vendorId}/bundles`, undefined, { auth: false }),
+  engineQuote: (body: EngineBookingRequest) => client.post<Quote>('/v1/quotes', body),
+  /** The same key on a retry returns the booking already made, never a second one. */
+  requestEngine: (body: EngineBookingRequest, idempotencyKey: string) =>
+    client.post<{ id: string }>('/v1/engine-bookings', body, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  checkoutQuote: (items: EngineBookingRequest[], bundleId?: string) =>
+    client.post<{ items: Quote[]; totalPaise: number; advancePaise: number; depositPaise: number }>('/v1/checkouts/quote', bundleId ? { items, bundleId } : { items }),
+  /** All the bookings or none. */
+  checkout: (items: EngineBookingRequest[], bundleId: string | undefined, idempotencyKey: string) =>
+    client.post<CheckoutResult>('/v1/checkouts', bundleId ? { items, bundleId } : { items }, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  licence: async () => (await client.get<{ licence: DriverLicence | null }>('/v1/me/licence')).licence,
+  saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string }) => client.put<DriverLicence>('/v1/me/licence', body),
+  trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),
+  ackInspection: (bookingId: string, phase: 'handover' | 'return', decision: 'agreed' | 'disputed', note?: string) =>
+    client.post<TripView>(`/v1/bookings/${bookingId}/inspections/${phase}/ack`, note ? { decision, note } : { decision }),
+  changes: (bookingId: string) => client.get<{ items: BookingChange[] }>(`/v1/bookings/${bookingId}/changes`),
+  requestChange: (bookingId: string, body: { kind: 'reschedule' | 'extension'; startsAt?: string; endsAt: string; reason?: string }) =>
+    client.post<BookingChange>(`/v1/bookings/${bookingId}/changes`, body),
+  cancelChange: (bookingId: string, changeId: string) => client.post<void>(`/v1/bookings/${bookingId}/changes/${changeId}/cancel`),
+  invoice: (bookingId: string) => client.get<Invoice>(`/v1/bookings/${bookingId}/invoice`),
   review: (id: string, rating: number, comment?: string) => client.post<Review>(`/v1/bookings/${id}/review`, { rating, comment }),
 
   // ---- coupons & offers ----

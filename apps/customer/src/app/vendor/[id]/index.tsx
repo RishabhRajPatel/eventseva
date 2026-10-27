@@ -7,8 +7,10 @@ import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context'
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { addDays, formatDay, formatDistance, todayIst, type Language, type Media, type Review } from '@eventseva/app-shared';
+import { addDays, formatDay, formatDistance, rupees, todayIst, type Language, type Media, type Review } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
+import { useCart } from '../../../lib/cart';
+import { perModel } from '../../../lib/engine';
 import { errorText } from '../../../lib/errors';
 import { STALE, vendorQuery } from '../../../lib/queries';
 import { keys } from '../../../lib/queryClient';
@@ -20,7 +22,7 @@ import { useLanguage } from '../../../hooks/useLanguage';
 import { useShortlist } from '../../../hooks/useShortlist';
 import { AppText } from '../../../components/AppText';
 import { Card, Notice, Pill, SectionTitle } from '../../../components/Bits';
-import { Icon } from '../../../components/Icon';
+import { Icon, type IconName } from '../../../components/Icon';
 import { Button, IconButton } from '../../../components/Button';
 import { DateStrip } from '../../../components/DateStrip';
 import { ItemOption } from '../../../components/ItemOption';
@@ -58,6 +60,9 @@ export default function VendorScreen() {
   });
 
   const items = useMemo(() => (vendor.data ? vendorItems(vendor.data) : []), [vendor.data]);
+  const engine = useQuery({ queryKey: ['engineServices', id], queryFn: () => api.engineServices(id), enabled: !!vendor.data?.engineServiceCount, staleTime: STALE.vendor });
+  const bundles = useQuery({ queryKey: ['bundles', id], queryFn: () => api.bundles(id), enabled: (vendor.data?.engineServiceCount ?? 0) > 1, staleTime: STALE.vendor });
+  const cartState = useCart();
   const photos = useMemo(() => (vendor.data?.media ?? []).filter((m: Media) => m.type === 'photo'), [vendor.data]);
   const videos = useMemo(() => (vendor.data?.media ?? []).filter((m: Media) => m.type === 'video'), [vendor.data]);
   const [playing, setPlaying] = useState<Media | null>(null);
@@ -99,6 +104,9 @@ export default function VendorScreen() {
   const book = () =>
     selected && router.push({ pathname: '/vendor/[id]/book', params: { id: v.id, item: itemKey(selected), ...(day ? { day } : {}) } });
   const rent = () => router.push({ pathname: '/vendor/[id]/rent', params: { id: v.id, ...(day ? { day } : {}) } });
+  const bookEngine = (serviceId?: string, bundleId?: string) =>
+    router.push({ pathname: '/vendor/[id]/engine', params: { id: v.id, ...(serviceId ? { service: serviceId } : {}), ...(bundleId ? { bundle: bundleId } : {}) } });
+  const engineOnly = !items.length && !v.rentalItemCount && v.engineServiceCount > 0;
 
   const header = (
     <View>
@@ -177,7 +185,40 @@ export default function VendorScreen() {
             </View>
           ) : null}
 
-          {items.length === 0 && !v.rentalItemCount ? <Notice icon="alert">{t('vendor.noItems')}</Notice> : null}
+          {items.length === 0 && !v.rentalItemCount && !v.engineServiceCount ? <Notice icon="alert">{t('vendor.noItems')}</Notice> : null}
+          {engine.data?.items.length ? (
+            <View style={styles.section}>
+              <SectionTitle title={t('engineBook.sectionTitle')} />
+              {engine.data.items.map((s) => (
+                <Card key={s.id} style={styles.rentCard} onPress={() => bookEngine(s.id)} label={s.title}>
+                  <Icon name={v.category.icon as IconName} size={28} color={c.royal} />
+                  <View style={styles.flex}>
+                    <AppText variant="bold" size="md">{s.title}</AppText>
+                    <AppText size="sm">
+                      {s.pricing.model === 'quote' ? t('engineBook.quotePrice') : `${rupees(s.pricing.ratePaise)} ${t(`engineBook.per.${perModel(s.pricing.model)}`)}`}
+                    </AppText>
+                    {s.rules.approval === 'auto' ? <AppText size="xs" color={c.successText}>{t('engineBook.instant')}</AppText> : null}
+                  </View>
+                  <Icon name="forward" size={20} color={c.royal} />
+                </Card>
+              ))}
+            </View>
+          ) : null}
+          {bundles.data?.items.length ? (
+            <View style={styles.section}>
+              <SectionTitle title={t('engineBook.packages')} />
+              {bundles.data.items.map((b) => (
+                <Card key={b.id} style={styles.rentCard} onPress={() => bookEngine(b.items.find((i) => i.mandatory)?.serviceId, b.id)} label={b.name}>
+                  <View style={styles.flex}>
+                    <AppText variant="bold" size="md">{b.name}</AppText>
+                    {b.description ? <AppText size="sm">{b.description}</AppText> : null}
+                    <AppText size="xs">{t('engineBook.packageHint', { count: b.items.length })}</AppText>
+                  </View>
+                  {b.discountPercent ? <Pill label={t('engineBook.off', { n: b.discountPercent })} tone="mint" /> : null}
+                </Card>
+              ))}
+            </View>
+          ) : null}
           {v.rentalItemCount ? (
             <Card style={styles.rentCard} onPress={rent} label={t('rent.open')}>
               <Icon name="tent" size={28} color={c.royal} />
@@ -254,10 +295,13 @@ export default function VendorScreen() {
         ) : null}
         <View style={styles.footerRow}>
           <IconButton icon="chat" label={t('vendor.chat')} onPress={() => chat.mutateAsync()} tone="outline" />
+          {cartState.items.length ? (
+            <Button label={t('cart.open', { count: cartState.items.length })} variant="outline" size="md" onPress={() => router.push('/cart')} />
+          ) : null}
           <Button
-            label={!items.length && v.rentalItemCount ? t('rent.open') : day ? t('vendor.bookOn', { date: formatDay(day, lang).replace(/ \d{4}$/, '') }) : t('vendor.book')}
-            onPress={!items.length && v.rentalItemCount ? rent : book}
-            disabled={!selected && !(!items.length && v.rentalItemCount)}
+            label={engineOnly ? t('vendor.book') : !items.length && v.rentalItemCount ? t('rent.open') : day ? t('vendor.bookOn', { date: formatDay(day, lang).replace(/ \d{4}$/, '') }) : t('vendor.book')}
+            onPress={engineOnly ? () => bookEngine() : !items.length && v.rentalItemCount ? rent : book}
+            disabled={!engineOnly && !selected && !(!items.length && v.rentalItemCount)}
             size="md"
             style={styles.flex}
           />

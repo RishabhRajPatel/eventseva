@@ -6,6 +6,8 @@ export function mockApiModule() {
     'cancelBooking', 'review', 'shortlist', 'save', 'unsave', 'startChat', 'conversations', 'messages', 'sendMessage',
     'complaints', 'createComplaint', 'notifications', 'markNotificationsRead', 'offers', 'applyCoupon', 'removeCoupon',
     'rentals', 'quote', 'requestRental', 'rental', 'answerCharge', 'vendorTravel', 'updateEvent',
+    'engineServices', 'bundles', 'engineQuote', 'requestEngine', 'checkoutQuote', 'checkout', 'licence', 'saveLicence', 'trip', 'ackInspection',
+    'changes', 'requestChange', 'cancelChange', 'invoice',
   ];
   return {
     api: Object.fromEntries(names.map((n) => [n, jest.fn(() => new Promise(() => undefined))])),

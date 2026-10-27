@@ -67,31 +67,31 @@ export function RentalSection({ booking }: { booking: Booking }) {
       ))}
 
       <Divider />
-      <Deposit booking={booking} rental={r} />
-      {r.charges.length ? <Charges booking={booking} charges={r.charges} /> : null}
+      <Deposit booking={booking} deposit={r.deposit} closed={r.fulfilment === 'closed'} queryKey={rentalKey(booking.id)} />
+      {r.charges.length ? <Charges booking={booking} charges={r.charges} queryKey={rentalKey(booking.id)} /> : null}
       {r.dueToVendorPaise ? <Notice tone="peach">{t('rent.dueToVendor', { amount: rupees(r.dueToVendorPaise) })}</Notice> : null}
-      <Balance booking={booking} rental={r} />
+      <Balance booking={booking} duePaise={r.balanceDuePaise} queryKey={rentalKey(booking.id)} />
     </Card>
   );
 }
 
-function Deposit({ booking, rental }: { booking: Booking; rental: RentalView }) {
+/** The refundable security deposit: what is asked, paid, kept; pay it before the items go out (or the car). */
+export function Deposit({ booking, deposit: d, closed, queryKey }: { booking: Booking; deposit: RentalView['deposit']; closed: boolean; queryKey: readonly unknown[] }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const me = useMe();
   const toast = useToast();
-  const d = rental.deposit;
   const pay = useMutation({
     mutationFn: () => payAdvance(booking, { name: me.name, phone: me.phone }, choosePaymentPath(), undefined, 'deposit'),
     onSuccess: (result) => {
       if (result.status !== 'paid') return;
       toast.success(t('rent.depositPaid'));
-      void qc.invalidateQueries({ queryKey: rentalKey(booking.id) });
+      void qc.invalidateQueries({ queryKey });
       void qc.invalidateQueries({ queryKey: keys.booking(booking.id) });
     },
   });
   if (!d.requiredPaise) return <AppText size="sm">{t('rent.noDeposit')}</AppText>;
-  const due = booking.status === 'confirmed' && d.paidPaise < d.requiredPaise && rental.fulfilment !== 'closed';
+  const due = booking.status === 'confirmed' && d.paidPaise < d.requiredPaise && !closed;
   return (
     <View style={{ gap: space.xs }}>
       <MoneyRow label={t('rent.deposit')} value={rupees(d.requiredPaise)} />
@@ -117,7 +117,7 @@ function Deposit({ booking, rental }: { booking: Booking; rental: RentalView }) 
 }
 
 /** The rest of the price, plus agreed charges the deposit did not cover, paid online. */
-function Balance({ booking, rental }: { booking: Booking; rental: RentalView }) {
+export function Balance({ booking, duePaise, queryKey }: { booking: Booking; duePaise: number; queryKey: readonly unknown[] }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const me = useMe();
@@ -127,14 +127,14 @@ function Balance({ booking, rental }: { booking: Booking; rental: RentalView }) 
     onSuccess: (result) => {
       if (result.status !== 'paid') return;
       toast.success(t('rent.balancePaid'));
-      void qc.invalidateQueries({ queryKey: rentalKey(booking.id) });
+      void qc.invalidateQueries({ queryKey });
       void qc.invalidateQueries({ queryKey: keys.booking(booking.id) });
     },
   });
-  if (!rental.balanceDuePaise) return null;
+  if (!duePaise) return null;
   return (
     <View style={{ gap: space.xs }}>
-      <Button testID="pay-balance" label={t('rent.payBalance', { amount: rupees(rental.balanceDuePaise) })} size="md" onPress={() => pay.mutateAsync()} />
+      <Button testID="pay-balance" label={t('rent.payBalance', { amount: rupees(duePaise) })} size="md" onPress={() => pay.mutateAsync()} />
       {pay.error ? (
         <AppText size="sm" color={c.danger}>
           {errorText(t, pay.error)}
@@ -144,7 +144,8 @@ function Balance({ booking, rental }: { booking: Booking; rental: RentalView }) 
   );
 }
 
-function Charges({ booking, charges }: { booking: Booking; charges: RentalCharge[] }) {
+/** Damage / extra charges the vendor added: accept, or dispute with a reason (EventSeva decides). */
+export function Charges({ booking, charges, queryKey }: { booking: Booking; charges: RentalCharge[]; queryKey: readonly unknown[] }) {
   const { t } = useTranslation();
   const { lang } = useLanguage();
   const qc = useQueryClient();
@@ -153,7 +154,7 @@ function Charges({ booking, charges }: { booking: Booking; charges: RentalCharge
   const answer = useMutation({
     mutationFn: (v: { id: string; decision: 'accept' | 'dispute'; note?: string }) => api.answerCharge(booking.id, v.id, v.decision, v.note),
     onSuccess: (r) => {
-      qc.setQueryData(rentalKey(booking.id), r);
+      qc.setQueryData(queryKey, r);
       setDisputing(null);
       setReason('');
     },

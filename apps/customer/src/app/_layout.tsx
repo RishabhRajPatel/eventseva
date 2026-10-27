@@ -95,6 +95,10 @@ function RootNavigator() {
         <Stack.Screen name="vendor/[id]/photos" options={{ animation: 'fade', contentStyle: { backgroundColor: '#000' } }} />
         <Stack.Screen name="vendor/[id]/book" />
         <Stack.Screen name="vendor/[id]/rent" />
+        <Stack.Screen name="vendor/[id]/engine" />
+        <Stack.Screen name="cart" />
+        <Stack.Screen name="licence" />
+        <Stack.Screen name="invoice/[id]" />
         <Stack.Screen name="booking/[id]" />
         <Stack.Screen name="pay/[id]" />
         <Stack.Screen name="chat/[id]" />

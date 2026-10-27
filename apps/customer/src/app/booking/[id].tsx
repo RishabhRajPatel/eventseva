@@ -24,6 +24,8 @@ import { CardsSkeleton } from '../../components/Skeleton';
 import { ErrorState } from '../../components/States';
 import { openLink } from '../../lib/links';
 import { RentalSection } from '../../components/RentalSection';
+import { CarTripSection } from '../../components/CarTripSection';
+import { ChangesSection } from '../../components/ChangesSection';
 
 export default function BookingScreen() {
   const { id, sent } = useLocalSearchParams<{ id: string; sent?: string }>();
@@ -91,6 +93,16 @@ export default function BookingScreen() {
       <TripCard booking={b} />
 
       {b.bookingType === 'rental' ? <RentalSection booking={b} /> : null}
+      {b.bookingType === 'transport' ? <CarTripSection booking={b} /> : null}
+      {b.addons?.length ? (
+        <Card style={styles.card}>
+          <AppText variant="bold" size="md">{t('engineBook.extras')}</AppText>
+          {b.addons.map((a) => (
+            <MoneyRow key={a.addonId} label={`${a.name} · ${t(`engineBook.addonStatus.${a.status}`)}`} value={rupees(a.pricePaise)} small />
+          ))}
+        </Card>
+      ) : null}
+      <ChangesSection booking={b} />
 
       <Card style={styles.card}>
         <MoneyRow label={t('booking.total')} value={rupees(b.amountPaise)} />
@@ -121,6 +133,9 @@ export default function BookingScreen() {
           <AppText size="sm" color={c.danger}>
             {errorText(t, chat.error)}
           </AppText>
+        ) : null}
+        {isConfirmed(b.status) && b.bookingType !== 'slot' ? (
+          <Button label={t('invoice.open')} variant="outline" size="md" onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: b.id } })} />
         ) : null}
         {canCancel(b) ? <Button label={t('booking.cancel')} variant="dangerOutline" onPress={() => setSheet('cancel')} /> : null}
         <Button
