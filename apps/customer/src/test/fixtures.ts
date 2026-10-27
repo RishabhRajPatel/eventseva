@@ -1,4 +1,6 @@
-import { addDays, todayIst, type Booking, type EventSummary, type VendorDetail } from '@eventseva/app-shared';
+import { addDays, todayIst, type Booking, type BookingStage, type BookingStatus, type EventSummary, type VendorDetail } from '@eventseva/app-shared';
+
+const STAGES: Partial<Record<BookingStatus, BookingStage>> = { requested: 'pending_confirmation', accepted: 'awaiting_payment', cancelled_by_customer: 'cancelled', cancelled_by_vendor: 'cancelled' };
 
 export const inDays = (n: number) => addDays(todayIst(), n);
 
@@ -17,6 +19,7 @@ export const vendor: VendorDetail = {
     { id: 's1', title: 'Veg thali', description: 'Puri, sabzi, raita', pricePaise: 45_000, unit: 'per_plate', minGuests: null, maxGuests: null, isActive: true },
   ],
   packages: [{ id: 'p1', title: 'Haldi lunch', items: ['5 dishes', 'Sweet'], pricePaise: 2_500_000, isActive: true }],
+  rentalItemCount: 0,
   media: [],
 };
 
@@ -43,6 +46,13 @@ export function booking(over: Partial<Booking> = {}): Booking {
   return {
     id: 'b1',
     status: 'requested',
+    bookingType: 'slot',
+    stage: STAGES[over.status ?? 'requested'] ?? ((over.status ?? 'requested') as BookingStage),
+    startsAt: null,
+    endsAt: null,
+    taxPaise: 0,
+    depositPaise: 0,
+    depositSettledAt: null,
     day: inDays(40),
     slot: 'night',
     item: { type: 'service', id: 's1', title: 'Veg thali', unit: 'per_plate' },

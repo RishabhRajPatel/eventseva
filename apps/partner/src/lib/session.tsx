@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { useQueryClient } from '@tanstack/react-query';
 import type { Language, LoginResult, Me } from '@eventseva/app-shared';
 import { api, onSessionEnded } from './api';
-import { mediaUploads } from './uploadQueue';
+import { clearItemUploads, mediaUploads } from './uploadQueue';
 import { unregisterPush } from './push';
 import { isOffline } from './errors';
 import { keys } from './queries';
@@ -87,6 +87,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     // Stop any uploads still going to Cloudinary for this vendor.
     mediaUploads.clear();
+    clearItemUploads();
     await unregisterPush();
     await api.logout();
     queryClient.clear();

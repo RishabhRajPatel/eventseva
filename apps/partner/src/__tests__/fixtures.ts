@@ -1,10 +1,19 @@
-import type { Booking, BookingStatus } from '@eventseva/app-shared';
+import type { Booking, BookingStage, BookingStatus } from '@eventseva/app-shared';
+
+const STAGES: Partial<Record<BookingStatus, BookingStage>> = { requested: 'pending_confirmation', accepted: 'awaiting_payment', cancelled_by_customer: 'cancelled', cancelled_by_vendor: 'cancelled' };
 
 /** A booking as the partner API returns it, with overrides. */
 export function booking(id: string, status: BookingStatus, extra: Partial<Booking> = {}): Booking {
   return {
     id,
     status,
+    bookingType: 'slot',
+    stage: STAGES[status] ?? (status as BookingStage),
+    startsAt: null,
+    endsAt: null,
+    taxPaise: 0,
+    depositPaise: 0,
+    depositSettledAt: null,
     day: '2026-12-01',
     slot: 'night',
     item: { type: 'service', id: 's1', title: 'DJ night', unit: 'per_event' },

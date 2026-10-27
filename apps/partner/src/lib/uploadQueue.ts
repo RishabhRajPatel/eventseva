@@ -173,3 +173,19 @@ export class UploadQueue {
 
 /** The app's one queue for photos and videos, shared by Profile, Photos and onboarding. */
 export const mediaUploads = new UploadQueue((file, opts) => uploadMedia(file, opts));
+
+const itemQueues = new Map<string, UploadQueue>();
+/** One queue per rental item, so its photos register against that item. */
+export function itemUploads(itemId: string): UploadQueue {
+  let q = itemQueues.get(itemId);
+  if (!q) {
+    q = new UploadQueue((file, opts) => uploadMedia(file, opts, itemId));
+    itemQueues.set(itemId, q);
+  }
+  return q;
+}
+
+export function clearItemUploads() {
+  itemQueues.forEach((q) => q.clear());
+  itemQueues.clear();
+}

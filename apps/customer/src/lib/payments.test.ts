@@ -39,7 +39,7 @@ describe('paying the advance', () => {
   test('dev path calls pay/dev and never opens the checkout', async () => {
     mocked.devPay.mockResolvedValue(confirmed);
     await expect(payAdvance(booking, {}, 'dev')).resolves.toEqual({ status: 'paid', booking: confirmed });
-    expect(mocked.devPay).toHaveBeenCalledWith('b1');
+    expect(mocked.devPay).toHaveBeenCalledWith('b1', 'advance');
     expect(mocked.startPayment).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });

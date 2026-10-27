@@ -41,8 +41,10 @@ export function daysBetween(today: string, day: string): number {
 
 const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
 
-export const canCancel = (b: Pick<Booking, 'status' | 'day'>, today = todayIst()) =>
-  ACTIVE.includes(b.status) && daysBetween(today, b.day) >= 0;
+/** Rentals on their way (preparing onwards) are cancelled through support, not in the app. */
+const CANCELLABLE_STAGES = ['pending_confirmation', 'awaiting_payment', 'confirmed'];
+export const canCancel = (b: Pick<Booking, 'status' | 'day'> & Partial<Pick<Booking, 'stage'>>, today = todayIst()) =>
+  ACTIVE.includes(b.status) && daysBetween(today, b.day) >= 0 && (!b.stage || CANCELLABLE_STAGES.includes(b.stage));
 
 /** Customer refund policy: 15+ days before the event 90%, 7–14 days 50%, under 7 days nothing. */
 export function refundPercent(daysBefore: number): number {

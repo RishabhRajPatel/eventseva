@@ -250,8 +250,11 @@ async function send(file: PickedFile, kind: UploadKind, opts: UploadOptions) {
   return { prepared, result };
 }
 
-/** Uploads one photo or video and registers it; it then waits for the team's review. */
-export async function uploadMedia(file: PickedFile, opts: UploadOptions = {}): Promise<Media> {
+/**
+ * Uploads one photo or video and registers it; it then waits for the team's review. With `itemId`
+ * it is a photo of that rental item instead of a gallery photo.
+ */
+export async function uploadMedia(file: PickedFile, opts: UploadOptions = {}, itemId?: string): Promise<Media> {
   const { prepared, result: r } = await send(file, file.type, opts);
   return withRetry(() =>
     api.post<Media>('/v1/partner/media', {
@@ -264,8 +267,15 @@ export async function uploadMedia(file: PickedFile, opts: UploadOptions = {}): P
       bytes: r.bytes,
       etag: r.etag,
       ...(file.type === 'video' ? { durationSec: Math.round(r.duration ?? (file.durationMs ?? 0) / 1000) } : {}),
+      ...(itemId ? { itemId } : {}),
     }),
   );
+}
+
+/** A photo kept with a delivery or return record (not reviewed, not in the gallery): returns its id. */
+export async function uploadEvidencePhoto(file: PickedFile, opts: UploadOptions = {}): Promise<string> {
+  const { result } = await send(file, 'photo', opts);
+  return result.public_id;
 }
 
 /** Uploads a private verification document (a photo or a PDF). For Aadhaar only the last 4 digits are sent. */

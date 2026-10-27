@@ -135,6 +135,9 @@ function AppStack() {
         <Stack.Screen name="featured" />
         <Stack.Screen name="service/[id]" />
         <Stack.Screen name="package/[id]" />
+        <Stack.Screen name="inventory/index" />
+        <Stack.Screen name="inventory/[id]" />
+        <Stack.Screen name="rental-settings" />
         <Stack.Screen name="business" />
         <Stack.Screen name="photos" />
         <Stack.Screen name="documents" />

@@ -162,6 +162,8 @@ export interface VendorDetail {
   rating: { avg: number; count: number };
   services: Service[];
   packages: Package[];
+  /** Items on rent (tent, furniture, utensils …): when > 0 the vendor page offers "Rent items". */
+  rentalItemCount: number;
   media: Media[];
   /** Owner and admin views only. */
   status?: VendorStatus;
@@ -248,9 +250,39 @@ export interface EventSummary {
   committedPaise?: number;
 }
 
+/** slot: the classic day + slot booking; the rest come from the booking engine with exact times. */
+export type BookingType = 'slot' | 'time_window' | 'rental' | 'per_person' | 'staffing' | 'appointment' | 'transport' | 'quote';
+
+/**
+ * Where a booking is, for the status chip. Rentals add their delivery steps:
+ * pending_confirmation → awaiting_payment → confirmed → preparing → dispatched → delivered →
+ * return_pending → returned_verified → completed.
+ */
+export type BookingStage =
+  | 'pending_confirmation'
+  | 'awaiting_payment'
+  | 'confirmed'
+  | 'preparing'
+  | 'assigned'
+  | 'ready'
+  | 'dispatched'
+  | 'delivered'
+  | 'in_progress'
+  | 'return_pending'
+  | 'returned_verified'
+  | 'completed'
+  | 'cancelled'
+  | 'rejected'
+  | 'expired';
+
 export interface Booking {
   id: string;
   status: BookingStatus;
+  bookingType: BookingType;
+  stage: BookingStage;
+  /** Engine bookings: exact start and end (ISO); null for slot bookings. */
+  startsAt: string | null;
+  endsAt: string | null;
   day: string;
   slot: Slot;
   item: { type: 'service' | 'package'; id: string; title: string; unit: PricingUnit };
@@ -280,6 +312,10 @@ export interface Booking {
   advancePaise: number;
   balancePaise: number;
   refundPaise: number;
+  taxPaise: number;
+  /** Refundable security deposit (rentals, self-drive), paid apart from the price. */
+  depositPaise: number;
+  depositSettledAt: string | null;
   /** Coupon discount (paid by EventSeva): lowers what is paid in the app. */
   discountPaise: number;
   /** Customer app only: the applied coupon code, or null. */
@@ -342,7 +378,11 @@ export type BookingEventName =
   | 'expired'
   | 'on_the_way'
   | 'reached'
-  | 'venue_updated';
+  | 'venue_updated'
+  | 'dispatched'
+  | 'delivered'
+  | 'returned'
+  | 'return_verified';
 
 /** `data` of a `kind: 'booking'` chat line. */
 export interface BookingEventData {
@@ -499,4 +539,204 @@ export interface FeaturedOrder extends PaymentOrder {
 /** Every API error: { error: { code, message, ...details } }. */
 export interface ApiErrorBody {
   error: { code: string; message: string; [detail: string]: unknown };
+}
+
+// ---- rentals: vendor stock, customer catalogue, delivery and return ----
+
+export type ItemQuality = 'basic' | 'standard' | 'premium' | 'custom';
+export type ItemCondition = 'new' | 'good' | 'used' | 'needs_repair';
+export type RentPer = 'booking' | 'day';
+
+export interface ItemCategory {
+  id: string;
+  /** Default categories have a key (tent_decor, furniture, cooking, dining, serving, equipment); the vendor's own have null. */
+  key: string | null;
+  nameEn: string;
+  nameHi: string;
+  examplesEn?: string | null;
+  examplesHi?: string | null;
+  isCustom: boolean;
+  itemCount: number;
+}
+
+export interface ItemPhoto {
+  id: string;
+  publicId: string;
+  width: number;
+  height: number;
+  blurhash: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+/** A rental item as its vendor sees it (GET /v1/partner/inventory). */
+export interface InventoryItem {
+  id: string;
+  name: string;
+  description: string | null;
+  categoryId: string;
+  categoryName: string | null;
+  categoryNameHi: string | null;
+  /** piece, set, pair, dozen or the vendor's own word. */
+  unit: string;
+  rentPaise: number;
+  rentPer: RentPer;
+  totalQty: number;
+  /** Out of use: damaged, in repair or cleaning. */
+  repairQty: number;
+  depositPaise: number;
+  damagePaise: number;
+  missingPaise: number;
+  minQty: number;
+  maxQty: number | null;
+  minDays: number;
+  maxDays: number | null;
+  quality: ItemQuality;
+  qualityLabel: string | null;
+  condition: ItemCondition;
+  attributes: Record<string, string | number | boolean>;
+  isActive: boolean;
+  updatedAt: string;
+  photos: ItemPhoto[];
+  /** List only: free right now (not held by bookings, not out at events, not in repair). */
+  availableNow?: number;
+  /** List only: open bookings that include this item. */
+  openBookings?: number;
+}
+
+export interface InventoryInput {
+  name?: string;
+  description?: string | null;
+  categoryId?: string;
+  unit?: string;
+  rentPaise?: number;
+  rentPer?: RentPer;
+  totalQty?: number;
+  repairQty?: number;
+  depositPaise?: number;
+  damagePaise?: number;
+  missingPaise?: number;
+  minQty?: number;
+  maxQty?: number | null;
+  minDays?: number;
+  maxDays?: number | null;
+  quality?: ItemQuality;
+  qualityLabel?: string | null;
+  condition?: ItemCondition;
+  isActive?: boolean;
+}
+
+export interface StockMovement {
+  id: string;
+  kind: 'dispatch' | 'return' | 'damaged' | 'missing' | 'repaired' | 'written_off' | 'added' | 'removed';
+  qty: number;
+  note: string | null;
+  bookingId: string | null;
+  createdAt: string;
+}
+
+export interface StockBlock {
+  id: string;
+  qty: number;
+  from: string;
+  until: string;
+  note: string;
+}
+
+export interface RentalSettings {
+  serviceId: string | null;
+  deliveryFeePaise: number;
+  travelFreeKm: number | null;
+  travelPerKmPaise: number | null;
+  minOrderPaise: number | null;
+  taxPercent: number;
+  leadTimeHours: number | null;
+  setupMin: number;
+  dismantleMin: number;
+  bufferAfterMin: number;
+  approval: 'vendor' | 'auto';
+  instructions: string | null;
+}
+
+/** GET /v1/vendors/:id/rentals: what a customer can rent. */
+export interface RentalCatalogue {
+  serviceId: string | null;
+  settings: Pick<RentalSettings, 'deliveryFeePaise' | 'travelFreeKm' | 'travelPerKmPaise' | 'minOrderPaise' | 'taxPercent' | 'leadTimeHours' | 'approval' | 'instructions'>;
+  categories: { id: string; nameEn: string; nameHi: string; itemCount: number }[];
+  items: Array<Omit<InventoryItem, 'repairQty' | 'totalQty' | 'availableNow' | 'openBookings'> & { stock: number; available: number | null }>;
+}
+
+export interface QuoteLine {
+  code: string;
+  label: string;
+  qty: number;
+  unitPaise: number;
+  amountPaise: number;
+  kind: 'base' | 'extra' | 'addon' | 'fee' | 'tax' | 'deposit';
+}
+
+/** POST /v1/quotes */
+export interface Quote {
+  lines: QuoteLine[];
+  subtotalPaise: number;
+  taxPaise: number;
+  totalPaise: number;
+  advancePaise: number;
+  balancePaise: number;
+  depositPaise: number;
+  priceKind: 'confirmed' | 'indicative';
+  startsAt: string;
+  endsAt: string;
+  returnDueAt: string | null;
+  approval: 'vendor' | 'auto';
+  cancellation: { customer: { minDays: number; percent: number }[]; vendorPercent: number };
+  notes: string[];
+}
+
+export interface RentalLine {
+  id: string;
+  itemId: string;
+  /** Name, unit, quality and prices as booked; listing edits never change it. */
+  item: { name: string; unit: string; category: string | null; quality: ItemQuality; qualityLabel: string | null; condition: ItemCondition; rentPaise: number; rentPer: RentPer };
+  qty: number;
+  unitPaise: number;
+  amountPaise: number;
+  depositPaise: number;
+  damagePaise: number;
+  missingPaise: number;
+  loadedQty: number;
+  dispatchedQty: number;
+  deliveredQty: number;
+  returnedQty: number;
+  damagedQty: number;
+  missingQty: number;
+  note: string | null;
+  verifiedAt: string | null;
+}
+
+export interface RentalCharge {
+  id: string;
+  kind: 'damage' | 'missing' | string;
+  description: string;
+  amountPaise: number;
+  status: 'proposed' | 'accepted' | 'disputed' | 'waived' | 'resolved';
+  fromDeposit: boolean;
+  decisionNote: string | null;
+  createdAt: string;
+  /** Unanswered charges count as accepted after this. */
+  replyBy: string;
+}
+
+/** GET /v1/bookings/:id/rental and /v1/partner/bookings/:id/rental */
+export interface RentalView {
+  fulfilment: 'scheduled' | 'preparing' | 'dispatched' | 'delivered' | 'return_pending' | 'closed';
+  startsAt: string;
+  endsAt: string;
+  returnDueAt: string | null;
+  lines: RentalLine[];
+  steps: { phase: 'dispatch' | 'delivery' | 'return'; notes: string | null; photoIds: string[]; recordedAt: string }[];
+  charges: RentalCharge[];
+  deposit: { requiredPaise: number; paidPaise: number; keptPaise: number; settledAt: string | null };
+  balancePaidPaise: number;
+  /** Agreed charges the online deposit did not cover: settled directly with the vendor. */
+  dueToVendorPaise: number;
 }

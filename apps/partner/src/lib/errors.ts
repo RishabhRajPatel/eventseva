@@ -66,13 +66,27 @@ const KNOWN: Record<string, string> = {
   COUPON_NOT_ALLOWED: 'errors.couponNotAllowed',
   COUPON_ALREADY_USED: 'errors.couponAlreadyUsed',
   COUPON_USED_UP: 'errors.couponUsedUp',
+  // Rental items, dispatch and return.
+  NOT_AVAILABLE: 'errors.notAvailable',
+  ITEM_EXISTS: 'errors.itemExists',
+  CATEGORY_NOT_FOUND: 'errors.categoryNotFound',
+  CATEGORY_EXISTS: 'errors.categoryExists',
+  RETURN_COUNT_MISMATCH: 'errors.returnCountMismatch',
+  CHARGE_TOO_HIGH: 'errors.chargeTooHigh',
+  FULFILMENT_BAD_STEP: 'errors.fulfilmentBadStep',
+  RETURN_NOT_COUNTED: 'errors.returnNotCounted',
+  BOOKING_IN_PROGRESS: 'errors.bookingInProgress',
+  ITEMS_REQUIRED: 'errors.itemsRequired',
+  RENTAL_DAYS_OUT_OF_RANGE: 'errors.rentalDays',
+  QUANTITY_OUT_OF_RANGE: 'errors.quantityOutOfRange',
+  TIME_ORDER: 'errors.timeOrder',
   // Found on the phone before uploading.
   UNSUPPORTED_FILE: 'errors.unsupportedFile',
   CANCELLED: 'upload.cancelledOne',
 };
 
 /** Every API error code the app explains in its own words (tested against docs/API.md). */
-export const KNOWN_CODES = [...Object.keys(KNOWN), 'OTP_INVALID', 'OTP_TOO_SOON', 'FILE_TOO_BIG', 'ACCOUNT_HAS_ACTIVE_BOOKINGS'];
+export const KNOWN_CODES = [...Object.keys(KNOWN), 'OTP_INVALID', 'OTP_TOO_SOON', 'FILE_TOO_BIG', 'ACCOUNT_HAS_ACTIVE_BOOKINGS', 'STOCK_COMMITTED'];
 
 /** The message to show for a failed call: our translation when we know the code, else the server's text. */
 export function errorText(t: TFunction, e: unknown): string {
@@ -99,6 +113,11 @@ export function errorText(t: TFunction, e: unknown): string {
     const limit = (e as { details?: { limit?: unknown } }).details?.limit;
     if (limit === 'videos') return t('errors.limitVideos');
     if (limit === 'photos') return t('errors.limitPhotos');
+  }
+  // Stock cut below what bookings hold: say the lowest total that works.
+  if (code === 'STOCK_COMMITTED') {
+    const min = e instanceof ApiError ? e.details.minTotalQty : undefined;
+    return t('errors.stockCommitted', { minTotalQty: typeof min === 'number' ? min : '' });
   }
   if (code && KNOWN[code]) return t(KNOWN[code]);
   // A server error we have no words for: say so plainly, never "Error 500".

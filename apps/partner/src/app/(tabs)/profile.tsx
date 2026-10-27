@@ -48,6 +48,13 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
   const status = vendor.status === 'approved' ? { label: t('home.verified'), tone: 'success' as const } : vendorStatus(t, vendor.status);
 
   const menu: Array<{ icon: IconName; label: string; value?: string; onPress: () => unknown; testID: string }> = [
+    {
+      icon: 'tent',
+      label: t('profile.rentalItems'),
+      value: vendor.rentalItemCount ? t('profile.rentalItemsCount', { count: vendor.rentalItemCount }) : undefined,
+      onPress: () => router.push('/inventory'),
+      testID: 'menu-inventory',
+    },
     { icon: 'rupee', label: t('profile.earnings'), value: dashboard.data ? t('profile.thisMonth', { amount: rupees(dashboard.data.monthEarningsPaise) }) : undefined, onPress: () => router.push('/earnings'), testID: 'menu-earnings' },
     {
       icon: 'search',

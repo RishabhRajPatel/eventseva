@@ -23,6 +23,7 @@ import { ProgressBanner, TripCard } from '../../components/TripCard';
 import { CardsSkeleton } from '../../components/Skeleton';
 import { ErrorState } from '../../components/States';
 import { openLink } from '../../lib/links';
+import { RentalSection } from '../../components/RentalSection';
 
 export default function BookingScreen() {
   const { id, sent } = useLocalSearchParams<{ id: string; sent?: string }>();
@@ -76,8 +77,11 @@ export default function BookingScreen() {
       <StatusCard booking={b} onPay={() => router.push({ pathname: '/pay/[id]', params: { id: b.id } })} onReview={() => setSheet('review')} reviewed={reviewed || b.reviewed} />
 
       <Card style={styles.card}>
-        <Row icon="calendar" text={`${formatDay(b.day, lang, true)} · ${t(`slots.${b.slot}.label`)} (${t(`slots.${b.slot}.hours`)})`} />
-        <Row icon="star" text={`${b.item.title}${qtyText}`} />
+        <Row
+          icon="calendar"
+          text={b.startsAt && b.endsAt ? t('rent.window', { from: formatDateTime(b.startsAt, lang), until: formatDateTime(b.endsAt, lang) }) : `${formatDay(b.day, lang, true)} · ${t(`slots.${b.slot}.label`)} (${t(`slots.${b.slot}.hours`)})`}
+        />
+        <Row icon="star" text={b.bookingType === 'slot' ? `${b.item.title}${qtyText}` : b.item.title} />
         <Row icon="home" text={`${b.event.title} · ${t(`eventTypes.${b.event.eventType}`)}`} />
         {b.event.guestCount ? <Row icon="user" text={t('events.guests', { count: b.event.guestCount })} /> : null}
         {b.event.venueAddress ? <Row icon="pin" text={b.event.venueLandmark ? `${b.event.venueAddress} (${b.event.venueLandmark})` : b.event.venueAddress} /> : null}
@@ -85,6 +89,8 @@ export default function BookingScreen() {
       </Card>
 
       <TripCard booking={b} />
+
+      {b.bookingType === 'rental' ? <RentalSection booking={b} /> : null}
 
       <Card style={styles.card}>
         <MoneyRow label={t('booking.total')} value={rupees(b.amountPaise)} />

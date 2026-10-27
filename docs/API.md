@@ -240,6 +240,70 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   or 3 days after for new vendors. The rest of the price (`balancePaise`) is collected from the customer
   at the event.
 
+## Rentals: tent house, bartan, furniture, equipment
+
+Vendors list their own rental items; customers pick items and quantities for their dates. Stock is
+counted per item over time (setup, pickup and cleaning time included), so two customers can never get
+the same units. A rental booking then goes through the usual accept → advance → confirmed flow, plus
+delivery steps.
+
+**Partner app: items** (only the vendor's own; another vendor's id is 404)
+
+| Route | Notes |
+|---|---|
+| `GET /v1/partner/item-categories` | `{items: ItemCategory[]}`: six defaults (`tent_decor`, `furniture`, `cooking`, `dining`, `serving`, `equipment`) and the vendor's own |
+| `POST /v1/partner/item-categories` · `DELETE …/:id` | `{nameEn, nameHi?}` (up to 30). `CATEGORY_EXISTS` 409. Deleting moves its items to "Other event equipment" |
+| `GET /v1/partner/inventory?q=&categoryId=` | `{items: InventoryItem[]}` with `availableNow` (free right now) and `openBookings` |
+| `POST /v1/partner/inventory` | `{name, categoryId, rentPaise ≥ 100, totalQty, unit?, rentPer?: booking\|day, repairQty?, depositPaise?, damagePaise?, missingPaise?, minQty?, maxQty?, minDays?, maxDays?, quality?: basic\|standard\|premium\|custom, qualityLabel?, condition?: new\|good\|used\|needs_repair, description?, attributes?, isActive?}` → `InventoryItem`. `ITEM_EXISTS` 409 (same name), `CATEGORY_NOT_FOUND`, `LIMIT_REACHED` (2,000 items) |
+| `GET`·`PATCH /v1/partner/inventory/:id` | Same fields, all optional. Changes apply to new bookings only; booked lines keep their own copy (`item_snapshot`). Lowering stock below what bookings hold at the busiest moment ahead: `STOCK_COMMITTED` 409 with `committed` and `minTotalQty`. `needs_repair` or `isActive: false` stops new bookings |
+| `DELETE /v1/partner/inventory/:id` | → `{result: 'deleted'\|'archived', openBookings}`. An item that bookings or stock records point to is archived (hidden, history kept); its bookings still go ahead |
+| `GET /v1/partner/inventory/:id/movements` | Stock history: `dispatch`, `return`, `damaged`, `missing`, `repaired`, `added`, `removed` |
+| `GET`·`POST /v1/partner/inventory/:id/blocks` · `DELETE …/blocks/:blockId` | `{from, until, qty, note}` (ISO with time zone): keep stock back for those times. `NOT_AVAILABLE` 409 when that much is not free |
+| `GET`·`PUT /v1/partner/rental-settings` | `{deliveryFeePaise, travelFreeKm?, travelPerKmPaise?, minOrderPaise?, taxPercent?, leadTimeHours?, setupMin?, dismantleMin?, bufferAfterMin?, approval?: vendor\|auto, instructions?}` |
+| `POST /v1/partner/media` with `itemId` | A photo of that item (up to 8 per item, reviewed like gallery photos, never the cover) |
+
+**Customer app**
+
+| Route | Notes |
+|---|---|
+| `GET /v1/vendors/:id/rentals?from=&until=&q=&categoryId=` | Public. `RentalCatalogue`: `serviceId` to book under, settings, categories, active items with approved photos; with `from`/`until` each item has `available` for those times |
+| `POST /v1/quotes` | `{eventId, serviceId, startsAt, endsAt, lines: [{itemId, qty}]}` → `Quote`: rent × qty (× days for per-day items), delivery, GST, total, advance, balance and the refundable deposit (paid apart). Nothing is held |
+| `POST /v1/engine-bookings` | Same body (+ `note`), header `Idempotency-Key` (8–64 letters, digits, `-`, `_`): the same key returns the same booking. → `{id}`. Holds the stock until the vendor answers |
+| `GET /v1/bookings/:id/rental` | `RentalView`: lines as booked, counts at each step, photos, charges, deposit |
+| `POST /v1/bookings/:id/pay?part=deposit` · `?part=balance` | Confirmed rentals: the security deposit / the balance through the same checkout (`/pay/verify`, `/pay/dev` take `part` too). `NOTHING_TO_PAY` 409 |
+| `POST /v1/bookings/:id/charges/:chargeId` | `{decision: 'accept'\|'dispute', note}` (a dispute needs a note). `CHARGE_ALREADY_ANSWERED` 409. Unanswered charges count as accepted after 48 h |
+
+Times are ISO with a time zone. Rules: notice (`TOO_SOON`), shortest and longest rental
+(`DURATION_TOO_SHORT`, `DURATION_TOO_LONG`), working hours (`OUTSIDE_WORKING_HOURS`), within a week of the
+event (`OUTSIDE_EVENT_DATES`), end after start (`TIME_ORDER`), at least one item (`ITEMS_REQUIRED`), per-item
+quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and stock (`NOT_AVAILABLE` 409 with
+`what`, `available`, `requested`).
+
+**Partner app: delivery and return** (`/v1/partner/bookings/:id/rental`, confirmed rentals; each returns `RentalView`)
+
+| Route | Notes |
+|---|---|
+| `GET …/rental` | Items, counts, photos, charges, deposit |
+| `POST …/rental/prepare` · `POST …/rental/load {lines: [{lineId, qty}]}` | Getting the order ready |
+| `POST …/rental/dispatch` | `{lines: [{lineId, qty}], note?, photoIds?}`. From now on the stock counts as out until the return is verified, even past the booking's end |
+| `POST …/rental/deliver` | `{lines: [{lineId, qty}], note?, photoIds?}`: delivered at the venue; the customer is told about any shortfall |
+| `POST …/rental/return` | `{lines: [{lineId, returned, damaged, missing, note?, chargePaise?}], note?, photoIds?}`: the three must add up to what was sent (`RETURN_COUNT_MISMATCH`). Charges come from the rates agreed in the booking; `chargePaise` may only lower them (`CHARGE_TOO_HIGH`). Stock does not change yet |
+| `POST …/rental/verify` | After counting (`RETURN_NOT_COUNTED`): returned units are free again, damaged ones go to repair, missing ones leave the stock. Agreed charges come off the deposit and the rest is refunded |
+
+- Steps out of order: `FULFILMENT_BAD_STEP` 409. `photoIds` are the vendor's own Cloudinary uploads
+  (`UPLOAD_INVALID` otherwise).
+- Cancelling once items are on the way: `BOOKING_IN_PROGRESS` 409 (customers from `preparing`, vendors from
+  `dispatched`).
+- **Booking fields:** `bookingType` (`slot` or `rental` …), `stage` (`pending_confirmation`,
+  `awaiting_payment`, `confirmed`, `preparing`, `dispatched`, `delivered`, `return_pending` = event over,
+  `returned_verified`, `completed`, `cancelled`, `rejected`, `expired`), `startsAt`/`endsAt`, `depositPaise`,
+  `taxPaise`, `depositSettledAt`.
+- **Completion and payout:** a rental completes once the return is verified and the deposit settled. The
+  payout is the advance plus charges kept from the deposit, minus commission.
+- **Admin:** `GET /v1/admin/bookings/:id/rental`; `POST /v1/admin/bookings/:id/charges/:chargeId/resolve`
+  `{amountPaise, note}` (support / finance, 2FA re-check) settles a disputed charge (0 waives it; never more
+  than asked).
+
 ## Admin panel (`/v1/admin/*`, admin token)
 
 - **Login:** `POST /v1/admin/login {email, password, totp}` (or `recoveryCode` instead of `totp`, if the phone is lost)

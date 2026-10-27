@@ -2,7 +2,7 @@
 // the development shortcut is used.
 import { NativeModules, TurboModuleRegistry } from 'react-native';
 import { palette, type Booking } from '@eventseva/app-shared';
-import { api } from './api';
+import { api, type PayPart } from './api';
 
 export type PaymentPath = 'razorpay' | 'dev';
 export type PayMethod = 'upi' | 'card' | 'netbanking';
@@ -39,14 +39,16 @@ export async function payAdvance(
   who: { name?: string | null; phone?: string; method?: PayMethod } = {},
   path: PaymentPath = choosePaymentPath(),
   onStage: (stage: PayStage) => void = () => undefined,
+  /** The advance by default; for a confirmed rental also the security deposit or the balance. */
+  part: PayPart = 'advance',
 ): Promise<PayResult> {
   if (path === 'dev') {
     onStage('verifying');
-    return { status: 'paid', booking: await api.devPay(booking.id) };
+    return { status: 'paid', booking: await api.devPay(booking.id, part) };
   }
 
   onStage('starting');
-  const order = await api.startPayment(booking.id);
+  const order = await api.startPayment(booking.id, part);
   onStage('checkout');
   // Loaded only here, so Expo Go and tests never touch the missing native module.
   // eslint-disable-next-line @typescript-eslint/no-require-imports

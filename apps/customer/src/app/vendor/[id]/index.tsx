@@ -19,7 +19,8 @@ import { useLayout } from '../../../hooks/useLayout';
 import { useLanguage } from '../../../hooks/useLanguage';
 import { useShortlist } from '../../../hooks/useShortlist';
 import { AppText } from '../../../components/AppText';
-import { Notice, Pill, SectionTitle } from '../../../components/Bits';
+import { Card, Notice, Pill, SectionTitle } from '../../../components/Bits';
+import { Icon } from '../../../components/Icon';
 import { Button, IconButton } from '../../../components/Button';
 import { DateStrip } from '../../../components/DateStrip';
 import { ItemOption } from '../../../components/ItemOption';
@@ -97,6 +98,7 @@ export default function VendorScreen() {
 
   const book = () =>
     selected && router.push({ pathname: '/vendor/[id]/book', params: { id: v.id, item: itemKey(selected), ...(day ? { day } : {}) } });
+  const rent = () => router.push({ pathname: '/vendor/[id]/rent', params: { id: v.id, ...(day ? { day } : {}) } });
 
   const header = (
     <View>
@@ -175,7 +177,19 @@ export default function VendorScreen() {
             </View>
           ) : null}
 
-          {items.length === 0 ? <Notice icon="alert">{t('vendor.noItems')}</Notice> : null}
+          {items.length === 0 && !v.rentalItemCount ? <Notice icon="alert">{t('vendor.noItems')}</Notice> : null}
+          {v.rentalItemCount ? (
+            <Card style={styles.rentCard} onPress={rent} label={t('rent.open')}>
+              <Icon name="tent" size={28} color={c.royal} />
+              <View style={styles.flex}>
+                <AppText variant="bold" size="md">
+                  {t('rent.title')}
+                </AppText>
+                <AppText size="sm">{t('rent.itemsAvailable', { count: v.rentalItemCount })}</AppText>
+              </View>
+              <Icon name="forward" size={20} color={c.royal} />
+            </Card>
+          ) : null}
           {packages.length ? (
             <View style={styles.section} accessibilityRole="radiogroup">
               <SectionTitle title={t('vendor.packages')} />
@@ -241,9 +255,9 @@ export default function VendorScreen() {
         <View style={styles.footerRow}>
           <IconButton icon="chat" label={t('vendor.chat')} onPress={() => chat.mutateAsync()} tone="outline" />
           <Button
-            label={day ? t('vendor.bookOn', { date: formatDay(day, lang).replace(/ \d{4}$/, '') }) : t('vendor.book')}
-            onPress={book}
-            disabled={!selected}
+            label={!items.length && v.rentalItemCount ? t('rent.open') : day ? t('vendor.bookOn', { date: formatDay(day, lang).replace(/ \d{4}$/, '') }) : t('vendor.book')}
+            onPress={!items.length && v.rentalItemCount ? rent : book}
+            disabled={!selected && !(!items.length && v.rentalItemCount)}
             size="md"
             style={styles.flex}
           />
@@ -304,4 +318,5 @@ const styles = StyleSheet.create({
   end: { height: space.xxl },
   footer: { backgroundColor: c.white, borderTopWidth: 1, borderTopColor: c.lavender, paddingTop: space.md, paddingBottom: space.lg, gap: space.xs },
   footerRow: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
+  rentCard: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg },
 });

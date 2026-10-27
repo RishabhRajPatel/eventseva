@@ -17,6 +17,9 @@ import {
   type Offer,
   type Paged,
   type PaymentOrder,
+  type Quote,
+  type RentalCatalogue,
+  type RentalView,
   type Review,
   type Slot,
   type VendorCard,
@@ -74,6 +77,19 @@ export interface BookingRequest {
   arriveBy?: string;
 }
 
+/** POST /v1/quotes and /v1/engine-bookings: items for dates (rentals). */
+export interface RentalRequest {
+  eventId: string;
+  serviceId: string;
+  /** ISO with time zone. */
+  startsAt: string;
+  endsAt: string;
+  lines: { itemId: string; qty: number }[];
+  note?: string;
+}
+
+export type PayPart = 'advance' | 'balance' | 'deposit';
+
 export interface MessagesPage {
   items: Message[];
   hasMore: boolean;
@@ -122,11 +138,21 @@ export const api = {
   bookings: (q: { eventId?: string } = {}) => client.get<{ items: Booking[] }>('/v1/bookings', q),
   booking: (id: string) => client.get<Booking>(`/v1/bookings/${id}`),
   createBooking: (b: BookingRequest) => client.post<Booking>('/v1/bookings', b),
-  startPayment: (id: string) => client.post<PaymentOrder>(`/v1/bookings/${id}/pay`),
+  startPayment: (id: string, part: PayPart = 'advance') => client.post<PaymentOrder>(`/v1/bookings/${id}/pay`, undefined, part === 'advance' ? {} : { query: { part } }),
   verifyPayment: (id: string, p: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
     client.post<Booking>(`/v1/bookings/${id}/pay/verify`, p),
-  devPay: (id: string) => client.post<Booking>(`/v1/bookings/${id}/pay/dev`),
+  devPay: (id: string, part: PayPart = 'advance') => client.post<Booking>(`/v1/bookings/${id}/pay/dev`, undefined, part === 'advance' ? {} : { query: { part } }),
   cancelBooking: (id: string, reason: string) => client.post<Booking>(`/v1/bookings/${id}/cancel`, { reason }),
+  // ---- rentals (tent, furniture, utensils …) ----
+  rentals: (vendorId: string, q: { from?: string; until?: string; q?: string; categoryId?: string } = {}) =>
+    client.get<RentalCatalogue>(`/v1/vendors/${vendorId}/rentals`, q, { auth: false }),
+  quote: (body: RentalRequest) => client.post<Quote>('/v1/quotes', body),
+  /** The same key on a retry returns the booking already made, never a second one. */
+  requestRental: (body: RentalRequest, idempotencyKey: string) =>
+    client.post<{ id: string }>('/v1/engine-bookings', body, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  rental: (bookingId: string) => client.get<RentalView>(`/v1/bookings/${bookingId}/rental`),
+  answerCharge: (bookingId: string, chargeId: string, decision: 'accept' | 'dispute', note?: string) =>
+    client.post<RentalView>(`/v1/bookings/${bookingId}/charges/${chargeId}`, { decision, note }),
   review: (id: string, rating: number, comment?: string) => client.post<Review>(`/v1/bookings/${id}/review`, { rating, comment }),
 
   // ---- coupons & offers ----

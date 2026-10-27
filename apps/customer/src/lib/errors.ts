@@ -49,6 +49,19 @@ export const KNOWN_ERRORS = [
   'QUANTITY_OUT_OF_RANGE',
   'DATE_TOO_FAR',
   'TOO_MANY_MESSAGES',
+  // Rentals and other bookings by time.
+  'NOT_AVAILABLE',
+  'ITEMS_REQUIRED',
+  'RENTAL_DAYS_OUT_OF_RANGE',
+  'TIME_ORDER',
+  'TOO_SOON',
+  'DURATION_TOO_SHORT',
+  'DURATION_TOO_LONG',
+  'OUTSIDE_WORKING_HOURS',
+  'OUTSIDE_EVENT_DATES',
+  'BOOKING_IN_PROGRESS',
+  'CHARGE_ALREADY_ANSWERED',
+  'NOTHING_TO_PAY',
 ] as const;
 
 /** For codes this app does not know: a sentence by HTTP status. */
@@ -87,6 +100,7 @@ export function errorText(t: TFunction, e: unknown): string {
     // Rolling 24-hour limit: say exactly when the next code is allowed.
     if (e.code === 'OTP_LIMIT' && typeof d.retryAt === 'string') return t('errors.OTP_LIMIT_UNTIL', { time: formatDateTime(d.retryAt) });
     if (e.code === 'ACCOUNT_HAS_ACTIVE_BOOKINGS') return t('errors.ACCOUNT_HAS_ACTIVE_BOOKINGS', { count: typeof d.bookings === 'number' ? d.bookings : 1 });
+    if (e.code === 'NOT_AVAILABLE' && typeof d.available === 'number') return t('errors.NOT_AVAILABLE_COUNT', { available: d.available });
     if (e.code === 'QUANTITY_OUT_OF_RANGE') {
       const range = typeof d.max === 'number'
         ? t('errors.RANGE_BETWEEN', { min: typeof d.min === 'number' ? d.min : 1, max: d.max })

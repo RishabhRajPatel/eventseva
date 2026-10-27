@@ -20,6 +20,7 @@ import { RequestActions } from './RequestActions';
 import { TripCard } from './TripCard';
 import { Txt } from './Txt';
 import { openLink } from '../lib/links';
+import { RentalPanel } from './RentalPanel';
 
 /** Everything about one booking and what the vendor can do next. Used full-screen and in the tablet side panel. */
 export function BookingDetail({ booking, now }: { booking: Booking; now: number }) {
@@ -56,10 +57,21 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
           <BookingBadge booking={booking} now={now} />
         </View>
         <View style={styles.grid}>
-          <Detail label={t('booking.date')} value={formatDay(booking.day, lang, true)} />
-          <Detail label={t('booking.slot')} value={`${slotLabel(t, booking.slot)} · ${slotHours(t, booking.slot)}`} />
+          {booking.startsAt && booking.endsAt ? (
+            <>
+              <Detail label={t('booking.from')} value={formatDateTime(booking.startsAt, lang)} />
+              <Detail label={t('booking.until')} value={formatDateTime(booking.endsAt, lang)} />
+            </>
+          ) : (
+            <>
+              <Detail label={t('booking.date')} value={formatDay(booking.day, lang, true)} />
+              <Detail label={t('booking.slot')} value={`${slotLabel(t, booking.slot)} · ${slotHours(t, booking.slot)}`} />
+            </>
+          )}
           <Detail label={t('booking.item')} value={booking.item.title} />
-          <Detail label={t('booking.quantity')} value={booking.item.unit === 'per_event' || booking.item.unit === 'package' ? '1' : `${booking.quantity} · ${unitLabel(t, booking.item.unit)}`} />
+          {booking.bookingType === 'slot' ? (
+            <Detail label={t('booking.quantity')} value={booking.item.unit === 'per_event' || booking.item.unit === 'package' ? '1' : `${booking.quantity} · ${unitLabel(t, booking.item.unit)}`} />
+          ) : null}
           <Detail label={t('booking.event')} value={t(`eventType.${booking.event.eventType}`)} />
           <Detail label={t('booking.customer')} value={booking.customer?.name ?? t('booking.customerFallback')} />
           {booking.event.guestCount ? <Detail label={t('booking.guests')} value={String(booking.event.guestCount)} /> : null}
@@ -69,6 +81,8 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
       </Card>
 
       <TripCard booking={booking} />
+
+      {booking.bookingType === 'rental' ? <RentalPanel booking={booking} /> : null}
 
       <Card>
         <CardHeader title={t('money.title')} />
@@ -125,7 +139,7 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
         </Notice>
       ) : null}
 
-      {isCancellable(booking, todayIst()) ? (
+      {isCancellable(booking, todayIst()) && ['awaiting_payment', 'pending_confirmation', 'confirmed', 'preparing'].includes(booking.stage) ? (
         <Button testID="cancel-booking" kind="dangerOutline" label={t('booking.cancel')} onPress={() => setCancelling(true)} />
       ) : null}
       <LinkButton label={t('booking.reportProblem')} onPress={() => router.push({ pathname: '/help', params: { bookingId: booking.id } })} />
