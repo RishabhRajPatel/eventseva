@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-45 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+47 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,6 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
+- **Other:** [checkouts](#checkouts), [service_bundles](#service_bundles)
 
 ## Allowed values (enums)
 
@@ -467,6 +468,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `actual_end_at` | timestamp with time zone |  |  |  |
 | `idempotency_key` | text |  |  |  |
 | `deposit_settled_at` | timestamp with time zone |  |  | When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this |
+| `group_id` | uuid |  |  | → [checkouts](#checkouts).id; The checkout this booking was made in, with the others booked at the same time |
 
 <details><summary>Rules and indexes</summary>
 
@@ -482,6 +484,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Check: `CHECK ((tax_paise >= 0))`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id, created_at DESC)`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id) WHERE (status = 'requested'::booking_status)`
+- Index: `CREATE INDEX ON bookings USING btree (group_id) WHERE (group_id IS NOT NULL)`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (vendor_id, occupy_from, occupy_until) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE ((status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status])) AND (booking_type = 'slot'::text))`
@@ -1278,5 +1281,49 @@ Problems the system raises for the team (e.g. the daily SMS budget running out),
 <details><summary>Rules and indexes</summary>
 
 - Index: `CREATE INDEX ON system_alerts USING btree (created_at DESC) WHERE (resolved_at IS NULL)`
+
+</details>
+
+## Other
+
+### checkouts
+
+One customer action that booked several services (possibly several vendors) at once
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `customer_id` | uuid | yes |  | → [users](#users).id |
+| `event_id` | uuid | yes |  | → [events](#events).id |
+| `idempotency_key` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Index: `CREATE UNIQUE INDEX ON checkouts USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
+
+</details>
+
+### service_bundles
+
+A vendor's package of several services (e.g. car + decoration): mandatory items, optional discount
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `name` | text | yes |  |  |
+| `description` | text |  |  |  |
+| `discount_percent` | integer | yes | `0` |  |
+| `items` | jsonb | yes |  |  |
+| `is_active` | boolean | yes | `true` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((discount_percent >= 0) AND (discount_percent <= 50)))`
+- Check: `CHECK (((length(name) >= 2) AND (length(name) <= 80)))`
+- Check: `CHECK ((length(description) <= 500))`
+- Index: `CREATE INDEX ON service_bundles USING btree (vendor_id) WHERE is_active`
 
 </details>

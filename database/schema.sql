@@ -518,6 +518,7 @@ CREATE TABLE public.bookings (
     actual_end_at timestamp with time zone,
     idempotency_key text,
     deposit_settled_at timestamp with time zone,
+    group_id uuid,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
     CONSTRAINT bookings_deposit_paise_check CHECK ((deposit_paise >= 0)),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
@@ -595,6 +596,12 @@ COMMENT ON COLUMN public.bookings.fulfilment IS 'Progress after confirmation. Re
 --
 
 COMMENT ON COLUMN public.bookings.deposit_settled_at IS 'When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this';
+
+--
+-- Name: COLUMN bookings.group_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.group_id IS 'The checkout this booking was made in, with the others booked at the same time';
 
 --
 -- Name: capacity_holds; Type: TABLE; Schema: public; Owner: -
@@ -691,6 +698,24 @@ CREATE SEQUENCE public.categories_id_seq
 --
 
 ALTER SEQUENCE public.categories_id_seq OWNED BY public.categories.id;
+
+--
+-- Name: checkouts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.checkouts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    idempotency_key text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: TABLE checkouts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.checkouts IS 'One customer action that booked several services (possibly several vendors) at once';
 
 --
 -- Name: cities; Type: TABLE; Schema: public; Owner: -
@@ -1531,6 +1556,30 @@ CREATE TABLE public.service_addons (
 COMMENT ON TABLE public.service_addons IS 'Optional extras a vendor offers (car decoration packages, drone, album, makeup trial); custom ones need vendor approval';
 
 --
+-- Name: service_bundles; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.service_bundles (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor_id uuid NOT NULL,
+    name text NOT NULL,
+    description text,
+    discount_percent integer DEFAULT 0 NOT NULL,
+    items jsonb NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT service_bundles_description_check CHECK ((length(description) <= 500)),
+    CONSTRAINT service_bundles_discount_percent_check CHECK (((discount_percent >= 0) AND (discount_percent <= 50))),
+    CONSTRAINT service_bundles_name_check CHECK (((length(name) >= 2) AND (length(name) <= 80)))
+);
+
+--
+-- Name: TABLE service_bundles; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.service_bundles IS 'A vendor''s package of several services (e.g. car + decoration): mandatory items, optional discount';
+
+--
 -- Name: services; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1950,6 +1999,13 @@ ALTER TABLE ONLY public.categories
     ADD CONSTRAINT categories_slug_key UNIQUE (slug);
 
 --
+-- Name: checkouts checkouts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.checkouts
+    ADD CONSTRAINT checkouts_pkey PRIMARY KEY (id);
+
+--
 -- Name: cities cities_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2230,6 +2286,13 @@ ALTER TABLE ONLY public.service_addons
     ADD CONSTRAINT service_addons_pkey PRIMARY KEY (id);
 
 --
+-- Name: service_bundles service_bundles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_bundles
+    ADD CONSTRAINT service_bundles_pkey PRIMARY KEY (id);
+
+--
 -- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2355,6 +2418,12 @@ CREATE INDEX bookings_customer_id_created_at_idx ON public.bookings USING btree 
 CREATE INDEX bookings_customer_requested_idx ON public.bookings USING btree (customer_id) WHERE (status = 'requested'::public.booking_status);
 
 --
+-- Name: bookings_group_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_group_idx ON public.bookings USING btree (group_id) WHERE (group_id IS NOT NULL);
+
+--
 -- Name: bookings_idempotency_key; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2425,6 +2494,12 @@ CREATE INDEX capacity_holds_booking_idx ON public.capacity_holds USING btree (bo
 --
 
 CREATE INDEX capacity_holds_pool_idx ON public.capacity_holds USING gist (pool_key, period) WHERE (status = ANY (ARRAY['hold'::text, 'active'::text]));
+
+--
+-- Name: checkouts_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX checkouts_idempotency_key ON public.checkouts USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
 
 --
 -- Name: complaints_raised_by_idx; Type: INDEX; Schema: public; Owner: -
@@ -2685,6 +2760,12 @@ CREATE INDEX reviews_vendor_id_created_at_idx ON public.reviews USING btree (ven
 CREATE INDEX service_addons_vendor_idx ON public.service_addons USING btree (vendor_id);
 
 --
+-- Name: service_bundles_vendor_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX service_bundles_vendor_idx ON public.service_bundles USING btree (vendor_id) WHERE is_active;
+
+--
 -- Name: services_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2838,6 +2919,13 @@ ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id);
 
 --
+-- Name: bookings bookings_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.bookings
+    ADD CONSTRAINT bookings_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.checkouts(id);
+
+--
 -- Name: bookings bookings_package_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2871,6 +2959,20 @@ ALTER TABLE ONLY public.capacity_holds
 
 ALTER TABLE ONLY public.capacity_holds
     ADD CONSTRAINT capacity_holds_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: checkouts checkouts_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.checkouts
+    ADD CONSTRAINT checkouts_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.users(id);
+
+--
+-- Name: checkouts checkouts_event_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.checkouts
+    ADD CONSTRAINT checkouts_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id);
 
 --
 -- Name: complaints complaints_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -3151,6 +3253,13 @@ ALTER TABLE ONLY public.service_addons
 
 ALTER TABLE ONLY public.service_addons
     ADD CONSTRAINT service_addons_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: service_bundles service_bundles_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_bundles
+    ADD CONSTRAINT service_bundles_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
 -- Name: services services_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

@@ -48,7 +48,7 @@ class RouteDto {
 }
 
 /** One body for a price check (quote) and for the booking request itself. */
-class EngineRequestDto implements EngineRequest {
+export class EngineRequestDto implements EngineRequest {
   @IsUUID() eventId: string;
   @IsUUID() serviceId: string;
   @IsString() @MaxLength(40) startsAt: string;

@@ -41,6 +41,8 @@ import { EngineController } from './engine/engine.controller';
 import { EngineCatalogService } from './engine/catalog.service';
 import { TripService } from './engine/trip.service';
 import { ChangesService } from './engine/changes.service';
+import { CheckoutService } from './engine/checkout.service';
+import { CheckoutController, PartnerBundlesController } from './engine/checkout.controller';
 import { ChangesController, PartnerChangesController } from './engine/changes.controller';
 import { AdminLicencesController, PartnerTripController, TripController } from './engine/trip.controller';
 import { AdminResourcesController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
@@ -109,6 +111,8 @@ class ConfigModule {}
     AdminLicencesController,
     ChangesController,
     PartnerChangesController,
+    PartnerBundlesController,
+    CheckoutController,
     PartnerInventoryController,
     PartnerRentalController,
     RentalsController,
@@ -128,6 +132,7 @@ class ConfigModule {}
     EngineCatalogService,
     TripService,
     ChangesService,
+    CheckoutService,
     InventoryService,
     FulfilmentService,
     RefundsService,

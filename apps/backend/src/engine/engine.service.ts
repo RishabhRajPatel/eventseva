@@ -156,7 +156,7 @@ export class EngineService {
     return (await this.db.one<{ id: string }>(q, `INSERT INTO resources (vendor_id, kind, name) VALUES ($1, 'crew', 'Main team') RETURNING id`, [vendorId]))!.id;
   }
 
-  private async price(q: Queryable, customerId: string, req: EngineRequest, now = new Date(), agreed?: Agreed): Promise<Priced> {
+  private async price(q: Queryable, customerId: string, req: EngineRequest, now = new Date(), agreed?: Agreed, discountPercent = 0): Promise<Priced> {
     const loaded = await this.load(q, customerId, req, now, agreed);
     const { ctx } = loaded;
     const plan = HANDLERS[ctx.type as Exclude<BookingTypeKey, 'slot'>](ctx);
@@ -176,6 +176,12 @@ export class EngineService {
     if (ctx.type !== 'transport') {
       const t = travelLine(p, ctx.vendorBase, ctx.venue);
       if (t) lines.push(t);
+    }
+    // A vendor bundle (several services booked together) takes its discount off before tax.
+    if (discountPercent > 0) {
+      const before = lines.reduce((s, l) => s + l.amountPaise, 0);
+      const off = Math.round((before * discountPercent) / 100);
+      if (off > 0) lines.push({ code: 'bundle_discount', label: `Bundle discount ${discountPercent}%`, qty: 1, unitPaise: -off, amountPaise: -off, kind: 'fee' });
     }
     const subtotal = lines.reduce((s, l) => s + l.amountPaise, 0);
     const taxPaise = p.taxPercent ? Math.round((subtotal * p.taxPercent) / 100) : 0;
@@ -246,9 +252,9 @@ export class EngineService {
     if (clash) throw new Unavailable('vendor calendar');
   }
 
-  async quote(customerId: string, req: EngineRequest): Promise<Quote> {
+  async quote(customerId: string, req: EngineRequest, discountPercent = 0): Promise<Quote> {
     return this.db.tx(async (client) => {
-      const p = await this.price(client, customerId, req);
+      const p = await this.price(client, customerId, req, new Date(), undefined, discountPercent);
       await this.checkLicence(client, customerId, p);
       await this.checkVendorCalendar(client, p.loaded.vendor.id, p.plan.needs, p.plan.occupyFrom, p.plan.occupyUntil, p.loaded.ctx.crewId);
       await checkAll(client, p.plan.needs, p.plan.occupyFrom, p.plan.occupyUntil);
@@ -266,86 +272,7 @@ export class EngineService {
       if (existing) return existing.id;
     }
     try {
-      return await this.db.tx(async (client) => {
-        const now = new Date();
-        const p = await this.price(client, customerId, req, now);
-        await this.checkLicence(client, customerId, p);
-        const { plan, quote, loaded } = p;
-        await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
-        const respondBy = engineRespondBy(plan.starts, now);
-        if (!respondBy) throw new AppError('TOO_LATE_TO_BOOK', 'This starts too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
-        const auto = quote.approval === 'auto';
-        const payBy = auto ? enginePayBy(plan.starts, now) : null;
-        const snapshot = {
-          bookingType: loaded.ctx.type,
-          service: { id: loaded.ctx.service.id, title: loaded.ctx.service.title, pricing: loaded.ctx.service.pricing, attributes: loaded.ctx.service.attributes },
-          resource: loaded.ctx.resource ? { id: loaded.ctx.resource.id, name: loaded.ctx.resource.name, attributes: loaded.ctx.resource.attributes } : null,
-          rules: loaded.ctx.rules,
-          quote,
-          answers: plan.answers,
-          route: req.route ?? null,
-          mode: plan.answers.mode ?? null,
-          needs: plan.needs,
-          addons: p.addonRows,
-          // The request as made, so a later change (reschedule, extension) can be priced the same way.
-          request: { ...req, note: undefined },
-        };
-        const booking = await this.db.one<{ id: string }>(
-          client,
-          `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, day, slot, quantity, details, amount_paise, advance_paise,
-                                 commission_paise, tax_paise, deposit_paise, respond_by, pay_by, status, booking_type, starts_at, ends_at,
-                                 occupy_from, occupy_until, return_due_at, snapshot, cancellation_policy, idempotency_key)
-           VALUES ($1, $2, $3, $4, $5, 'full', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::booking_status, $16, $17, $18, $19, $20, $21, $22, $23, $24)
-           RETURNING id`,
-          [req.eventId, customerId, loaded.vendor.id, loaded.ctx.service.id, istDay(plan.starts), plan.quantity,
-            { note: req.note?.trim().slice(0, 500) || null }, quote.totalPaise, quote.advancePaise, p.commissionPaise, quote.taxPaise, quote.depositPaise,
-            respondBy, payBy, auto ? 'accepted' : 'requested', loaded.ctx.type, plan.starts, plan.ends, plan.occupyFrom, plan.occupyUntil,
-            plan.returnDue, snapshot, quote.cancellation, idempotencyKey ?? null],
-        );
-        const id = booking!.id;
-        for (const s of plan.stock) {
-          // What was agreed stays with the booking even if the vendor edits the listing later.
-          const it = loaded.ctx.items.get(s.itemId)!;
-          await client.query(
-            `INSERT INTO booking_lines (booking_id, inventory_item_id, qty, unit_paise, deposit_paise, damage_paise, missing_paise, item_snapshot)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [id, s.itemId, s.qty, s.unitPaise, s.depositPaise, it.damage_paise, it.missing_paise || it.damage_paise, {
-              name: it.name, unit: it.unit, category: it.category, quality: it.quality, qualityLabel: it.quality_label, condition: it.condition,
-              rentPaise: it.rent_paise, rentPer: it.rent_per, depositPaise: it.deposit_paise,
-            }],
-          );
-        }
-        for (const a of p.addonRows) {
-          await client.query(`INSERT INTO booking_addons (booking_id, addon_id, price_paise, request_note, status) VALUES ($1, $2, $3, $4, $5)`, [
-            id, a.id, a.price, a.note ?? null, a.status,
-          ]);
-        }
-        await holdAll(client, plan.needs, {
-          bookingId: id,
-          vendorId: loaded.vendor.id,
-          from: plan.occupyFrom,
-          until: plan.occupyUntil,
-          status: 'hold',
-          expiresAt: payBy ?? respondBy,
-        });
-        await client.query(`INSERT INTO booking_events (booking_id, event, actor_id, data) VALUES ($1, 'requested', $2, $3)`, [
-          id, customerId, { type: loaded.ctx.type, totalPaise: quote.totalPaise, priceKind: quote.priceKind, auto },
-        ]);
-        const when = plan.starts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
-        await notify(client, loaded.vendor.user_id, 'booking_requested', {
-          en: { title: auto ? 'New booking' : 'New booking request', body: `${loaded.ctx.service.title}, ${when}.${auto ? ' The customer is paying the advance.' : ' Please reply soon.'}` },
-          hi: { title: auto ? 'नई बुकिंग' : 'नई बुकिंग रिक्वेस्ट', body: `${loaded.ctx.service.title}, ${when}।${auto ? ' ग्राहक एडवांस दे रहे हैं।' : ' जल्दी जवाब दें।'}` },
-        }, { bookingId: id }, 'partner');
-        await notify(client, customerId, 'booking_request_received', {
-          en: { title: 'Request sent', body: auto ? `Pay the advance to confirm ${loaded.ctx.service.title}.` : `${loaded.vendor.business_name} will reply soon.` },
-          hi: { title: 'रिक्वेस्ट भेजी गई', body: auto ? `${loaded.ctx.service.title} पक्का करने के लिए एडवांस दें।` : `${loaded.vendor.business_name} जल्द जवाब देंगे।` },
-        }, { bookingId: id }, 'customer');
-        await postBookingEvent(client, { id, customer_id: customerId, vendor_id: loaded.vendor.id }, auto ? 'accepted' : 'requested', customerId, {
-          item: loaded.ctx.service.title,
-          day: istDay(plan.starts),
-        });
-        return id;
-      });
+      return await this.db.tx((client) => this.create(client, customerId, req, { idempotencyKey }));
     } catch (err) {
       // Two taps with the same key at once: the second hits the unique index; return the first.
       if (idempotencyKey && (err as { code?: string }).code === '23505') {
@@ -357,11 +284,100 @@ export class EngineService {
   }
 
   /**
+   * Makes one engine booking inside the caller's transaction (a single request, or one line of a
+   * checkout of several). Throws without leaving anything behind when the caller rolls back.
+   */
+  async create(client: Queryable, customerId: string, req: EngineRequest, opts: { idempotencyKey?: string; discountPercent?: number; bundleId?: string; groupId?: string } = {}): Promise<string> {
+    const idempotencyKey = opts.idempotencyKey;
+    const now = new Date();
+    const p = await this.price(client, customerId, req, now, undefined, opts.discountPercent ?? 0);
+    await this.checkLicence(client, customerId, p);
+    const { plan, quote, loaded } = p;
+    await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
+    const respondBy = engineRespondBy(plan.starts, now);
+    if (!respondBy) throw new AppError('TOO_LATE_TO_BOOK', 'This starts too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
+    const auto = quote.approval === 'auto';
+    const payBy = auto ? enginePayBy(plan.starts, now) : null;
+    const snapshot = {
+      bookingType: loaded.ctx.type,
+      service: { id: loaded.ctx.service.id, title: loaded.ctx.service.title, pricing: loaded.ctx.service.pricing, attributes: loaded.ctx.service.attributes },
+      resource: loaded.ctx.resource ? { id: loaded.ctx.resource.id, name: loaded.ctx.resource.name, attributes: loaded.ctx.resource.attributes } : null,
+      rules: loaded.ctx.rules,
+      quote,
+      answers: plan.answers,
+      route: req.route ?? null,
+      mode: plan.answers.mode ?? null,
+      needs: plan.needs,
+      addons: p.addonRows,
+      // The request as made, so a later change (reschedule, extension) can be priced the same way.
+      request: { ...req, note: undefined },
+      bundle: opts.bundleId ? { id: opts.bundleId, discountPercent: opts.discountPercent ?? 0 } : null,
+    };
+    const booking = await this.db.one<{ id: string }>(
+      client,
+      `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, day, slot, quantity, details, amount_paise, advance_paise,
+                             commission_paise, tax_paise, deposit_paise, respond_by, pay_by, status, booking_type, starts_at, ends_at,
+                             occupy_from, occupy_until, return_due_at, snapshot, cancellation_policy, idempotency_key)
+       VALUES ($1, $2, $3, $4, $5, 'full', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::booking_status, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+       RETURNING id`,
+      [req.eventId, customerId, loaded.vendor.id, loaded.ctx.service.id, istDay(plan.starts), plan.quantity,
+        { note: req.note?.trim().slice(0, 500) || null }, quote.totalPaise, quote.advancePaise, p.commissionPaise, quote.taxPaise, quote.depositPaise,
+        respondBy, payBy, auto ? 'accepted' : 'requested', loaded.ctx.type, plan.starts, plan.ends, plan.occupyFrom, plan.occupyUntil,
+        plan.returnDue, snapshot, quote.cancellation, idempotencyKey ?? null],
+    );
+    const id = booking!.id;
+    if (opts.groupId) await client.query('UPDATE bookings SET group_id = $2 WHERE id = $1', [id, opts.groupId]);
+    for (const s of plan.stock) {
+      // What was agreed stays with the booking even if the vendor edits the listing later.
+      const it = loaded.ctx.items.get(s.itemId)!;
+      await client.query(
+        `INSERT INTO booking_lines (booking_id, inventory_item_id, qty, unit_paise, deposit_paise, damage_paise, missing_paise, item_snapshot)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [id, s.itemId, s.qty, s.unitPaise, s.depositPaise, it.damage_paise, it.missing_paise || it.damage_paise, {
+          name: it.name, unit: it.unit, category: it.category, quality: it.quality, qualityLabel: it.quality_label, condition: it.condition,
+          rentPaise: it.rent_paise, rentPer: it.rent_per, depositPaise: it.deposit_paise,
+        }],
+      );
+    }
+    for (const a of p.addonRows) {
+      await client.query(`INSERT INTO booking_addons (booking_id, addon_id, price_paise, request_note, status) VALUES ($1, $2, $3, $4, $5)`, [
+        id, a.id, a.price, a.note ?? null, a.status,
+      ]);
+    }
+    await holdAll(client, plan.needs, {
+      bookingId: id,
+      vendorId: loaded.vendor.id,
+      from: plan.occupyFrom,
+      until: plan.occupyUntil,
+      status: 'hold',
+      expiresAt: payBy ?? respondBy,
+    });
+    await client.query(`INSERT INTO booking_events (booking_id, event, actor_id, data) VALUES ($1, 'requested', $2, $3)`, [
+      id, customerId, { type: loaded.ctx.type, totalPaise: quote.totalPaise, priceKind: quote.priceKind, auto },
+    ]);
+    const when = plan.starts.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    await notify(client, loaded.vendor.user_id, 'booking_requested', {
+      en: { title: auto ? 'New booking' : 'New booking request', body: `${loaded.ctx.service.title}, ${when}.${auto ? ' The customer is paying the advance.' : ' Please reply soon.'}` },
+      hi: { title: auto ? 'नई बुकिंग' : 'नई बुकिंग रिक्वेस्ट', body: `${loaded.ctx.service.title}, ${when}।${auto ? ' ग्राहक एडवांस दे रहे हैं।' : ' जल्दी जवाब दें।'}` },
+    }, { bookingId: id }, 'partner');
+    await notify(client, customerId, 'booking_request_received', {
+      en: { title: 'Request sent', body: auto ? `Pay the advance to confirm ${loaded.ctx.service.title}.` : `${loaded.vendor.business_name} will reply soon.` },
+      hi: { title: 'रिक्वेस्ट भेजी गई', body: auto ? `${loaded.ctx.service.title} पक्का करने के लिए एडवांस दें।` : `${loaded.vendor.business_name} जल्द जवाब देंगे।` },
+    }, { bookingId: id }, 'customer');
+    await postBookingEvent(client, { id, customer_id: customerId, vendor_id: loaded.vendor.id }, auto ? 'accepted' : 'requested', customerId, {
+      item: loaded.ctx.service.title,
+      day: istDay(plan.starts),
+    });
+    return id;
+  }
+
+  /**
    * Prices a booking again for new times with what was agreed (rates, rules, item rents), without
    * holding anything. Notice and "too far" checks are relaxed: the booking already exists.
    */
   async planChange(q: Queryable, b: { id: string; customer_id: string; snapshot: Record<string, unknown> }, startsAt: Date, endsAt: Date) {
-    const snap = b.snapshot as { request?: EngineRequest; service: { pricing: Agreed['pricing'] }; rules: Agreed['rules']; addons?: { id: string; status: string }[] };
+    const snap = b.snapshot as { request?: EngineRequest; service: { pricing: Agreed['pricing'] }; rules: Agreed['rules']; addons?: { id: string; status: string }[];
+      bundle?: { discountPercent: number } | null };
     if (!snap.request) throw new AppError('CHANGE_NOT_SUPPORTED', 'This booking cannot be changed in the app. Please contact support.', HttpStatus.CONFLICT);
     const lines = await q.query<{ inventory_item_id: string; item_snapshot: { rentPaise: number; rentPer: 'booking' | 'day'; depositPaise: number } }>(
       'SELECT inventory_item_id, item_snapshot FROM booking_lines WHERE booking_id = $1',
@@ -379,7 +395,7 @@ export class EngineService {
     };
     const lead = ((snap.rules?.leadTimeHours ?? 0) + 1) * HOUR;
     const now = new Date(Math.min(Date.now(), startsAt.getTime() - lead));
-    const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0 }, items });
+    const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0 }, items }, snap.bundle?.discountPercent ?? 0);
     return { plan: p.plan, quote: p.quote, commissionPaise: p.commissionPaise };
   }
 
