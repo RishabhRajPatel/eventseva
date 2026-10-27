@@ -113,6 +113,13 @@ describe('edge cases (API)', () => {
   });
 
   it('a booking for tomorrow has to be answered and paid before tomorrow starts', async () => {
+    // Late in the evening (India) there is not enough time left: the app says to call the vendor.
+    if (!respondByFor(inDays(1))) {
+      const e = await newEvent(1);
+      const res = await as(customer).post('/v1/bookings', { eventId: e.id, vendorId, serviceId: djServiceId, slot: 'night' }).expect(409);
+      expect(res.body.error.code).toBe('TOO_LATE_TO_BOOK');
+      return;
+    }
     const b = await requestDj(1);
     const start = eventStart(inDays(1)).getTime();
     expect(new Date(b.respondBy).getTime()).toBeLessThanOrEqual(start - HOUR);

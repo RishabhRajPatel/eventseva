@@ -309,6 +309,46 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
   Razorpay result; `POST /v1/admin/refunds/:id/retry` (finance, 2FA re-check) sends a failed refund once more
   (`NOT_FOUND` 404 when it is not failed or was already retried).
 
+## Services booked by time or quantity (DJ, decor, catering, cars, staff, makeup, planners)
+
+How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page says when to use these:
+`category.bookingType` (anything but `slot` / `rental`) and `engineServiceCount` > 0.
+
+**Partner app**
+
+| Route | What it does |
+|---|---|
+| `GET /v1/partner/service-setup` | The category's form: `bookingType`, `pricingModels`, `attributes`, `questions`, `resourceKind`, `defaultRules`, `vendorRuleKeys`, `resourceFields` |
+| `GET/POST /v1/partner/engine-services` · `PATCH/DELETE …/:id` | `{title, description?, pricing, rules?, attributes?, resourceId?}`. Slot and rental categories: `WRONG_SERVICE_KIND` 409. GST on a service needs the vendor's GST number (`GSTIN_REQUIRED`). Car services need their car (`RESOURCE_REQUIRED`, `RESOURCE_NOT_FOUND`). Up to 30 (`LIMIT_REACHED`) |
+| `GET/POST /v1/partner/resources` · `PATCH/DELETE …/:id` | Cars, drivers, staff, artists, halls: `{kind, name, attributes}`; `status` `active` / `maintenance`. Same registration twice: `VEHICLE_EXISTS` 409; a driver's licence already expired: `LICENCE_EXPIRED`; removing one with bookings ahead: `RESOURCE_BOOKED` 409 |
+| `POST /v1/partner/resources/:id/documents` | RC, insurance, permit, PUC; licence, police verification. Same signed upload as KYC documents (`UPLOAD_INVALID`) |
+| `GET/POST /v1/partner/addons` · `PATCH/DELETE …/:id` | Extras: `{name, kind?, pricePaise, serviceId?, inclusions?, exclusions?, setupMinutes?, requiresApproval?}` |
+| `GET/POST /v1/partner/bundles` · `PATCH/DELETE …/:id` | Packages: `{name, discountPercent?, items: [{serviceId, mandatory}]}` (own active services only: `SERVICE_NOT_FOUND`) |
+| `POST /v1/partner/bookings/:id/accept` | Engine bookings may need `{pricePaise}` (quotation: `QUOTE_PRICE_REQUIRED`) and `{addons: [{addonId, approve}]}` for every extra asked for (`ADDON_DECISION_REQUIRED`) |
+| `GET /v1/partner/bookings/:id/trip` | Car trip: mode, car, driver, route, handover / return records, charges, deposit |
+| `POST …/trip/driver {driverId}` | An approved, free driver (`DRIVER_NOT_FOUND`, `DRIVER_BUSY` 409); not for self-drive (`SELF_DRIVE`) |
+| `POST …/trip/handover {odometerKm, fuelEighths, notes?, photos?}` | From 24 hours before the start (`TOO_EARLY`); with a driver assigned (`DRIVER_REQUIRED`); self-drive needs the customer's verified licence (`LICENCE_NOT_VERIFIED`) and the deposit paid (`DEPOSIT_REQUIRED`) |
+| `POST …/trip/return {odometerKm, fuelEighths, fuelPaise?, tollsPaise?, parkingPaise?, damage?: [{description, amountPaise}], notes?, photos?}` | Extra km and late return are charged at the agreed rates; the odometer cannot go back (`ODOMETER_BELOW_START`). The customer accepts or disputes the charges like rental charges |
+| `GET /v1/partner/bookings/:id/changes` · `POST …/:changeId/approve` · `POST …/:changeId/reject {reason}` | Reschedules and extensions asked by the customer |
+| `GET /v1/partner/bookings/:id/invoice` · `…/commission-invoice` | The invoice in the vendor's name, and EventSeva's commission invoice (`INVOICE_NOT_READY` 409 before confirmation) |
+
+**Customer app**
+
+| Route | What it does |
+|---|---|
+| `GET /v1/vendors/:id/engine-services` · `GET /v1/vendors/:id/bundles` | What can be booked, with questions, extras and the car (registration masked) |
+| `POST /v1/quotes` | Any engine request → `Quote`; nothing is held |
+| `POST /v1/engine-bookings` (`Idempotency-Key`) | `{eventId, serviceId, startsAt, endsAt?, quantity? / guestCount? / people?, answers?, addons?, route?, mode?, note?}` → `{id}`. Errors: `SERVICE_NOT_FOUND`, `USE_SLOT_BOOKING`, `SERVICE_NOT_CONFIGURED`, `ANSWER_REQUIRED`, `ANSWER_INVALID`, `ADDON_NOT_FOUND`, `NOT_AVAILABLE` 409, `DATE_IN_PAST`. Cars: `ROUTE_REQUIRED`, `MODE_NOT_OFFERED`, `VEHICLE_NOT_AVAILABLE`, `NO_DRIVER`; self-drive: `LICENCE_REQUIRED`, `LICENCE_EXPIRED`, `TOO_YOUNG` |
+| `POST /v1/checkouts/quote` · `POST /v1/checkouts` (`Idempotency-Key`) · `GET /v1/checkouts/:id` | Up to 10 requests for one event, booked all or none; `details.itemIndex` says which line failed. A package: `bundleId` (`BUNDLE_NOT_FOUND`, `BUNDLE_INCOMPLETE`) |
+| `GET /v1/me/licence` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn}` | Driving licence for self-drive; EventSeva verifies it |
+| `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records |
+| `GET/POST /v1/bookings/:id/changes` · `POST …/:changeId/cancel` | `{kind: reschedule / extension, startsAt?, endsAt, reason?}`; one open change at a time (`CHANGE_PENDING` 409); day + slot bookings: `CHANGE_NOT_SUPPORTED` |
+| `GET /v1/bookings/:id/invoice` · `…/invoice.html` | Invoice in the vendor's name |
+
+**Admin:** `GET /v1/admin/resources/pending`, `GET …/:id/documents`, `POST …/:id/verify {decision, reason?}` (verifier;
+approving needs the RC and insurance, or the licence: `DOCUMENTS_MISSING` 409). `GET /v1/admin/licences/pending`,
+`POST /v1/admin/licences/:userId/verify {decision, reason?}`. `GET /v1/admin/reports/summary?from&to`.
+
 ## Admin panel (`/v1/admin/*`, admin token)
 
 - **Login:** `POST /v1/admin/login {email, password, totp}` (or `recoveryCode` instead of `totp`, if the phone is lost)

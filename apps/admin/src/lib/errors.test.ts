@@ -29,6 +29,9 @@ test('codes from docs/API.md for the admin routes are all covered', () => {
     'CATEGORY_EXISTS',
     'LAST_CITY',
     'OTP_SERVICE_BUSY',
+    'DOCUMENTS_MISSING',
+    'CHARGE_TOO_HIGH',
+    'CHARGE_ALREADY_ANSWERED',
   ];
   for (const code of documented) assert.ok(ERROR_MESSAGES[code], code);
 });

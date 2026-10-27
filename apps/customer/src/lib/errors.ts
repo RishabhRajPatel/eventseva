@@ -62,6 +62,26 @@ export const KNOWN_ERRORS = [
   'BOOKING_IN_PROGRESS',
   'CHARGE_ALREADY_ANSWERED',
   'NOTHING_TO_PAY',
+  // Services by time, cars, packages and changes.
+  'SERVICE_NOT_FOUND',
+  'USE_SLOT_BOOKING',
+  'SERVICE_NOT_CONFIGURED',
+  'ANSWER_REQUIRED',
+  'ANSWER_INVALID',
+  'ADDON_NOT_FOUND',
+  'DATE_IN_PAST',
+  'ROUTE_REQUIRED',
+  'MODE_NOT_OFFERED',
+  'VEHICLE_NOT_AVAILABLE',
+  'NO_DRIVER',
+  'LICENCE_REQUIRED',
+  'LICENCE_EXPIRED',
+  'TOO_YOUNG',
+  'BUNDLE_NOT_FOUND',
+  'BUNDLE_INCOMPLETE',
+  'CHANGE_PENDING',
+  'CHANGE_NOT_SUPPORTED',
+  'INVOICE_NOT_READY',
 ] as const;
 
 /** For codes this app does not know: a sentence by HTTP status. */
@@ -101,6 +121,7 @@ export function errorText(t: TFunction, e: unknown): string {
     if (e.code === 'OTP_LIMIT' && typeof d.retryAt === 'string') return t('errors.OTP_LIMIT_UNTIL', { time: formatDateTime(d.retryAt) });
     if (e.code === 'ACCOUNT_HAS_ACTIVE_BOOKINGS') return t('errors.ACCOUNT_HAS_ACTIVE_BOOKINGS', { count: typeof d.bookings === 'number' ? d.bookings : 1 });
     if (e.code === 'NOT_AVAILABLE' && typeof d.available === 'number') return t('errors.NOT_AVAILABLE_COUNT', { available: d.available });
+    if (e.code === 'TOO_YOUNG') return t('errors.TOO_YOUNG', { minAge: typeof d.minAge === 'number' ? d.minAge : 21 });
     if (e.code === 'QUANTITY_OUT_OF_RANGE') {
       const range = typeof d.max === 'number'
         ? t('errors.RANGE_BETWEEN', { min: typeof d.min === 'number' ? d.min : 1, max: d.max })

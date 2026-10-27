@@ -139,6 +139,8 @@ describe('error messages', () => {
     // Customer app and admin panel only.
     'TOO_LATE_TO_BOOK', 'TOO_MANY_OPEN_REQUESTS', 'QUANTITY_OUT_OF_RANGE', 'NO_VENDOR_PAYOUT',
     'TOO_SOON', 'DURATION_TOO_SHORT', 'DURATION_TOO_LONG', 'OUTSIDE_WORKING_HOURS', 'OUTSIDE_EVENT_DATES', 'CHARGE_ALREADY_ANSWERED', 'NOTHING_TO_PAY',
+    'USE_SLOT_BOOKING', 'SERVICE_NOT_CONFIGURED', 'ADDON_NOT_FOUND', 'ROUTE_REQUIRED', 'MODE_NOT_OFFERED', 'VEHICLE_NOT_AVAILABLE', 'NO_DRIVER',
+    'LICENCE_REQUIRED', 'TOO_YOUNG', 'BUNDLE_NOT_FOUND', 'BUNDLE_INCOMPLETE', 'CHANGE_PENDING', 'CHANGE_NOT_SUPPORTED', 'DOCUMENTS_MISSING',
     // Server settings, not error codes.
     'BANK_DETAILS_KEY']);
   // Read the API docs straight from the repo (no Node types in this app, hence the typed require).

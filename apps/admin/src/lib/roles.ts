@@ -22,6 +22,8 @@ export type Section =
   | 'payouts'
   | 'disputes'
   | 'refunds'
+  | 'checks'
+  | 'reports'
   | 'complaints'
   | 'users'
   | 'coupons'
@@ -44,11 +46,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'dashboard', href: '/dashboard', label: 'Dashboard', badge: 'openAlerts' },
   { section: 'vendors', href: '/vendors', label: 'Vendors', badge: 'pendingVendors' },
   { section: 'photos', href: '/photos', label: 'Photos', badge: 'pendingMedia' },
+  // Vehicles, drivers and customers' driving licences waiting for a check.
+  { section: 'checks', href: '/checks', label: 'Car checks' },
   { section: 'bookings', href: '/bookings', label: 'Bookings' },
   { section: 'payouts', href: '/payouts', label: 'Payouts', badge: 'duePayouts' },
   // Rental / car charges the customer disputes, and refunds with their Razorpay result.
   { section: 'disputes', href: '/disputes', label: 'Disputes' },
   { section: 'refunds', href: '/refunds', label: 'Refunds' },
+  { section: 'reports', href: '/reports', label: 'Reports' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
   { section: 'coupons', href: '/coupons', label: 'Coupons' },
@@ -62,9 +67,9 @@ export const NAV_ITEMS: readonly NavItem[] = [
 ];
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
-  verifier: ['dashboard', 'vendors', 'photos', 'security'],
-  support: ['dashboard', 'vendors', 'bookings', 'disputes', 'complaints', 'users', 'security'],
-  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'coupons', 'featured', 'security'],
+  verifier: ['dashboard', 'vendors', 'photos', 'checks', 'security'],
+  support: ['dashboard', 'vendors', 'bookings', 'disputes', 'reports', 'complaints', 'users', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'reports', 'coupons', 'featured', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {
@@ -98,10 +103,11 @@ export type AdminAction =
   | 'featured.grant'
   | 'booking.refund'
   | 'charge.resolve'
+  | 'resource.verify'
   | 'alert.resolve';
 
 const ACTIONS: Record<Exclude<AdminRole, 'super'>, readonly AdminAction[]> = {
-  verifier: ['vendor.decide', 'media.moderate'],
+  verifier: ['vendor.decide', 'media.moderate', 'resource.verify'],
   support: ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve', 'alert.resolve'],
   finance: ['payout.manage', 'coupon.manage', 'booking.refund', 'charge.resolve'],
 };

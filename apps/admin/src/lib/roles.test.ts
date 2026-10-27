@@ -6,12 +6,12 @@ const labels = (role: (typeof ADMIN_ROLES)[number]) => navFor(role).map((item) =
 
 test('nav is filtered by role', () => {
   assert.deepEqual(labels('super'), [
-    'Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
+    'Dashboard', 'Vendors', 'Photos', 'Car checks', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Reports', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
   ]);
   // Every admin manages their own 2FA recovery codes.
-  assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos', 'My security']);
-  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Disputes', 'Complaints', 'Users', 'My security']);
-  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Coupons', 'Featured', 'My security']);
+  assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos', 'Car checks', 'My security']);
+  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Disputes', 'Reports', 'Complaints', 'Users', 'My security']);
+  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Reports', 'Coupons', 'Featured', 'My security']);
 });
 
 test('page access follows the nav, including detail pages', () => {
@@ -29,11 +29,11 @@ test('page access follows the nav, including detail pages', () => {
 test('actions per role', () => {
   const actions: AdminAction[] = [
     'vendor.decide', 'media.moderate', 'review.hide', 'payout.manage', 'complaint.manage', 'user.block',
-    'coupon.manage', 'featured.plans', 'featured.grant', 'booking.refund', 'charge.resolve',
+    'coupon.manage', 'featured.plans', 'featured.grant', 'booking.refund', 'charge.resolve', 'resource.verify',
   ];
   const allowed = (role: (typeof ADMIN_ROLES)[number]) => actions.filter((a) => can(role, a));
   assert.deepEqual(allowed('super'), actions);
-  assert.deepEqual(allowed('verifier'), ['vendor.decide', 'media.moderate']);
+  assert.deepEqual(allowed('verifier'), ['vendor.decide', 'media.moderate', 'resource.verify']);
   // Support can view vendors but never approve, reject or hold them.
   assert.deepEqual(allowed('support'), ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve']);
   // Finance runs coupons and refunds, but plans and free featured days are super only.
@@ -72,4 +72,11 @@ test('disputes for support and finance, refunds for finance only', () => {
   assert.equal(canVisit('verifier', '/disputes'), false);
   assert.equal(canVisit('finance', '/refunds'), true);
   assert.equal(canVisit('support', '/refunds'), false);
+});
+
+test('car checks for verifiers, reports for support and finance', () => {
+  assert.equal(canVisit('verifier', '/checks'), true);
+  assert.equal(canVisit('finance', '/checks'), false);
+  assert.equal(canVisit('support', '/reports'), true);
+  assert.equal(canVisit('verifier', '/reports'), false);
 });
