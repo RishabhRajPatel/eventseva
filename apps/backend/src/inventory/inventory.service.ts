@@ -439,6 +439,10 @@ export class InventoryService {
   }
 
   async saveSettings(vendorId: string, body: RentalSettings) {
+    if (body.taxPercent) {
+      const v = await this.db.one<{ gstin: string | null }>(this.db, 'SELECT gstin FROM vendors WHERE id = $1', [vendorId]);
+      if (!v?.gstin) throw new AppError('GSTIN_REQUIRED', 'Add your GST number to your profile before charging GST.', HttpStatus.BAD_REQUEST, { field: 'taxPercent' });
+    }
     const pricing = checkPricing({
       model: 'per_unit',
       ratePaise: body.deliveryFeePaise,

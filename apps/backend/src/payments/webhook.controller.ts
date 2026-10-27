@@ -5,10 +5,14 @@ import { AppError } from '../common/errors';
 import { BookingsService } from '../bookings/bookings.service';
 import { FeaturedService } from '../featured/featured.service';
 import { PAYMENT_GATEWAY, PaymentGateway } from './gateway';
+import { RefundsService } from './refunds.service';
 
 interface RazorpayEvent {
   event: string;
-  payload?: { payment?: { entity?: { id?: string; order_id?: string } } };
+  payload?: {
+    payment?: { entity?: { id?: string; order_id?: string } };
+    refund?: { entity?: { id?: string; status?: string; error_description?: string } };
+  };
 }
 
 /**
@@ -23,6 +27,7 @@ export class PaymentWebhookController {
   constructor(
     private readonly bookings: BookingsService,
     private readonly featured: FeaturedService,
+    private readonly refunds: RefundsService,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
   ) {}
 
@@ -34,6 +39,15 @@ export class PaymentWebhookController {
     }
     const body = req.body as RazorpayEvent;
     const payment = body.payload?.payment?.entity;
+    // Refund results: the money reached the customer, or Razorpay could not send it.
+    const refund = body.payload?.refund?.entity;
+    if (refund?.id && body.event === 'refund.processed') {
+      this.logger.log(`refund ${refund.id}: ${(await this.refunds.processed(refund.id)) ? 'processed' : 'unknown'}`);
+    }
+    if (refund?.id && body.event === 'refund.failed') {
+      const reason = refund.error_description || refund.status || 'failed';
+      this.logger.warn(`refund ${refund.id}: ${(await this.refunds.failedAtProvider(refund.id, reason)) ? 'failed' : 'unknown'}`);
+    }
     if (body.event === 'payment.captured' && payment?.id && payment.order_id) {
       // An order is either a booking advance or a featured-listing purchase.
       let result: string = await this.bookings.paymentCaptured(payment.order_id, payment.id);

@@ -27,6 +27,8 @@ export interface AppConfig {
   dbPoolMax: number;
   /** From CLOUDINARY_URL (cloudinary://key:secret@cloud); unset = uploads switched off. */
   cloudinary?: { cloudName: string; apiKey: string; apiSecret: string };
+  /** EventSeva as it appears on commission invoices (PLATFORM_LEGAL_NAME, PLATFORM_ADDRESS, PLATFORM_GSTIN). */
+  platform: { name: string; address: string | null; gstin: string | null };
   /** 32-byte key for bank account numbers and admin 2FA secrets (BANK_DETAILS_KEY, base64). */
   bankDetailsKey: Buffer;
   /** FIREBASE_SERVICE_ACCOUNT; unset = pushes are only logged (development). */
@@ -128,6 +130,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     dbPoolMax: positiveInt(env.DB_POOL_MAX, 10),
     cloudinary: parseCloudinaryUrl(env.CLOUDINARY_URL),
     bankDetailsKey,
+    platform: { name: env.PLATFORM_LEGAL_NAME || 'EventSeva', address: env.PLATFORM_ADDRESS || null, gstin: env.PLATFORM_GSTIN || null },
     firebase: parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT),
     pushDispatch: env.PUSH_DISPATCH !== 'off',
     otpLimits: {

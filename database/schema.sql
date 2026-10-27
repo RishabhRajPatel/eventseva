@@ -134,7 +134,8 @@ CREATE TYPE public.refund_status AS ENUM (
     'pending',
     'sending',
     'sent',
-    'failed'
+    'failed',
+    'processed'
 );
 
 --
@@ -1171,6 +1172,41 @@ CREATE SEQUENCE public.inventory_movements_id_seq
 ALTER SEQUENCE public.inventory_movements_id_seq OWNED BY public.inventory_movements.id;
 
 --
+-- Name: invoice_counters; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoice_counters (
+    series text NOT NULL,
+    last integer DEFAULT 0 NOT NULL
+);
+
+--
+-- Name: TABLE invoice_counters; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.invoice_counters IS 'Next invoice number per series (a vendor or EventSeva, per financial year); numbers never repeat or skip';
+
+--
+-- Name: invoices; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoices (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    kind text NOT NULL,
+    number text NOT NULL,
+    issued_at timestamp with time zone DEFAULT now() NOT NULL,
+    data jsonb NOT NULL,
+    CONSTRAINT invoices_kind_check CHECK ((kind = ANY (ARRAY['customer'::text, 'commission'::text])))
+);
+
+--
+-- Name: TABLE invoices; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.invoices IS 'Invoices as issued: to the customer in the vendor''s name, and EventSeva''s commission invoice to the vendor';
+
+--
 -- Name: item_categories; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1434,6 +1470,7 @@ CREATE TABLE public.refunds (
     razorpay_refund_id text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     sent_at timestamp with time zone,
+    processed_at timestamp with time zone,
     CONSTRAINT refunds_amount_paise_check CHECK ((amount_paise > 0))
 );
 
@@ -1454,6 +1491,12 @@ COMMENT ON COLUMN public.refunds.reason IS 'cancellation, late_payment, replaced
 --
 
 COMMENT ON COLUMN public.refunds.status IS 'pending → sending → sent; failed after too many attempts (raises a system alert)';
+
+--
+-- Name: COLUMN refunds.processed_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.refunds.processed_at IS 'When Razorpay said the money reached the customer (refund.processed webhook)';
 
 --
 -- Name: reservations; Type: TABLE; Schema: public; Owner: -
@@ -1805,6 +1848,8 @@ CREATE TABLE public.vendors (
     approved_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     service_radius_km integer,
+    gstin text,
+    CONSTRAINT vendors_gstin_check CHECK ((gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'::text)),
     CONSTRAINT vendors_service_radius_km_check CHECK (((service_radius_km >= 1) AND (service_radius_km <= 500)))
 );
 
@@ -1819,6 +1864,12 @@ COMMENT ON TABLE public.vendors IS 'A business profile owned by one user. status
 --
 
 COMMENT ON COLUMN public.vendors.service_radius_km IS 'Usual travel range from the vendor''s location; null = not set';
+
+--
+-- Name: COLUMN vendors.gstin; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.vendors.gstin IS 'The vendor''s GST number, if registered; customer invoices are tax invoices only with it';
 
 --
 -- Name: admin_audit_log id; Type: DEFAULT; Schema: public; Owner: -
@@ -2130,6 +2181,34 @@ ALTER TABLE ONLY public.inventory_items
 
 ALTER TABLE ONLY public.inventory_movements
     ADD CONSTRAINT inventory_movements_pkey PRIMARY KEY (id);
+
+--
+-- Name: invoice_counters invoice_counters_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_counters
+    ADD CONSTRAINT invoice_counters_pkey PRIMARY KEY (series);
+
+--
+-- Name: invoices invoices_booking_id_kind_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_booking_id_kind_key UNIQUE (booking_id, kind);
+
+--
+-- Name: invoices invoices_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_number_key UNIQUE (number);
+
+--
+-- Name: invoices invoices_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_pkey PRIMARY KEY (id);
 
 --
 -- Name: item_categories item_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3106,6 +3185,13 @@ ALTER TABLE ONLY public.inventory_movements
 
 ALTER TABLE ONLY public.inventory_movements
     ADD CONSTRAINT inventory_movements_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id);
+
+--
+-- Name: invoices invoices_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
 
 --
 -- Name: item_categories item_categories_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

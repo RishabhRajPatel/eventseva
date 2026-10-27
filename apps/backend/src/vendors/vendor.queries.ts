@@ -41,6 +41,7 @@ interface VendorRow {
   approved_at: Date | null;
   featured_until: Date | null;
   service_radius_km: number | null;
+  gstin: string | null;
   created_at: Date;
 }
 
@@ -120,6 +121,7 @@ export async function loadVendor(
           approvedAt: v.approved_at,
           createdAt: v.created_at,
           featuredUntil: v.featured_until && v.featured_until > new Date() ? v.featured_until : null,
+          gstin: v.gstin,
         }),
   };
 }

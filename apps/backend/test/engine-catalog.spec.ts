@@ -80,6 +80,10 @@ describe('engine catalogue', () => {
     expect(setup).toMatchObject({ bookingType: 'time_window', pricingModels: ['fixed', 'hourly'] });
 
     const svc = { title: 'DJ night', pricing: { model: 'fixed', ratePaise: 2_000_000, includedHours: 5, overtimeHourPaise: 200_000, taxPercent: 18 } };
+    // GST only with a GST number.
+    expect((await as(dj.token).post('/v1/partner/engine-services', svc).expect(400)).body.error.code).toBe('GSTIN_REQUIRED');
+    await as(dj.token).patch('/v1/partner/vendor', { gstin: '09ABCDE1234F1Z5X' }).expect(400);
+    expect((await as(dj.token).patch('/v1/partner/vendor', { gstin: '09ABCDE1234F1Z5' }).expect(200)).body.gstin).toBe('09ABCDE1234F1Z5');
     await as(dj.token).post('/v1/partner/engine-services', { ...svc, pricing: { model: 'per_trip', ratePaise: 100 } }).expect(400);
     expect((await as(dj.token).post('/v1/partner/engine-services', { ...svc, rules: { advance: { percent: 5 } } }).expect(400)).body.error.field).toBe('rules.advance');
     expect((await as(dj.token).post('/v1/partner/engine-services', { ...svc, rules: { leadTimeHours: 2 } }).expect(400)).body.error.field).toBe('rules.leadTimeHours');

@@ -24,6 +24,7 @@ import {
   IsOptional,
   IsString,
   Length,
+  Matches,
   Max,
   Min,
   ValidateIf,
@@ -52,6 +53,8 @@ export class PartnerAppGuard implements CanActivate {
 }
 
 class VendorProfileDto {
+  /** GST number, if registered (needed to charge GST); null removes it. */
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @Matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/, { message: 'gstin must be a 15-character GST number' }) gstin?: string | null;
   @IsOptional() @IsString() @Length(2, 80) businessName?: string;
   @IsOptional() @IsInt() @Min(1) categoryId?: number;
   @IsOptional() @IsInt() @Min(1) cityId?: number;
@@ -197,11 +200,12 @@ export class PartnerController {
         `UPDATE vendors SET business_name = COALESCE($2, business_name), category_id = COALESCE($3, category_id),
                 city_id = COALESCE($4, city_id), area = COALESCE($5, area), address = COALESCE($6, address),
                 lat = COALESCE($7, lat), lng = COALESCE($8, lng), about = COALESCE($9, about),
-                service_radius_km = CASE WHEN $10::boolean THEN $11::int ELSE service_radius_km END
+                service_radius_km = CASE WHEN $10::boolean THEN $11::int ELSE service_radius_km END,
+                gstin = CASE WHEN $12::boolean THEN $13 ELSE gstin END
           WHERE id = $1`,
         [v.id, body.businessName?.trim() ?? null, body.categoryId ?? null, body.cityId ?? null, body.area?.trim() ?? null,
           body.address?.trim() ?? null, body.lat ?? null, body.lng ?? null, body.about?.trim() ?? null,
-          body.serviceRadiusKm !== undefined, body.serviceRadiusKm ?? null],
+          body.serviceRadiusKm !== undefined, body.serviceRadiusKm ?? null, body.gstin !== undefined, body.gstin ?? null],
       );
     });
     return this.view(auth.userId);

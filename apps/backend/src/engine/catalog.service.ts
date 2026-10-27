@@ -98,6 +98,7 @@ interface VendorCategory {
   id: string;
   user_id: string;
   status: string;
+  gstin: string | null;
   booking_type: BookingTypeKey;
   template: CategoryTemplate;
   default_unit: string;
@@ -123,7 +124,7 @@ export class EngineCatalogService {
   private async vendor(q: Queryable, userId: string, lock = false): Promise<VendorCategory> {
     const v = await this.db.one<VendorCategory>(
       q,
-      `SELECT v.id, v.user_id, v.status, c.booking_type, c.template, c.default_unit FROM vendors v JOIN categories c ON c.id = v.category_id
+      `SELECT v.id, v.user_id, v.status, v.gstin, c.booking_type, c.template, c.default_unit FROM vendors v JOIN categories c ON c.id = v.category_id
         WHERE v.user_id = $1 ${lock ? 'FOR UPDATE OF v' : ''}`,
       [userId],
     );
@@ -170,6 +171,7 @@ export class EngineCatalogService {
     if (body.pricing !== undefined) {
       out.pricing = checkPricing(body.pricing, tpl.pricingModels?.length ? tpl.pricingModels : undefined);
       if (out.pricing.ratePaise > MAX_PRICE) throw bad('pricing.ratePaise: at most ₹10 lakh.', 'pricing.ratePaise');
+      if (out.pricing.taxPercent && !v.gstin) throw new AppError('GSTIN_REQUIRED', 'Add your GST number to your profile before charging GST.', HttpStatus.BAD_REQUEST, { field: 'pricing.taxPercent' });
     }
     if (body.rules !== undefined) {
       const extra = Object.keys(body.rules ?? {}).filter((k) => !VENDOR_RULE_KEYS.includes(k as keyof RuleSet));

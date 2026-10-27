@@ -51,6 +51,9 @@ import { InventoryService } from './inventory/inventory.service';
 import { FulfilmentService } from './inventory/fulfilment.service';
 import { AdminRentalController, PartnerInventoryController, PartnerRentalController, RentalsController } from './inventory/inventory.controller';
 import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
+import { InvoicesService } from './payments/invoices.service';
+import { AdminInvoicesController, InvoicesController, PartnerInvoicesController } from './payments/invoices.controller';
+import { AdminReportsController } from './admin/reports.controller';
 
 @Controller()
 class HealthController {
@@ -113,6 +116,10 @@ class ConfigModule {}
     PartnerChangesController,
     PartnerBundlesController,
     CheckoutController,
+    InvoicesController,
+    PartnerInvoicesController,
+    AdminInvoicesController,
+    AdminReportsController,
     PartnerInventoryController,
     PartnerRentalController,
     RentalsController,
@@ -133,6 +140,7 @@ class ConfigModule {}
     TripService,
     ChangesService,
     CheckoutService,
+    InvoicesService,
     InventoryService,
     FulfilmentService,
     RefundsService,

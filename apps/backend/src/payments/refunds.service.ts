@@ -1,5 +1,6 @@
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
+import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { PAYMENT_GATEWAY, PaymentGateway } from './gateway';
 
@@ -80,6 +81,72 @@ export class RefundsService implements OnModuleInit, OnModuleDestroy {
       [RETRY_MIN, BATCH],
     );
     return rows;
+  }
+
+  /** Razorpay says the money reached the customer. */
+  async processed(razorpayRefundId: string): Promise<boolean> {
+    const r = await this.db.query(
+      `UPDATE refunds SET status = 'processed', processed_at = now() WHERE razorpay_refund_id = $1 AND status IN ('sent', 'sending') RETURNING id`,
+      [razorpayRefundId],
+    );
+    return !!r.rowCount;
+  }
+
+  /**
+   * Razorpay could not complete a refund it had accepted. It is not retried by itself (Razorpay
+   * already holds a refund with this reference); the team is alerted and can send a new one.
+   */
+  async failedAtProvider(razorpayRefundId: string, reason: string): Promise<boolean> {
+    return this.db.tx(async (client) => {
+      const r = await this.db.one<{ id: string; booking_id: string; amount_paise: number; razorpay_payment_id: string }>(
+        client,
+        `UPDATE refunds SET status = 'failed', last_error = $2 WHERE razorpay_refund_id = $1 AND status IN ('sent', 'sending', 'processed')
+         RETURNING id, booking_id, amount_paise, razorpay_payment_id`,
+        [razorpayRefundId, reason.slice(0, 500)],
+      );
+      if (!r) return false;
+      await client.query(`UPDATE payments SET status = 'failed' WHERE razorpay_refund_id = $1 AND type = 'refund'`, [razorpayRefundId]);
+      await client.query(`INSERT INTO system_alerts (kind, message, data) VALUES ('refund_failed', $1, $2)`, [
+        `Razorpay could not complete a refund of ₹${(r.amount_paise / 100).toLocaleString('en-IN')}: ${reason}. Retry it from Refunds.`,
+        { refundId: r.id, bookingId: r.booking_id, paymentId: r.razorpay_payment_id, amountPaise: r.amount_paise },
+      ]);
+      return true;
+    });
+  }
+
+  /** Admin: send a failed refund again as a new refund (a new reference, so it is not taken for the failed one). */
+  async retry(adminId: string, refundId: string) {
+    const created = await this.db.tx(async (client) => {
+      const r = await this.db.one<{ booking_id: string; razorpay_payment_id: string; amount_paise: number; reason: string }>(
+        client,
+        `SELECT booking_id, razorpay_payment_id, amount_paise, reason FROM refunds WHERE id = $1 AND status = 'failed' AND reason NOT LIKE '%:retried' FOR UPDATE`,
+        [refundId],
+      );
+      if (!r) throw new AppError('NOT_FOUND', 'No failed refund to retry with this id.', HttpStatus.NOT_FOUND);
+      // Marked so the same failure is never retried twice.
+      await client.query(`UPDATE refunds SET reason = reason || ':retried' WHERE id = $1`, [refundId]);
+      const row = await this.db.one<{ id: string }>(
+        client,
+        `INSERT INTO refunds (booking_id, razorpay_payment_id, amount_paise, reason) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [r.booking_id, r.razorpay_payment_id, r.amount_paise, `${r.reason}:retry`],
+      );
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, 'refund.retry', 'booking', $2, $3, $4)`,
+        [adminId, r.booking_id, { refundId }, { newRefundId: row!.id, amountPaise: r.amount_paise }],
+      );
+      return row!.id;
+    });
+    await this.flush();
+    return this.db.one(this.db, `SELECT id, status, amount_paise AS "amountPaise", razorpay_refund_id AS "razorpayRefundId" FROM refunds WHERE id = $1`, [created]);
+  }
+
+  async list(status?: string) {
+    return (await this.db.query(
+      `SELECT r.id, r.booking_id AS "bookingId", r.amount_paise AS "amountPaise", r.reason, r.status, r.attempts, r.last_error AS "lastError",
+              r.razorpay_refund_id AS "razorpayRefundId", r.created_at AS "createdAt", r.sent_at AS "sentAt", r.processed_at AS "processedAt"
+         FROM refunds r WHERE ($1::text IS NULL OR r.status::text = $1) ORDER BY r.created_at DESC LIMIT 200`,
+      [status ?? null],
+    )).rows;
   }
 
   private async send(r: Due): Promise<boolean> {

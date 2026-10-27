@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-47 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+49 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,7 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [checkouts](#checkouts), [service_bundles](#service_bundles)
+- **Other:** [checkouts](#checkouts), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles)
 
 ## Allowed values (enums)
 
@@ -26,7 +26,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - `payment_type`: `advance`, `final`, `refund`, `deposit`
 - `payout_status`: `scheduled`, `processing`, `paid`, `failed`, `held`
 - `pricing_unit`: `per_event`, `per_day`, `per_shift`, `per_plate`, `per_hour`, `per_km`, `per_room_night`, `per_person`, `package`
-- `refund_status`: `pending`, `sending`, `sent`, `failed`
+- `refund_status`: `pending`, `sending`, `sent`, `failed`, `processed`
 - `review_status`: `uploading`, `pending`, `approved`, `rejected`
 - `slot_status`: `free`, `booked`, `blocked`
 - `vendor_status`: `draft`, `pending`, `approved`, `rejected`, `on_hold`
@@ -223,10 +223,12 @@ A business profile owned by one user. status: draft → pending → approved / r
 | `approved_at` | timestamp with time zone |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 | `service_radius_km` | integer |  |  | Usual travel range from the vendor's location; null = not set |
+| `gstin` | text |  |  | The vendor's GST number, if registered; customer invoices are tax invoices only with it |
 
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK (((service_radius_km >= 1) AND (service_radius_km <= 500)))`
+- Check: `CHECK ((gstin ~ '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$'::text))`
 - Unique: `UNIQUE (user_id)`
 - Index: `CREATE INDEX ON vendors USING gin (area gin_trgm_ops)`
 - Index: `CREATE INDEX ON vendors USING gin (business_name gin_trgm_ops)`
@@ -995,6 +997,7 @@ Refund queue: every refund is recorded here first and sent to Razorpay after the
 | `razorpay_refund_id` | text |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 | `sent_at` | timestamp with time zone |  |  |  |
+| `processed_at` | timestamp with time zone |  |  | When Razorpay said the money reached the customer (refund.processed webhook) |
 
 <details><summary>Rules and indexes</summary>
 
@@ -1301,6 +1304,36 @@ One customer action that booked several services (possibly several vendors) at o
 <details><summary>Rules and indexes</summary>
 
 - Index: `CREATE UNIQUE INDEX ON checkouts USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
+
+</details>
+
+### invoice_counters
+
+Next invoice number per series (a vendor or EventSeva, per financial year); numbers never repeat or skip
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `series` | text | yes |  | primary key |
+| `last` | integer | yes | `0` |  |
+
+### invoices
+
+Invoices as issued: to the customer in the vendor's name, and EventSeva's commission invoice to the vendor
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `kind` | text | yes |  |  |
+| `number` | text | yes |  |  |
+| `issued_at` | timestamp with time zone | yes | `now()` |  |
+| `data` | jsonb | yes |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((kind = ANY (ARRAY['customer'::text, 'commission'::text])))`
+- Unique: `UNIQUE (booking_id, kind)`
+- Unique: `UNIQUE (number)`
 
 </details>
 

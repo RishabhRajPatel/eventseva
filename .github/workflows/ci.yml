@@ -1,0 +1,53 @@
+# Checks every push and pull request: typecheck and tests for the backend (against a real Postgres),
+# the two apps, the admin panel and the shared packages. Nothing is deployed from here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_ADMIN_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @eventseva/core build
+      - run: pnpm --filter @eventseva/backend lint
+      # Migrations run from scratch in the test setup; db:docs --check is part of the tests.
+      - run: pnpm --filter @eventseva/backend test
+
+  apps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @eventseva/core build
+      - run: pnpm --filter @eventseva/app-shared lint && pnpm --filter @eventseva/app-shared test
+      - run: pnpm --filter @eventseva/customer lint && pnpm --filter @eventseva/customer test
+      - run: pnpm --filter @eventseva/partner lint && pnpm --filter @eventseva/partner test
+      - run: pnpm --filter @eventseva/admin lint && pnpm --filter @eventseva/admin test
