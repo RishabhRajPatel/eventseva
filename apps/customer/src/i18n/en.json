@@ -606,5 +606,86 @@
     "validTill": "Valid till {{date}}",
     "emptyTitle": "No offers right now",
     "emptyBody": "Check again soon for wedding season deals."
+  },
+  "venue": {
+    "landmark": "Landmark (optional)",
+    "landmarkPlaceholder": "Near Hanuman Mandir gate",
+    "find": "Find on map",
+    "finding": "Finding…",
+    "here": "I'm at the venue",
+    "locating": "Locating…",
+    "pinned": "Venue location pinned. Vendors see how far it is.",
+    "check": "Check",
+    "remove": "Remove",
+    "whyPin": "Pin the venue so vendors see the distance and get directions after booking.",
+    "problems": {
+      "denied": "Location permission is off. Allow it in Settings, or tap Find on map.",
+      "off": "Your phone's location is turned off. Turn it on and try again.",
+      "notFound": "We could not find this address. Add the area name, or tap I'm at the venue when you are there.",
+      "failed": "Could not get the location. Check your internet and try again."
+    },
+    "editTitle": "Venue",
+    "editBody": "Vendors with a confirmed booking are told when you change the venue.",
+    "save": "Save venue",
+    "saving": "Saving…",
+    "saved": "Venue saved",
+    "add": "Add venue location",
+    "change": "Change venue"
+  },
+  "trip": {
+    "title": "Distance",
+    "distance": "About {{km}} from the vendor",
+    "time": "About {{time}} drive",
+    "outside": "Usually travels up to {{radius}}. Ask about travel charges in chat.",
+    "noPin": "Pin your venue to see how far the vendor travels.",
+    "arriveBy": "Vendor to arrive by {{time}}",
+    "radius": "Travels up to {{km}}",
+    "away": "{{km}} away"
+  },
+  "progress": {
+    "onTheWay": "{{name}} is on the way",
+    "eta": "Reaching in about {{time}} ({{clock}})",
+    "etaPassed": "Should be there any minute",
+    "soon": "Will reach soon",
+    "reached": "{{name}} has reached the venue",
+    "reachedAt": "Reached at {{clock}}"
+  },
+  "arrive": {
+    "label": "Vendor to arrive by (optional)",
+    "none": "Any time",
+    "hint": "So the vendor can plan the trip and set up in time.",
+    "title": "Arrive by"
+  },
+  "chatEvents": {
+    "requested": "Booking requested: {{item}}, {{day}}",
+    "requestedShort": "Booking requested",
+    "accepted": "Vendor accepted. Pay the advance to confirm.",
+    "confirmed": "Booking confirmed. Phone numbers are now shared.",
+    "rejected": "Vendor is not available",
+    "cancelled_by_customer": "You cancelled the booking",
+    "cancelled_by_vendor": "Vendor cancelled the booking",
+    "expired_no_reply": "Vendor did not reply in time",
+    "expired_not_paid": "The advance was not paid in time",
+    "on_the_way": "Vendor is on the way",
+    "on_the_way_eta": "Vendor is on the way: about {{min}} min",
+    "reached": "Vendor has reached the venue",
+    "venue_updated": "Venue details updated",
+    "open": "View booking"
+  },
+  "quick": {
+    "label": "Quick replies",
+    "replies": {
+      "r1": "Please confirm the timing.",
+      "r2": "What is included in this?",
+      "r3": "Can you share photos of past events?",
+      "r4": "Is there a travel charge?",
+      "r5": "I have added the venue location.",
+      "r6": "Please call me."
+    }
+  },
+  "nearby": {
+    "chip": "Near {{event}}",
+    "hint": "Showing vendors nearest to your venue",
+    "needPin": "Pin your event venue to sort by distance"
   }
 }

@@ -28,6 +28,7 @@ export interface ButtonProps {
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   accessibilityHint?: string;
+  testID?: string;
 }
 
 const look: Record<Variant, { bg: string; fg: string; border?: string }> = {
@@ -88,6 +89,7 @@ export const Button = memo(function Button({
   disabled,
   style,
   accessibilityHint,
+  testID,
 }: ButtonProps) {
   const l = look[variant];
   const guard = usePressGuard(onPress);
@@ -95,6 +97,7 @@ export const Button = memo(function Button({
   const inactive = disabled || busy;
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityHint={accessibilityHint}

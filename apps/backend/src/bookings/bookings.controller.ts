@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min } from 'class-validator';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { IsDateString, IsIn, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { BOOKING_STATUSES, type BookingStatus } from '@eventseva/core';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
@@ -17,6 +17,21 @@ class CreateEventDto {
   @IsOptional() @IsString() @Length(5, 300) venueAddress?: string;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) guestCount?: number;
   @IsOptional() @IsInt() @Min(0) @Max(2_000_000_000) budgetPaise?: number;
+  /** Venue pin, from the address (geocoded on the phone) or the phone's location; send both. */
+  @IsOptional() @IsLatitude() venueLat?: number;
+  @IsOptional() @IsLongitude() venueLng?: number;
+  @IsOptional() @IsString() @Length(2, 120) venueLandmark?: string;
+}
+
+/** Everything but the date can change; null clears an optional field. */
+class UpdateEventDto {
+  @IsOptional() @IsString() @Length(2, 80) title?: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @Length(5, 300) venueAddress?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @Length(2, 120) venueLandmark?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsLatitude() venueLat?: number | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsLongitude() venueLng?: number | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) guestCount?: number | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(0) @Max(2_000_000_000) budgetPaise?: number | null;
 }
 
 class CreateBookingDto {
@@ -27,6 +42,8 @@ class CreateBookingDto {
   @IsIn(SLOTS) slot: Slot;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) quantity?: number;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  /** When the vendor should be at the venue, 'HH:MM' (24 h, India time). */
+  @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'arriveBy must look like 17:30' }) arriveBy?: string;
 }
 
 class BookingListQuery {
@@ -46,7 +63,8 @@ class ReasonDto {
 
 const eventColumns = (t = 'events') => `${t}.id, ${t}.title, ${t}.event_type AS "eventType", ${t}.event_date AS "eventDate",
   ${t}.city_id AS "cityId", ${t}.venue_address AS "venueAddress", ${t}.guest_count AS "guestCount",
-  ${t}.budget_paise AS "budgetPaise", ${t}.created_at AS "createdAt"`;
+  ${t}.budget_paise AS "budgetPaise", ${t}.created_at AS "createdAt", ${t}.venue_landmark AS "venueLandmark",
+  CASE WHEN ${t}.venue_lat IS NULL THEN NULL ELSE json_build_object('lat', ${t}.venue_lat::float8, 'lng', ${t}.venue_lng::float8) END AS "venueLocation"`;
 const EVENT_COLUMNS = eventColumns();
 
 /** Customer app: plan an event, book vendors for it, pay the advance, cancel. */
@@ -66,13 +84,55 @@ export class BookingsController {
     }
     const city = await this.db.one(this.db, 'SELECT 1 FROM cities WHERE id = $1 AND is_active', [body.cityId]);
     if (!city) throw new AppError('CITY_NOT_FOUND', 'We are not in this city yet.');
+    if ((body.venueLat === undefined) !== (body.venueLng === undefined)) throw new AppError('VALIDATION', 'Send venueLat and venueLng together.');
     return this.db.one(
       this.db,
-      `INSERT INTO events (customer_id, title, event_type, event_date, city_id, venue_address, guest_count, budget_paise)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${EVENT_COLUMNS}`,
+      `INSERT INTO events (customer_id, title, event_type, event_date, city_id, venue_address, guest_count, budget_paise, venue_lat, venue_lng, venue_landmark)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING ${EVENT_COLUMNS}`,
       [auth.userId, body.title.trim(), body.eventType, body.eventDate, body.cityId, body.venueAddress?.trim() ?? null,
-        body.guestCount ?? null, body.budgetPaise ?? null],
+        body.guestCount ?? null, body.budgetPaise ?? null, body.venueLat ?? null, body.venueLng ?? null, body.venueLandmark ?? null],
     );
+  }
+
+  /**
+   * Edit an event (not its date: bookings are for that day). When the venue changes, vendors with a
+   * confirmed booking are told at once, with the new details in the chat.
+   */
+  @Patch('events/:id')
+  async updateEvent(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateEventDto) {
+    if ((body.venueLat === undefined) !== (body.venueLng === undefined) || (body.venueLat === null) !== (body.venueLng === null)) {
+      throw new AppError('VALIDATION', 'Send venueLat and venueLng together.');
+    }
+    return this.db.tx(async (client) => {
+      const before = await this.db.one<{ venue_address: string | null; venue_lat: string | null; venue_lng: string | null; venue_landmark: string | null }>(
+        client,
+        'SELECT venue_address, venue_lat, venue_lng, venue_landmark FROM events WHERE id = $1 AND customer_id = $2 FOR UPDATE',
+        [id, auth.userId],
+      );
+      if (!before) throw new AppError('EVENT_NOT_FOUND', 'Event not found.', HttpStatus.NOT_FOUND);
+      const set = (key: keyof UpdateEventDto) => body[key] !== undefined;
+      const updated = await this.db.one(
+        client,
+        `UPDATE events SET
+            title = CASE WHEN $3 THEN $4 ELSE title END,
+            venue_address = CASE WHEN $5 THEN $6 ELSE venue_address END,
+            venue_landmark = CASE WHEN $7 THEN $8 ELSE venue_landmark END,
+            venue_lat = CASE WHEN $9 THEN $10::numeric ELSE venue_lat END,
+            venue_lng = CASE WHEN $9 THEN $11::numeric ELSE venue_lng END,
+            guest_count = CASE WHEN $12 THEN $13::int ELSE guest_count END,
+            budget_paise = CASE WHEN $14 THEN $15::int ELSE budget_paise END
+          WHERE id = $1 AND customer_id = $2 RETURNING ${EVENT_COLUMNS}`,
+        [id, auth.userId, set('title'), body.title ?? null, set('venueAddress'), body.venueAddress ?? null, set('venueLandmark'),
+          body.venueLandmark ?? null, set('venueLat'), body.venueLat ?? null, body.venueLng ?? null, set('guestCount'), body.guestCount ?? null,
+          set('budgetPaise'), body.budgetPaise ?? null],
+      );
+      const venueChanged =
+        (set('venueAddress') && body.venueAddress !== before.venue_address) ||
+        (set('venueLandmark') && body.venueLandmark !== before.venue_landmark) ||
+        (set('venueLat') && (body.venueLat ?? null) !== (before.venue_lat === null ? null : Number(before.venue_lat)));
+      if (venueChanged) await this.bookings.venueChanged(client, id, auth.userId);
+      return updated;
+    });
   }
 
   /** "My events", each with how many vendors are booked and how much is committed. */

@@ -26,7 +26,8 @@ export type Section =
   | 'featured'
   | 'categories'
   | 'cities'
-  | 'audit';
+  | 'audit'
+  | 'security';
 
 export interface NavItem {
   section: Section;
@@ -51,12 +52,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'categories', href: '/categories', label: 'Categories' },
   { section: 'cities', href: '/cities', label: 'Cities' },
   { section: 'audit', href: '/audit', label: 'Audit log' },
+  // Every admin: their own 2FA recovery codes.
+  { section: 'security', href: '/security', label: 'My security' },
 ];
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
-  verifier: ['dashboard', 'vendors', 'photos'],
-  support: ['dashboard', 'vendors', 'bookings', 'complaints', 'users'],
-  finance: ['dashboard', 'bookings', 'payouts', 'coupons', 'featured'],
+  verifier: ['dashboard', 'vendors', 'photos', 'security'],
+  support: ['dashboard', 'vendors', 'bookings', 'complaints', 'users', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'coupons', 'featured', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {

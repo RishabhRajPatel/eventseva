@@ -1,13 +1,14 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, MaxLength, Min } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsOptional, IsString, Length, Matches, MaxLength, Min, ValidateIf } from 'class-validator';
 import { VENDOR_STATUSES, type Language, type VendorStatus } from '@eventseva/core';
 import { AppConfig, CONFIG } from '../config';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
 import { loadVendor } from '../vendors/vendor.queries';
-import { Admin, AdminContext, AdminGuard, AdminRoles, ADMIN_TTL_SEC, signAdminToken } from './admin-auth';
+import { Admin, AdminContext, AdminGuard, AdminRoles, ADMIN_LOCK_MIN, ADMIN_MAX_FAILED_LOGINS, ADMIN_TTL_SEC, signAdminToken } from './admin-auth';
+import { findRecoveryCode, isSealed, newRecoveryCodes, openSecret, sealSecret, StepUp } from './admin-2fa';
 import { hashPassword, verifyPassword } from './password';
 import { totpStep } from './totp';
 import { notify } from '../notifications/notify';
@@ -17,7 +18,11 @@ import { BookingsService } from '../bookings/bookings.service';
 class AdminLoginDto {
   @IsEmail() @MaxLength(120) email: string;
   @IsString() @Length(1, 200) password: string;
-  @IsString() @Matches(/^\d{6}$/, { message: 'totp must be 6 digits' }) totp: string;
+  /** The 6-digit code from the authenticator app … */
+  @ValidateIf((o: AdminLoginDto) => o.recoveryCode === undefined)
+  @IsString() @Matches(/^\d{6}$/, { message: 'totp must be 6 digits' }) totp?: string;
+  /** … or, with a lost phone, one of the one-time recovery codes ("ABCDE-FGHJK"). */
+  @IsOptional() @IsString() @Length(10, 12) recoveryCode?: string;
 }
 
 class VendorListQuery {
@@ -37,8 +42,6 @@ const DOC_NAMES: Record<string, { en: string; hi: string }> = {
 };
 
 const PAGE_SIZE = 20;
-const ADMIN_MAX_FAILED_LOGINS = 5;
-const ADMIN_LOCK_MIN = 15;
 
 type Decision = 'approve' | 'reject' | 'hold';
 
@@ -84,9 +87,10 @@ export class AdminController {
   async login(@Body() body: AdminLoginDto) {
     const admin = await this.db.one<{
       id: string; email: string; role: string; password_hash: string; totp_secret: string; totp_last_step: string | null; locked: boolean;
+      recovery_codes: string[];
     }>(
       this.db,
-      `SELECT id, email, role, password_hash, totp_secret, totp_last_step, locked_until > now() AS locked
+      `SELECT id, email, role, password_hash, totp_secret, totp_last_step, recovery_codes, locked_until > now() AS locked
          FROM admin_users WHERE email = $1 AND is_active`,
       [body.email.trim().toLowerCase()],
     );
@@ -97,9 +101,11 @@ export class AdminController {
     const passwordOk = await verifyPassword(body.password, hash);
     // One message for every failure, so the response does not reveal which part was wrong.
     // A code works once: a step at or before the last accepted one is refused (replayed or shoulder-surfed).
-    const step = admin ? totpStep(admin.totp_secret, body.totp) : null;
+    const key = this.config.bankDetailsKey;
+    const step = admin && body.totp ? totpStep(openSecret(admin.totp_secret, key), body.totp) : null;
     const freshStep = step !== null && (admin!.totp_last_step === null || step > Number(admin!.totp_last_step));
-    if (!admin || !passwordOk || !freshStep) {
+    const recoveryIndex = admin && body.recoveryCode && passwordOk ? findRecoveryCode(body.recoveryCode, admin.recovery_codes, key) : -1;
+    if (!admin || !passwordOk || (!freshStep && recoveryIndex < 0)) {
       if (admin) {
         await this.db.query(
           `UPDATE admin_users SET
@@ -111,17 +117,41 @@ export class AdminController {
       }
       throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
     }
-    // Only one login can claim a step, even when two arrive at the same moment.
-    const claimed = await this.db.query(
-      `UPDATE admin_users SET failed_logins = 0, locked_until = NULL, totp_last_step = $2
-        WHERE id = $1 AND (totp_last_step IS NULL OR totp_last_step < $2)`,
-      [admin.id, step],
-    );
-    if (!claimed.rowCount) throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
+    let recoveryCodesLeft = admin.recovery_codes.length;
+    if (freshStep) {
+      // Only one login can claim a step, even when two arrive at the same moment.
+      const claimed = await this.db.query(
+        `UPDATE admin_users SET failed_logins = 0, locked_until = NULL, totp_last_step = $2
+          WHERE id = $1 AND (totp_last_step IS NULL OR totp_last_step < $2)`,
+        [admin.id, step],
+      );
+      if (!claimed.rowCount) throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
+    } else {
+      // A recovery code works once: it is removed (only if still there, so two logins cannot share it).
+      const hash = admin.recovery_codes[recoveryIndex];
+      const used = await this.db.query(
+        `UPDATE admin_users SET failed_logins = 0, locked_until = NULL, recovery_codes = array_remove(recovery_codes, $2)
+          WHERE id = $1 AND $2 = ANY(recovery_codes)`,
+        [admin.id, hash],
+      );
+      if (!used.rowCount) throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
+      recoveryCodesLeft -= 1;
+      await this.db.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1::uuid, 'admin.recovery_code_used', 'admin', $1::text, NULL, $2)`,
+        [admin.id, { recoveryCodesLeft }],
+      );
+    }
+    // 2FA secrets saved before encryption existed are encrypted now.
+    if (!isSealed(admin.totp_secret)) {
+      await this.db.query('UPDATE admin_users SET totp_secret = $2 WHERE id = $1 AND totp_secret = $3', [admin.id, sealSecret(admin.totp_secret, key), admin.totp_secret]);
+    }
     return {
       accessToken: signAdminToken(this.config, admin.id),
       expiresInSec: ADMIN_TTL_SEC,
       admin: { id: admin.id, email: admin.email, role: admin.role },
+      /** Shown as a warning when low: new ones can be made under Security. */
+      recoveryCodesLeft,
+      usedRecoveryCode: !freshStep,
     };
   }
 
@@ -136,7 +166,31 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @Get('me')
   async me(@Admin() admin: AdminContext) {
-    return this.db.one(this.db, 'SELECT id, email, role FROM admin_users WHERE id = $1', [admin.adminId]);
+    return this.db.one(
+      this.db,
+      `SELECT id, email, role, cardinality(recovery_codes) AS "recoveryCodesLeft",
+              CASE WHEN step_up_until > now() AND step_up_session = $2::bigint THEN step_up_until END AS "stepUpUntil"
+         FROM admin_users WHERE id = $1`,
+      [admin.adminId, admin.session],
+    );
+  }
+
+  /**
+   * New one-time recovery codes (the old ones stop working). Shown once: the admin must save them.
+   * Needs a fresh 2FA code, so a stolen session cannot replace them.
+   */
+  @UseGuards(AdminGuard)
+  @StepUp()
+  @Post('me/recovery-codes')
+  @HttpCode(HttpStatus.OK)
+  async newRecoveryCodes(@Admin() admin: AdminContext) {
+    const { codes, hashes } = newRecoveryCodes(this.config.bankDetailsKey);
+    await this.db.query('UPDATE admin_users SET recovery_codes = $2 WHERE id = $1', [admin.adminId, hashes]);
+    await this.db.query(
+      `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1::uuid, 'admin.recovery_codes_reset', 'admin', $1::text, NULL, $2)`,
+      [admin.adminId, { count: codes.length }],
+    );
+    return { codes };
   }
 
   /** The approval queue. Pending vendors come oldest first, so nobody waits longest. */

@@ -17,6 +17,7 @@ import { ClientOnly } from './ClientOnly';
 import { ShellContext, type ShellValue } from './ShellContext';
 import { ToastProvider, useToast } from './Toast';
 import styles from './AdminShell.module.css';
+import { SecondFactorDialog } from './SecondFactorDialog';
 
 /** The logged-in frame: guard, sidebar, header. Everything inside renders only in the browser. */
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -133,6 +134,7 @@ function Frame({ children }: { children: ReactNode }) {
             </button>
           </header>
           <SessionExpiry expiresAt={session.expiresAt} />
+          <SecondFactorDialog />
 
           <main id="content" className={styles.content} tabIndex={-1}>
             {canVisit(role, pathname) ? children : <NoAccess />}

@@ -116,3 +116,32 @@ test('verifyOtp stores the tokens; logout clears them', async () => {
   await api.logout();
   assert.equal(store.value, null);
 });
+
+test('a sensitive admin action asks for a fresh 2FA code and sends it again', async () => {
+  const sent: (string | null)[] = [];
+  const asked: boolean[] = [];
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    const code = (init.headers as Record<string, string>)['X-Admin-2FA'] ?? null;
+    sent.push(code);
+    if (code === '222222') return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    const err = code ? 'ADMIN_2FA_INVALID' : 'ADMIN_2FA_REQUIRED';
+    return new Response(JSON.stringify({ error: { code: err, message: 'x' } }), { status: 403 });
+  }) as typeof fetch;
+  const answers = ['111111', '222222'];
+  const client = createApiClient({
+    baseUrl: 'http://api',
+    tokens: { get: async () => ({ accessToken: 'a', refreshToken: '' }), set: async () => undefined },
+    canRefresh: false,
+    fetchImpl,
+    askSecondFactor: async (wrong) => (asked.push(wrong), answers.shift() ?? null),
+  });
+  assert.deepEqual(await client.post('/v1/admin/users/x/block', { reason: 'r' }), { ok: true });
+  assert.deepEqual(sent, [null, '111111', '222222']);
+  assert.deepEqual(asked, [false, true]);
+
+  // Cancelling the dialog gives the original error to the caller.
+  answers.length = 0;
+  sent.length = 0;
+  await assert.rejects(client.post('/v1/admin/users/x/block'), (e: unknown) => (e as { code: string }).code === 'ADMIN_2FA_REQUIRED');
+  assert.deepEqual(sent, [null]);
+});

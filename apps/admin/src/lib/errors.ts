@@ -31,6 +31,8 @@ export const ERROR_MESSAGES: Record<string, Describe> = {
   NOT_FOUND: (e) => `${ensureStop(e.message)} Another admin may have changed it; the page now shows the latest.`,
   RATE_LIMITED: 'Too many requests in a short time. Wait a minute, then try again.',
   ADMIN_LOGIN_FAILED: 'Email, password or 2FA code is wrong. Check all three and try again; use a fresh code from your authenticator app.',
+  ADMIN_2FA_REQUIRED: 'This needs a fresh code from your authenticator app. Try again and enter the code when asked.',
+  ADMIN_2FA_INVALID: 'That 2FA code was wrong or already used. Wait for the next code in the app and try again.',
   ADMIN_LOCKED: 'Too many wrong attempts, so this account is locked for 15 minutes. Wait, then log in with a fresh 2FA code.',
   VENDOR_BAD_STATUS: (e) => `${ensureStop(e.message)} Another admin may have decided already; the page has been refreshed.`,
   VENDOR_NOT_FOUND: 'This vendor no longer exists. Go back to the vendor list.',

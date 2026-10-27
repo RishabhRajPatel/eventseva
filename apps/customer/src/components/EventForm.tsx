@@ -7,6 +7,7 @@ import { space } from '../lib/theme';
 import { AppText } from './AppText';
 import { DatePicker } from './DatePicker';
 import { Chip, FieldError, TextField } from './Form';
+import { VenuePicker } from './VenuePicker';
 
 export type EventField = keyof EventErrors;
 
@@ -65,33 +66,24 @@ export function EventForm({
         />
         <FieldError>{errors.eventDate ? t(`event.errors.${errors.eventDate}`) : null}</FieldError>
       </View>
-      <View style={styles.pair}>
-        <View style={styles.flex}>
-          <TextField
-            ref={refs?.guests}
-            label={t('event.guests')}
-            placeholder="300"
-            value={value.guests}
-            onChangeText={(guests) => set({ guests: guests.replace(/\D/g, '') })}
-            onBlur={() => onBlurField?.('guests')}
-            keyboardType="number-pad"
-            maxLength={6}
-            error={errors.guests ? t(`event.errors.${errors.guests}`) : null}
-          />
-        </View>
-        <View style={styles.flex}>
-          <TextField
-            ref={refs?.venue}
-            label={t('event.venue')}
-            placeholder={t('event.venuePlaceholder')}
-            value={value.venue}
-            onChangeText={(venue) => set({ venue })}
-            onBlur={() => onBlurField?.('venue')}
-            maxLength={300}
-            error={errors.venue ? t(`event.errors.${errors.venue}`) : null}
-          />
-        </View>
-      </View>
+      <TextField
+        ref={refs?.guests}
+        label={t('event.guests')}
+        placeholder="300"
+        value={value.guests}
+        onChangeText={(guests) => set({ guests: guests.replace(/\D/g, '') })}
+        onBlur={() => onBlurField?.('guests')}
+        keyboardType="number-pad"
+        maxLength={6}
+        error={errors.guests ? t(`event.errors.${errors.guests}`) : null}
+      />
+      <VenuePicker
+        ref={refs?.venue}
+        value={{ address: value.venue, landmark: value.landmark, pin: value.pin }}
+        onChange={(v) => set({ venue: v.address, landmark: v.landmark, pin: v.pin })}
+        onBlurAddress={() => onBlurField?.('venue')}
+        addressError={errors.venue ? t(`event.errors.${errors.venue}`) : null}
+      />
     </View>
   );
 }
@@ -100,6 +92,4 @@ const styles = StyleSheet.create({
   wrap: { gap: space.lg },
   gap8: { gap: space.sm },
   chips: { gap: space.sm },
-  pair: { flexDirection: 'row', gap: space.md },
-  flex: { flex: 1 },
 });

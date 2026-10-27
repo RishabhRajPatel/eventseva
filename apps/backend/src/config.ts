@@ -27,7 +27,7 @@ export interface AppConfig {
   dbPoolMax: number;
   /** From CLOUDINARY_URL (cloudinary://key:secret@cloud); unset = uploads switched off. */
   cloudinary?: { cloudName: string; apiKey: string; apiSecret: string };
-  /** 32-byte key for bank account numbers (BANK_DETAILS_KEY, base64). */
+  /** 32-byte key for bank account numbers and admin 2FA secrets (BANK_DETAILS_KEY, base64). */
   bankDetailsKey: Buffer;
   /** FIREBASE_SERVICE_ACCOUNT; unset = pushes are only logged (development). */
   firebase?: ServiceAccount;
@@ -49,6 +49,18 @@ export interface AppConfig {
 }
 
 /** cloudinary://<api_key>:<api_secret>@<cloud_name> — the format Cloudinary's dashboard shows. */
+/**
+ * BANK_DETAILS_KEY: encrypts bank account numbers and admin 2FA secrets, and keys the recovery-code
+ * hashes. Also used by scripts/create-admin.ts, so both always agree.
+ */
+export function dataKeyFrom(env: NodeJS.ProcessEnv, isProduction = env.NODE_ENV === 'production'): Buffer {
+  const key = env.BANK_DETAILS_KEY ? Buffer.from(env.BANK_DETAILS_KEY, 'base64') : undefined;
+  if (key && key.length !== 32) throw new Error('BANK_DETAILS_KEY must be 32 bytes, base64 (openssl rand -base64 32)');
+  if (key) return key;
+  if (isProduction) throw new Error('BANK_DETAILS_KEY is required in production');
+  return createHash('sha256').update('eventseva-dev-bank-key').digest();
+}
+
 function positiveInt(value: string | undefined, fallback: number): number {
   if (value === undefined || value === '') return fallback;
   const n = Number(value);
@@ -94,12 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error('RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET are required');
   }
 
-  let bankDetailsKey = env.BANK_DETAILS_KEY ? Buffer.from(env.BANK_DETAILS_KEY, 'base64') : undefined;
-  if (bankDetailsKey && bankDetailsKey.length !== 32) throw new Error('BANK_DETAILS_KEY must be 32 bytes, base64 (openssl rand -base64 32)');
-  if (!bankDetailsKey) {
-    if (isProduction) throw new Error('BANK_DETAILS_KEY is required in production');
-    bankDetailsKey = createHash('sha256').update('eventseva-dev-bank-key').digest();
-  }
+  const bankDetailsKey = dataKeyFrom(env, isProduction);
 
   return {
     port: Number(env.PORT || 3000),

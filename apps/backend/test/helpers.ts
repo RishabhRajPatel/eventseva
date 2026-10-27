@@ -55,8 +55,11 @@ export interface TestApp {
   reset: () => Promise<void>;
   /** Full send → verify; fails the test unless verify returns `status`. */
   login: (phone: string, app?: 'customer' | 'partner', status?: number) => Promise<request.Response>;
-  /** Creates an admin and returns a logged-in token. */
-  adminLogin: (role?: string, email?: string) => Promise<string>;
+  /**
+   * Creates an admin and returns a logged-in token. The admin counts as having just re-entered a 2FA
+   * code (sensitive actions work) unless `stepUp` is false; url-security / admin-2fa specs test that part.
+   */
+  adminLogin: (role?: string, email?: string, stepUp?: boolean) => Promise<string>;
 }
 
 export async function createTestApp(): Promise<TestApp> {
@@ -96,7 +99,7 @@ export async function createTestApp(): Promise<TestApp> {
         .send({ phone, code: sms.lastCode(`+91${phone.slice(-10)}`), app: appName })
         .expect(status);
     },
-    adminLogin: async (role = 'verifier', email = `${role}@eventseva.test`) => {
+    adminLogin: async (role = 'verifier', email = `${role}@eventseva.test`, stepUp = true) => {
       const secret = newTotpSecret();
       await db.query('INSERT INTO admin_users (email, password_hash, totp_secret, role) VALUES ($1, $2, $3, $4)', [
         email,
@@ -108,6 +111,10 @@ export async function createTestApp(): Promise<TestApp> {
         .post('/v1/admin/login')
         .send({ email, password: 'correct horse battery', totp: totpAt(secret) })
         .expect(200);
+      if (stepUp) {
+        const { ims } = JSON.parse(Buffer.from(res.body.accessToken.split('.')[1], 'base64url').toString());
+        await db.query(`UPDATE admin_users SET step_up_until = now() + interval '1 day', step_up_session = $2 WHERE email = $1`, [email, ims]);
+      }
       return res.body.accessToken;
     },
   };

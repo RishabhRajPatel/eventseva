@@ -37,6 +37,7 @@ interface VendorRow {
   rating_count: number;
   approved_at: Date | null;
   featured_until: Date | null;
+  service_radius_km: number | null;
   created_at: Date;
 }
 
@@ -91,7 +92,10 @@ export async function loadVendor(
     city: { id: v.city_id, name: v.city_name },
     area: v.area,
     address: audience === 'public' ? null : v.address,
-    location: v.lat === null || v.lng === null ? null : { lat: num(v.lat), lng: num(v.lng) },
+    // Like the address, the exact pin is private: customers only ever see a distance.
+    location: audience === 'public' || v.lat === null || v.lng === null ? null : { lat: num(v.lat), lng: num(v.lng) },
+    /** How far the vendor usually travels (km), or null. */
+    serviceRadiusKm: v.service_radius_km ?? null,
     about: v.about,
     rating: { avg: Number(v.rating_avg), count: v.rating_count },
     services: services.rows,

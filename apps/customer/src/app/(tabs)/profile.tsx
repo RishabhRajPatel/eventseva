@@ -1,5 +1,5 @@
 // Profile (Profile board): name, phone, saved vendors, language, help, logout.
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { ListRow, Pill } from '../../components/Bits';
 import { Button } from '../../components/Button';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useToast } from '../../components/Toast';
+import { openLink } from '../../lib/links';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -90,7 +91,7 @@ export default function ProfileScreen() {
             tone="royal"
             label={t('profile.vendor')}
             value={<Pill label={t('profile.new')} />}
-            onPress={() => Linking.openURL(PARTNER_APP_URL)}
+            onPress={() => openLink(PARTNER_APP_URL)}
           />
         </View>
 

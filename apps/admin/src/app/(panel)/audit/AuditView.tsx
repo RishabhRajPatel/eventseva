@@ -13,7 +13,7 @@ import { isAdminRole, ROLE_LABELS } from '@/lib/roles';
 import styles from './audit.module.css';
 
 /** target_type values the API writes (admin_audit_log). */
-const TARGET_TYPES = ['alert', 'booking', 'category', 'city', 'complaint', 'coupon', 'document', 'export', 'featured_plan', 'media', 'payout', 'review', 'user', 'vendor'];
+const TARGET_TYPES = ['admin', 'alert', 'booking', 'category', 'city', 'complaint', 'coupon', 'document', 'export', 'featured_plan', 'media', 'payout', 'review', 'user', 'vendor'];
 
 const COLS: Col[] = [{ label: 'Time' }, { label: 'Admin' }, { label: 'Action' }, { label: 'Target' }, { label: 'Changes' }];
 

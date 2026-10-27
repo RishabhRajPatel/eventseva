@@ -1,6 +1,7 @@
 // The one API client for the panel. Requests go to /api/*, which next.config.ts rewrites to the
 // backend, so the browser never calls the API cross-origin.
 import { createApiClient } from '@eventseva/app-shared';
+import { askSecondFactor } from './second-factor';
 import { createSessionStore } from './session';
 
 export const sessionStore = createSessionStore(() => (typeof window === 'undefined' ? null : window.sessionStorage));
@@ -22,6 +23,8 @@ export const api = createApiClient({
   // Admin tokens are never refreshed: a 401 clears the session and this sends the admin to login.
   canRefresh: false,
   onSessionEnded: () => goToLogin('expired'),
+  // Money, bank details, exports and blocking need a fresh 2FA code (SecondFactorDialog asks for it).
+  askSecondFactor,
 });
 
 /** Ends the token on the server too (best effort), so a copied token stops working. */

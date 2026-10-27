@@ -109,6 +109,22 @@ export interface VendorCard {
   isFeatured: boolean;
   startingPricePaise: number | null;
   cover: MediaRef | null;
+  /** Only when the search had the venue's lat/lng: estimated road km (nearest 0.5), or null. */
+  distanceKm?: number | null;
+  serviceRadiusKm?: number | null;
+}
+
+export interface LatLng {
+  lat: number;
+  lng: number;
+}
+
+/** Estimated trip from the vendor to the venue. */
+export interface Travel {
+  roadKm: number;
+  minutes: number;
+  serviceRadiusKm: number | null;
+  outsideServiceArea: boolean;
 }
 
 export interface Service {
@@ -138,7 +154,10 @@ export interface VendorDetail {
   area: string | null;
   /** null for the public. */
   address: string | null;
-  location: { lat: number; lng: number } | null;
+  /** null for the public (customers only see distances). */
+  location: LatLng | null;
+  /** How far the vendor usually travels, in km. */
+  serviceRadiusKm: number | null;
   about: string | null;
   rating: { avg: number; count: number };
   services: Service[];
@@ -219,6 +238,8 @@ export interface EventSummary {
   eventDate: string;
   cityId: number;
   venueAddress: string | null;
+  venueLandmark: string | null;
+  venueLocation: LatLng | null;
   guestCount: number | null;
   budgetPaise: number | null;
   createdAt: string;
@@ -240,9 +261,19 @@ export interface Booking {
     title: string;
     eventType: EventType;
     guestCount: number | null;
-    /** Partner app: null until the booking is confirmed. */
+    /** Partner app: null until the booking is confirmed (same for the landmark and the pin). */
     venueAddress: string | null;
+    venueLandmark: string | null;
+    venueLocation: LatLng | null;
   };
+  /** Estimated trip from the vendor to the venue; null until both pins are known. */
+  travel: Travel | null;
+  /** Partner app, once paid: Google Maps directions to the venue. */
+  directionsUrl: string | null;
+  /** 'HH:MM' India time the vendor should arrive by. */
+  arriveBy: string | null;
+  /** Event-day updates from the vendor. */
+  progress: { status: 'on_the_way' | 'reached'; at: string; etaAt: string | null } | null;
   /** Chat between this customer and vendor, if one exists. */
   conversationId: string | null;
   amountPaise: number;
@@ -295,14 +326,47 @@ export interface Conversation {
   vendorName: string;
   customerName: string;
   lastMessage: string | null;
+  lastKind: 'text' | 'booking' | null;
+  lastData: BookingEventData | null;
   unreadCount: number;
   hasBooking: boolean;
 }
 
+export type BookingEventName =
+  | 'requested'
+  | 'accepted'
+  | 'confirmed'
+  | 'rejected'
+  | 'cancelled_by_customer'
+  | 'cancelled_by_vendor'
+  | 'expired'
+  | 'on_the_way'
+  | 'reached'
+  | 'venue_updated';
+
+/** `data` of a `kind: 'booking'` chat line. */
+export interface BookingEventData {
+  event: BookingEventName;
+  bookingId: string;
+  item?: string;
+  day?: string;
+  slot?: Slot;
+  reason?: string;
+  refundPaise?: number;
+  minutes?: number | null;
+  etaAt?: string | null;
+  payBy?: string;
+  why?: 'no_reply' | 'not_paid';
+}
+
 export interface Message {
   id: number;
-  senderId: string;
+  /** null for system lines (e.g. an expiry). */
+  senderId: string | null;
   body: string;
+  /** 'booking' = an automatic booking update; show it centred, translated from `data`. */
+  kind: 'text' | 'booking';
+  data: BookingEventData | null;
   readAt: string | null;
   createdAt: string;
   mine: boolean;

@@ -98,6 +98,7 @@ function RootNavigator() {
         <Stack.Screen name="pay/[id]" />
         <Stack.Screen name="chat/[id]" />
         <Stack.Screen name="event/new" />
+        <Stack.Screen name="event/[id]/venue" />
         <Stack.Screen name="notifications" />
         <Stack.Screen name="saved" />
         <Stack.Screen name="offers" />

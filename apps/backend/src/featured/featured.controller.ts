@@ -9,6 +9,7 @@ import { PartnerAppGuard } from '../partner/partner.controller';
 import { pickLanguage } from '../catalog/catalog.controller';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { FeaturedService } from './featured.service';
+import { StepUp } from '../admin/admin-2fa';
 
 class VerifyDto {
   @IsString() @MaxLength(64) razorpayOrderId: string;
@@ -170,6 +171,7 @@ export class AdminFeaturedController {
   }
 
   @AdminRoles('super')
+  @StepUp()
   @Post('vendors/:id/feature')
   @HttpCode(HttpStatus.OK)
   grant(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() b: GrantDto) {

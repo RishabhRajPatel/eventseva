@@ -1,11 +1,13 @@
+import { Throttle } from '@nestjs/throttler';
 import { Controller, Get, Headers, HttpStatus, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
 import { pickLanguage } from '../catalog/catalog.controller';
 import { loadVendor } from './vendor.queries';
 import { PublicCache } from '../common/cache';
+import { pointOf, ROAD_FACTOR, SQL_STRAIGHT_KM, travelBetween } from '../bookings/travel';
 
 class VendorSearchQuery {
   @IsOptional() @IsString() @MaxLength(40) category?: string;
@@ -14,6 +16,15 @@ class VendorSearchQuery {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) cityId?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(50) limit?: number;
+  /** The event venue: each card gets `distanceKm` (estimated by road), and `sort=nearest` is allowed. */
+  @IsOptional() @Type(() => Number) @IsLatitude() lat?: number;
+  @IsOptional() @Type(() => Number) @IsLongitude() lng?: number;
+  @IsOptional() @IsIn(['recommended', 'nearest']) sort?: 'recommended' | 'nearest';
+}
+
+class PointQuery {
+  @Type(() => Number) @IsLatitude() lat: number;
+  @Type(() => Number) @IsLongitude() lng: number;
 }
 
 class MonthQuery {
@@ -31,6 +42,11 @@ export class VendorsController {
     const lang = pickLanguage(acceptLanguage);
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
+    if ((query.lat === undefined) !== (query.lng === undefined)) throw new AppError('VALIDATION', 'Send lat and lng together.');
+    if (query.sort === 'nearest' && query.lat === undefined) throw new AppError('VALIDATION', 'Sorting by distance needs lat and lng.');
+    // Estimated road km, to the nearest 0.5 km (the vendor's exact pin is never sent).
+    const distance = `CASE WHEN $6::float8 IS NULL OR v.lat IS NULL THEN NULL
+      ELSE round(${SQL_STRAIGHT_KM('$6::float8', '$7::float8', 'v.lat::float8', 'v.lng::float8')} * ${ROAD_FACTOR} * 2) / 2 END`;
     const { rows } = await this.db.query(
       `SELECT v.id, v.business_name AS "businessName", v.area,
               json_build_object('slug', c.slug, 'icon', c.icon, 'name', ${lang === 'hi' ? 'c.name_hi' : 'c.name_en'}) AS category,
@@ -40,15 +56,18 @@ export class VendorsController {
                  FROM media m WHERE m.vendor_id = v.id AND m.status = 'approved' AND m.type = 'photo'
                 ORDER BY m.is_cover DESC, m.sort_order LIMIT 1) AS cover,
               LEAST((SELECT min(price_paise) FROM services s WHERE s.vendor_id = v.id AND s.is_active),
-                    (SELECT min(price_paise) FROM packages p WHERE p.vendor_id = v.id AND p.is_active)) AS "startingPricePaise"
+                    (SELECT min(price_paise) FROM packages p WHERE p.vendor_id = v.id AND p.is_active)) AS "startingPricePaise",
+              (${distance})::float8 AS "distanceKm", v.service_radius_km AS "serviceRadiusKm"
          FROM vendors v JOIN categories c ON c.id = v.category_id
         WHERE v.status = 'approved'
           AND ($1::text IS NULL OR c.slug = $1)
           AND ($2::int IS NULL OR v.city_id = $2)
           AND ($5::text IS NULL OR v.business_name ILIKE '%' || $5 || '%' OR v.area ILIKE '%' || $5 || '%')
-        ORDER BY (v.featured_until > now()) IS TRUE DESC, v.rating_avg DESC, v.rating_count DESC, v.approved_at DESC, v.id
+        ORDER BY ${query.sort === 'nearest' ? `(${distance}) ASC NULLS LAST,` : ''}
+                 (v.featured_until > now()) IS TRUE DESC, v.rating_avg DESC, v.rating_count DESC, v.approved_at DESC, v.id
         LIMIT $3 OFFSET $4`,
-      [query.category ?? null, query.cityId ?? null, limit + 1, (page - 1) * limit, query.q?.trim().replace(/[%_\\]/g, '\\$&') || null],
+      [query.category ?? null, query.cityId ?? null, limit + 1, (page - 1) * limit, query.q?.trim().replace(/[%_\\]/g, '\\$&') || null,
+        query.lat ?? null, query.lng ?? null],
     );
     return {
       items: rows.slice(0, limit).map((r) => ({ ...r, isFeatured: !!r.isFeatured })),
@@ -67,6 +86,24 @@ export class VendorsController {
       [id, query.month],
     );
     return { month: query.month, busy: rows };
+  }
+
+  /**
+   * How far this vendor would travel to a venue, before booking (road estimate, rounded; the vendor's
+   * own pin is never sent). null when the vendor has not set a location.
+   */
+  // Tighter limit: many lookups from different points could be used to work out a vendor's base.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @PublicCache(300)
+  @Get(':id/travel')
+  async travel(@Param('id', ParseUUIDPipe) id: string, @Query() query: PointQuery) {
+    const v = await this.db.one<{ lat: string | null; lng: string | null; service_radius_km: number | null }>(
+      this.db,
+      `SELECT lat, lng, service_radius_km FROM vendors WHERE id = $1 AND status = 'approved'`,
+      [id],
+    );
+    if (!v) throw new AppError('VENDOR_NOT_FOUND', 'This vendor is not available.', HttpStatus.NOT_FOUND);
+    return { travel: travelBetween(pointOf(v.lat, v.lng), { lat: query.lat, lng: query.lng }, v.service_radius_km) };
   }
 
   @PublicCache(30)

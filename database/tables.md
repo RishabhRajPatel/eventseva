@@ -129,7 +129,7 @@ EventSeva team logins for the admin panel: email, scrypt password hash, 2FA secr
 | `id` | uuid | yes | `gen_random_uuid()` | primary key |
 | `email` | text | yes |  |  |
 | `password_hash` | text | yes |  |  |
-| `totp_secret` | text | yes |  |  |
+| `totp_secret` | text | yes |  | 2FA secret, encrypted with BANK_DETAILS_KEY (v1:…); old plain rows are encrypted at the next login |
 | `role` | admin_role | yes |  |  |
 | `is_active` | boolean | yes | `true` |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
@@ -137,6 +137,9 @@ EventSeva team logins for the admin panel: email, scrypt password hash, 2FA secr
 | `locked_until` | timestamp with time zone |  |  |  |
 | `tokens_valid_after` | timestamp with time zone |  |  |  |
 | `totp_last_step` | bigint |  |  | Time step of the last 2FA code accepted; older or equal steps are refused |
+| `recovery_codes` | text[] | yes | `'{}'::text[]` | HMAC hashes of unused one-time recovery codes; a used code is removed |
+| `step_up_until` | timestamp with time zone |  |  | Money and personal-data actions need no new 2FA code until this time (5 minutes after one) |
+| `step_up_session` | bigint |  |  | The login (token issue time, ms) the window belongs to: another login never inherits it |
 
 <details><summary>Rules and indexes</summary>
 
@@ -211,9 +214,11 @@ A business profile owned by one user. status: draft → pending → approved / r
 | `featured_until` | timestamp with time zone |  |  |  |
 | `approved_at` | timestamp with time zone |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `service_radius_km` | integer |  |  | Usual travel range from the vendor's location; null = not set |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((service_radius_km >= 1) AND (service_radius_km <= 500)))`
 - Unique: `UNIQUE (user_id)`
 - Index: `CREATE INDEX ON vendors USING gin (area gin_trgm_ops)`
 - Index: `CREATE INDEX ON vendors USING gin (business_name gin_trgm_ops)`
@@ -385,9 +390,13 @@ A customer's occasion (wedding, birthday …) that bookings belong to.
 | `guest_count` | integer |  |  |  |
 | `budget_paise` | integer |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `venue_lat` | numeric(9,6) |  |  | Venue pin (with venue_lng); from the address or the phone's location |
+| `venue_lng` | numeric(9,6) |  |  |  |
+| `venue_landmark` | text |  |  | Nearby landmark to help the vendor find the venue |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((venue_lat IS NULL) = (venue_lng IS NULL)))`
 - Index: `CREATE INDEX ON events USING btree (customer_id, event_date)`
 
 </details>
@@ -420,18 +429,24 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `refund_paise` | integer | yes | `0` |  |
 | `discount_paise` | integer | yes | `0` |  |
 | `payout_deduction_paise` | integer | yes | `0` |  |
+| `progress` | text |  |  | Event day: on_the_way (with eta_at) or reached, set by the vendor |
+| `progress_at` | timestamp with time zone |  |  |  |
+| `eta_at` | timestamp with time zone |  |  |  |
+| `reminder_sent_at` | timestamp with time zone |  |  | When the day-before reminder went to both sides |
 
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL)))`
 - Check: `CHECK ((discount_paise >= 0))`
 - Check: `CHECK ((payout_deduction_paise >= 0))`
+- Check: `CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text])))`
 - Check: `CHECK ((quantity > 0))`
 - Check: `CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text])))`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id, created_at DESC)`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id) WHERE (status = 'requested'::booking_status)`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
 - Index: `CREATE INDEX ON bookings USING btree (package_id) WHERE (package_id IS NOT NULL)`
+- Index: `CREATE INDEX ON bookings USING btree (day) WHERE ((status = 'confirmed'::booking_status) AND (reminder_sent_at IS NULL))`
 - Index: `CREATE INDEX ON bookings USING btree (service_id) WHERE (service_id IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (status, day) WHERE (status = 'confirmed'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, pay_by) WHERE (status = 'accepted'::booking_status)`
@@ -711,14 +726,18 @@ Chat messages. Phone numbers are masked in the API until a booking between the t
 |---|---|---|---|---|
 | `id` | bigint | yes | `nextval('messages_id_seq'::regclass)` | primary key |
 | `conversation_id` | uuid | yes |  | → [conversations](#conversations).id |
-| `sender_id` | uuid | yes |  | → [users](#users).id |
+| `sender_id` | uuid |  |  | → [users](#users).id |
 | `body` | text | yes |  |  |
 | `read_at` | timestamp with time zone |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `kind` | text | yes | `'text'::text` | text = typed by a person; booking = an automatic booking update (data has the details) |
+| `data` | jsonb |  |  |  |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((kind = 'booking'::text) OR (sender_id IS NOT NULL)))`
 - Check: `CHECK (((length(body) >= 1) AND (length(body) <= 2000)))`
+- Check: `CHECK ((kind = ANY (ARRAY['text'::text, 'booking'::text])))`
 - Index: `CREATE INDEX ON messages USING btree (conversation_id, id DESC)`
 - Index: `CREATE INDEX ON messages USING btree (sender_id, created_at DESC)`
 

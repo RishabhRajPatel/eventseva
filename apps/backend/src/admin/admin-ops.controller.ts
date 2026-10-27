@@ -12,6 +12,7 @@ import { AppConfig, CONFIG } from '../config';
 import { decrypt } from '../common/crypto';
 import { BANK_COLUMNS } from '../partner/partner-home.controller';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from './admin-auth';
+import { StepUp } from './admin-2fa';
 
 const PAGE_SIZE = 20;
 
@@ -251,6 +252,7 @@ export class AdminOpsController {
 
   /** Full account number for paying a vendor by bank transfer. Every view is written to the audit log. */
   @AdminRoles('finance')
+  @StepUp()
   @Get('vendors/:id/bank-account')
   async vendorBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
     const row = await this.db.one(this.db, `SELECT ${BANK_COLUMNS}, account_enc FROM vendor_bank_accounts WHERE vendor_id = $1`, [id]);
@@ -261,6 +263,7 @@ export class AdminOpsController {
   }
 
   @AdminRoles('finance')
+  @StepUp()
   @Post('vendors/:id/bank-account/verify')
   @HttpCode(HttpStatus.OK)
   verifyBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -268,6 +271,7 @@ export class AdminOpsController {
   }
 
   @AdminRoles('finance')
+  @StepUp()
   @Post('vendors/:id/bank-account/reject')
   @HttpCode(HttpStatus.OK)
   rejectBank(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
@@ -298,6 +302,7 @@ export class AdminOpsController {
    * records the UTR / reference here.
    */
   @AdminRoles('finance')
+  @StepUp()
   @Post('payouts/:id/mark-paid')
   @HttpCode(HttpStatus.OK)
   async markPaid(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReferenceDto) {
@@ -324,6 +329,7 @@ export class AdminOpsController {
   }
 
   @AdminRoles('finance')
+  @StepUp()
   @Post('payouts/:id/hold')
   @HttpCode(HttpStatus.OK)
   async holdPayout(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
@@ -397,6 +403,7 @@ export class AdminOpsController {
 
   /** Blocking also logs the user out everywhere at once. */
   @AdminRoles('support')
+  @StepUp()
   @Post('users/:id/block')
   @HttpCode(HttpStatus.OK)
   async block(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
@@ -419,6 +426,7 @@ export class AdminOpsController {
   }
 
   @AdminRoles('support')
+  @StepUp()
   @Post('users/:id/unblock')
   @HttpCode(HttpStatus.OK)
   async unblock(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {

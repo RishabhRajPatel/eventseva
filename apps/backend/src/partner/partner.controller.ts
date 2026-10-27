@@ -26,6 +26,7 @@ import {
   Length,
   Max,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import type { Language, VendorStatus } from '@eventseva/core';
 import { AppError } from '../common/errors';
@@ -59,6 +60,8 @@ class VendorProfileDto {
   @IsOptional() @IsLatitude() lat?: number;
   @IsOptional() @IsLongitude() lng?: number;
   @IsOptional() @IsString() @Length(0, 1500) about?: string;
+  /** How far you usually travel, in km; null clears it. */
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(500) serviceRadiusKm?: number | null;
 }
 
 class CreateVendorDto {
@@ -70,6 +73,8 @@ class CreateVendorDto {
   @IsOptional() @IsLatitude() lat?: number;
   @IsOptional() @IsLongitude() lng?: number;
   @IsOptional() @IsString() @Length(0, 1500) about?: string;
+  /** How far you usually travel, in km; null clears it. */
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(500) serviceRadiusKm?: number | null;
 }
 
 class ServiceDto {
@@ -170,10 +175,10 @@ export class PartnerController {
     await this.checkRefs(this.db, body);
     const created = await this.db.one(
       this.db,
-      `INSERT INTO vendors (user_id, business_name, category_id, city_id, area, address, lat, lng, about)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (user_id) DO NOTHING RETURNING id`,
+      `INSERT INTO vendors (user_id, business_name, category_id, city_id, area, address, lat, lng, about, service_radius_km)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (user_id) DO NOTHING RETURNING id`,
       [auth.userId, body.businessName.trim(), body.categoryId, body.cityId, body.area?.trim() ?? null,
-        body.address?.trim() ?? null, body.lat ?? null, body.lng ?? null, body.about?.trim() || null],
+        body.address?.trim() ?? null, body.lat ?? null, body.lng ?? null, body.about?.trim() || null, body.serviceRadiusKm ?? null],
     );
     if (!created) throw new AppError('VENDOR_EXISTS', 'You already have a business profile.', HttpStatus.CONFLICT);
     return this.view(auth.userId);
@@ -191,10 +196,12 @@ export class PartnerController {
       await client.query(
         `UPDATE vendors SET business_name = COALESCE($2, business_name), category_id = COALESCE($3, category_id),
                 city_id = COALESCE($4, city_id), area = COALESCE($5, area), address = COALESCE($6, address),
-                lat = COALESCE($7, lat), lng = COALESCE($8, lng), about = COALESCE($9, about)
+                lat = COALESCE($7, lat), lng = COALESCE($8, lng), about = COALESCE($9, about),
+                service_radius_km = CASE WHEN $10::boolean THEN $11::int ELSE service_radius_km END
           WHERE id = $1`,
         [v.id, body.businessName?.trim() ?? null, body.categoryId ?? null, body.cityId ?? null, body.area?.trim() ?? null,
-          body.address?.trim() ?? null, body.lat ?? null, body.lng ?? null, body.about?.trim() ?? null],
+          body.address?.trim() ?? null, body.lat ?? null, body.lng ?? null, body.about?.trim() ?? null,
+          body.serviceRadiusKm !== undefined, body.serviceRadiusKm ?? null],
       );
     });
     return this.view(auth.userId);

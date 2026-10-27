@@ -17,6 +17,7 @@ import { AppText } from '../../components/AppText';
 import { Button } from '../../components/Button';
 import { ChatRowsSkeleton } from '../../components/Skeleton';
 import { EmptyState, ErrorState } from '../../components/States';
+import { bookingEventText } from '../../lib/bookingEvents';
 
 const Separator = () => <View style={styles.separator} />;
 
@@ -96,7 +97,7 @@ const ConversationRow = memo(function ConversationRow({ conversation: cv, lang }
         </View>
         <View style={styles.top}>
           <AppText size="sm" numberOfLines={1} style={styles.flex} variant={cv.unreadCount ? 'bold' : 'body'}>
-            {cv.lastMessage ?? t('chat.noMessages')}
+            {cv.lastKind === 'booking' ? bookingEventText(t, cv.lastData, lang) : (cv.lastMessage ?? t('chat.noMessages'))}
           </AppText>
           {cv.unreadCount ? (
             <View style={styles.badge}>

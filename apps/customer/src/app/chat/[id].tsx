@@ -1,7 +1,7 @@
 // Chat thread (Chat board). Polls every 4 s while open and focused. Sent messages show at once with
 // a "Sending…" state; a failed one says so and is sent again with a tap.
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
@@ -14,6 +14,7 @@ import { errorText } from '../../lib/errors';
 import { haptic } from '../../lib/haptics';
 import { keys } from '../../lib/queryClient';
 import { clockTime } from '../../lib/time';
+import { bookingEventText } from '../../lib/bookingEvents';
 import { c, radius, space } from '../../lib/theme';
 import { useLanguage } from '../../hooks/useLanguage';
 import { AppText } from '../../components/AppText';
@@ -21,6 +22,9 @@ import { IconButton } from '../../components/Button';
 import { Icon } from '../../components/Icon';
 import { MessagesSkeleton } from '../../components/Skeleton';
 import { EmptyState, ErrorState } from '../../components/States';
+import { openLink } from '../../lib/links';
+
+const QUICK = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'] as const;
 
 /** A message typed here that the server has not confirmed yet. */
 interface Outgoing {
@@ -44,6 +48,7 @@ export default function ChatThreadScreen() {
   const [text, setText] = useState('');
   const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
   const counter = useRef(0);
+  const input = useRef<TextInputInstance>(null);
 
   const messages = useInfiniteQuery({
     queryKey: keys.messages(id),
@@ -155,7 +160,7 @@ export default function ChatThreadScreen() {
           </AppText>
           <AppText size="xs">{phoneShared ? t('chat.bookingConfirmed') : t('chat.subtitle')}</AppText>
         </View>
-        {phone ? <IconButton icon="phone" label={t('booking.call')} onPress={() => Linking.openURL(`tel:${phone}`)} tone="outline" /> : null}
+        {phone ? <IconButton icon="phone" label={t('booking.call')} onPress={() => openLink(`tel:${phone}`)} tone="outline" /> : null}
       </View>
 
       {!phoneShared && !messages.isPending ? (
@@ -169,9 +174,38 @@ export default function ChatThreadScreen() {
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.flex, rows.length === 0 && !messages.isPending && styles.center]}>{list}</View>
+        {!text ? (
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quick}
+            accessibilityLabel={t('quick.label')}
+          >
+            {QUICK.map((k) => (
+              <Pressable
+                key={k}
+                testID={`quick-${k}`}
+                accessibilityRole="button"
+                // Fills the box; the person still decides to send (UX.md §8).
+                onPress={() => {
+                  haptic.select();
+                  setText(t(`quick.replies.${k}`));
+                  input.current?.focus();
+                }}
+                style={({ pressed }) => [styles.quickChip, pressed && styles.pressed]}
+              >
+                <AppText size="sm" color={c.royal}>
+                  {t(`quick.replies.${k}`)}
+                </AppText>
+              </Pressable>
+            ))}
+          </ScrollView>
+        ) : null}
         <View style={styles.composer}>
           <View style={styles.inputBox}>
             <TextInput
+              ref={input}
               value={text}
               onChangeText={setText}
               placeholder={t('chat.placeholder')}
@@ -199,10 +233,36 @@ export default function ChatThreadScreen() {
 }
 
 const rowKey = (r: Row) => (r.kind === 'sent' ? String(r.message.id) : r.out.key);
-const rowType = (r: Row) => (r.kind === 'out' ? 'out' : r.message.mine ? 'mine' : 'theirs');
+const rowType = (r: Row) => (r.kind === 'out' ? 'out' : r.message.kind === 'booking' ? 'booking' : r.message.mine ? 'mine' : 'theirs');
+
+/** "Booking confirmed · 4:12 pm · View booking": a small centred line, not a bubble (UX.md §8). */
+const BookingLine = memo(function BookingLine({ message: m, lang }: { message: Message; lang: Language }) {
+  const { t } = useTranslation();
+  const text = bookingEventText(t, m.data, lang);
+  return (
+    <View style={styles.eventWrap} testID={`booking-line-${m.data?.event}`}>
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${text}. ${t('chatEvents.open')}`}
+        disabled={!m.data?.bookingId}
+        onPress={() => m.data && router.push({ pathname: '/booking/[id]', params: { id: m.data.bookingId } })}
+        style={({ pressed }) => [styles.event, pressed && styles.pressed]}
+      >
+        <Icon name="calendar" size={14} color={c.royal} />
+        <AppText size="sm" variant="bold" color={c.royal} style={styles.eventText}>
+          {text}
+        </AppText>
+      </Pressable>
+      <AppText size="xs" color={c.textMuted}>
+        {`${clockTime(m.createdAt, lang)} · ${t('chatEvents.open')}`}
+      </AppText>
+    </View>
+  );
+});
 
 const Bubble = memo(function Bubble({ message: m, seen, lang }: { message: Message; seen: boolean; lang: Language }) {
   const { t } = useTranslation();
+  if (m.kind === 'booking') return <BookingLine message={m} lang={lang} />;
   return (
     <View style={[styles.bubbleWrap, m.mine ? styles.right : styles.left]}>
       <View style={[styles.bubble, m.mine ? styles.mine : styles.theirs]}>
@@ -319,4 +379,9 @@ const styles = StyleSheet.create({
   input: { fontSize: 16, color: c.text, paddingVertical: 12 },
   send: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
   sendOff: { opacity: 0.45 },
+  eventWrap: { alignItems: 'center', gap: 2, marginVertical: space.sm },
+  event: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.lavender, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 6, maxWidth: '90%' },
+  eventText: { flexShrink: 1 },
+  quick: { gap: space.sm, paddingHorizontal: space.lg, paddingVertical: space.sm },
+  quickChip: { borderWidth: 1.5, borderColor: c.outline, borderRadius: radius.pill, paddingHorizontal: space.md, paddingVertical: 8, backgroundColor: c.white },
 });

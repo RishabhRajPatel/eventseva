@@ -741,7 +741,8 @@
     "vendorExists": "You already have a business profile. Pull down to refresh.",
     "vendorNotFound": "We couldn't find your business profile. Pull down to refresh, or start again.",
     "dateTooFar": "You can block dates up to 2 years ahead. Please choose an earlier date.",
-    "tooManyMessages": "You are sending messages too fast. Wait a minute and try again."
+    "tooManyMessages": "You are sending messages too fast. Wait a minute and try again.",
+    "progressNotAllowed": "You can send “On the way” and “Reached” on the event day, or the evening before."
   },
   "deleteAccount": {
     "menu": "Delete account",

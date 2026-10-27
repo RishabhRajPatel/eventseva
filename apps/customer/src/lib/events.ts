@@ -1,4 +1,4 @@
-import { todayIst, type EventType } from '@eventseva/app-shared';
+import { todayIst, type EventType, type LatLng } from '@eventseva/app-shared';
 import type { NewEvent } from './api';
 
 export interface EventDraft {
@@ -7,9 +7,19 @@ export interface EventDraft {
   eventDate: string | null;
   guests: string;
   venue: string;
+  landmark: string;
+  pin: LatLng | null;
 }
 
-export const emptyEvent = (eventDate: string | null = null): EventDraft => ({ title: '', eventType: 'wedding', eventDate, guests: '', venue: '' });
+export const emptyEvent = (eventDate: string | null = null): EventDraft => ({
+  title: '',
+  eventType: 'wedding',
+  eventDate,
+  guests: '',
+  venue: '',
+  landmark: '',
+  pin: null,
+});
 
 export type EventErrors = Partial<Record<'title' | 'eventDate' | 'guests' | 'venue', 'titleShort' | 'dateMissing' | 'datePast' | 'guestsBad' | 'venueShort'>>;
 
@@ -27,7 +37,16 @@ export function validateEvent(d: EventDraft, today = todayIst()): { errors: Even
   if (Object.keys(errors).length) return { errors, event: null };
   return {
     errors,
-    event: { title, eventType: d.eventType, eventDate: d.eventDate!, guestCount: guests, venueAddress: venue || undefined },
+    event: {
+      title,
+      eventType: d.eventType,
+      eventDate: d.eventDate!,
+      guestCount: guests,
+      venueAddress: venue || undefined,
+      venueLandmark: d.landmark.trim().length >= 2 ? d.landmark.trim() : undefined,
+      venueLat: d.pin?.lat,
+      venueLng: d.pin?.lng,
+    },
   };
 }
 

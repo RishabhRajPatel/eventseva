@@ -31,6 +31,15 @@ export interface LoginInput {
   email: string;
   password: string;
   totp: string;
+  /** Lost phone: one of the one-time recovery codes instead of the 6-digit code. */
+  recoveryCode?: string;
+  useRecovery?: boolean;
+}
+
+/** "abcde fghjk" → "ABCDE-FGHJK"; null when it is not 10 recovery-code characters. */
+export function cleanRecoveryCode(value: string): string | null {
+  const clean = value.toUpperCase().replace(/[^A-Z2-7]/g, '');
+  return clean.length === 10 ? `${clean.slice(0, 5)}-${clean.slice(5)}` : null;
 }
 
 export type LoginErrors = Partial<Record<keyof LoginInput, string>>;
@@ -39,7 +48,9 @@ export function checkLogin(input: LoginInput): LoginErrors {
   const errors: LoginErrors = {};
   if (!isEmail(input.email)) errors.email = 'Enter your work email.';
   if (!input.password) errors.password = 'Enter your password.';
-  if (!isTotp(input.totp)) errors.totp = 'Enter the 6-digit code from your authenticator app.';
+  if (input.useRecovery) {
+    if (!cleanRecoveryCode(input.recoveryCode ?? '')) errors.recoveryCode = 'Enter one of your recovery codes, like ABCDE-FGHJK.';
+  } else if (!isTotp(input.totp)) errors.totp = 'Enter the 6-digit code from your authenticator app.';
   return errors;
 }
 

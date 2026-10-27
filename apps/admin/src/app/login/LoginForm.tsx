@@ -8,7 +8,7 @@ import { useBusy } from '@/hooks/useBusy';
 import { api, sessionStore } from '@/lib/api';
 import { describeError } from '@/lib/errors';
 import type { AdminLoginResult } from '@/lib/session';
-import { checkLogin, cleanTotp, safeNextPath, type LoginErrors } from '@/lib/validate';
+import { checkLogin, cleanRecoveryCode, cleanTotp, safeNextPath, type LoginErrors } from '@/lib/validate';
 import styles from './login.module.css';
 
 export function LoginForm() {
@@ -27,6 +27,8 @@ function LoginFormInner() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [totp, setTotp] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState('');
   const [errors, setErrors] = useState<LoginErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, run] = useBusy();
@@ -39,7 +41,7 @@ function LoginFormInner() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const found = checkLogin({ email, password, totp });
+    const found = checkLogin({ email, password, totp, recoveryCode, useRecovery });
     setErrors(found);
     setFormError(null);
     if (Object.keys(found).length) {
@@ -48,17 +50,21 @@ function LoginFormInner() {
     }
     void run(async () => {
       try {
-        const result = await api.post<AdminLoginResult>('/v1/admin/login', { email: email.trim(), password, totp }, { auth: false });
+        const second = useRecovery ? { recoveryCode: cleanRecoveryCode(recoveryCode)! } : { totp };
+        const result = await api.post<AdminLoginResult>('/v1/admin/login', { email: email.trim(), password, ...second }, { auth: false });
         sessionStore.save(result);
         // Full load, so the panel starts clean for this admin. Stays busy until the page changes.
-        window.location.replace(next);
+        // After a recovery code (or with few left), go to My security to make new ones.
+        const low = (result.recoveryCodesLeft ?? 8) <= 2;
+        window.location.replace(result.usedRecoveryCode || low ? `/security?notice=${result.usedRecoveryCode ? 'recovery' : 'low'}` : next);
         await new Promise(() => undefined);
       } catch (e) {
         // ADMIN_LOGIN_FAILED is one generic message on purpose: it never says which part was wrong.
         setFormError(describeError(e));
         if (e instanceof ApiError && e.code === 'ADMIN_LOGIN_FAILED') {
           setTotp('');
-          requestAnimationFrame(() => document.getElementById('totp')?.focus());
+          setRecoveryCode('');
+          requestAnimationFrame(() => document.getElementById(useRecovery ? 'recovery' : 'totp')?.focus());
         }
       }
     });
@@ -106,22 +112,54 @@ function LoginFormInner() {
           />
         </Field>
 
-        <Field id="totp" label="2FA code (authenticator app)" error={errors.totp}>
-          <input
-            id="totp"
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="\d{6}"
-            maxLength={6}
-            className={`input ${styles.totp}`}
-            placeholder="6 digits"
-            value={totp}
-            onChange={(e) => setTotp(cleanTotp(e.target.value))}
-            aria-invalid={errors.totp ? true : undefined}
-            aria-describedby={errors.totp ? 'totp-error' : undefined}
-          />
-        </Field>
+        {useRecovery ? (
+          <Field id="recovery" label="Recovery code" error={errors.recoveryCode}>
+            <input
+              id="recovery"
+              type="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              maxLength={12}
+              className={`input ${styles.totp}`}
+              placeholder="ABCDE-FGHJK"
+              value={recoveryCode}
+              onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
+              aria-invalid={errors.recoveryCode ? true : undefined}
+              aria-describedby={errors.recoveryCode ? 'recovery-error' : 'recovery-hint'}
+            />
+            <span id="recovery-hint" className="hint">
+              Each code works once. Make new ones under My security after logging in.
+            </span>
+          </Field>
+        ) : (
+          <Field id="totp" label="2FA code (authenticator app)" error={errors.totp}>
+            <input
+              id="totp"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              pattern="\d{6}"
+              maxLength={6}
+              className={`input ${styles.totp}`}
+              placeholder="6 digits"
+              value={totp}
+              onChange={(e) => setTotp(cleanTotp(e.target.value))}
+              aria-invalid={errors.totp ? true : undefined}
+              aria-describedby={errors.totp ? 'totp-error' : undefined}
+            />
+          </Field>
+        )}
+        <button
+          type="button"
+          className="btn-link small"
+          onClick={() => {
+            setUseRecovery((r) => !r);
+            setErrors({});
+          }}
+        >
+          {useRecovery ? 'Use the code from my authenticator app' : 'Lost your phone? Use a recovery code'}
+        </button>
 
         <Button type="submit" className={`btn btn-primary ${styles.submit}`} busy={busy} busyLabel="Logging in…">
           Log in

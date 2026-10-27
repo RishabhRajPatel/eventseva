@@ -12,6 +12,7 @@ const KNOWN: Record<string, string> = {
   NETWORK: 'errors.network',
   SLOT_TAKEN: 'errors.slotTaken',
   DATE_TOO_FAR: 'errors.dateTooFar',
+  PROGRESS_NOT_ALLOWED: 'errors.progressNotAllowed',
   TOO_MANY_MESSAGES: 'errors.tooManyMessages',
   BOOKING_EXPIRED: 'errors.bookingExpired',
   VENDOR_NOT_ACTIVE: 'errors.vendorNotActive',

@@ -4,6 +4,9 @@ import * as SecureStore from 'expo-secure-store';
 import { api } from '../lib/api';
 import { registerForPush, routeForPush, unregisterPush } from '../lib/push';
 
+const C = '3f2b6c1e-8a4d-4c2e-9b1f-0a1b2c3d4e5f';
+const B = '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+
 jest.mock('expo-router', () => require('./routerMock').expoRouterMock);
 jest.mock('../lib/api', () => ({
   api: { get: jest.fn(), post: jest.fn(async () => undefined), patch: jest.fn(), put: jest.fn(), delete: jest.fn(async () => undefined) },
@@ -36,8 +39,11 @@ beforeEach(() => {
 });
 
 test('tapping a notification opens the chat, the booking, or the list', () => {
-  expect(routeForPush({ kind: 'chat_message', conversationId: 'c1' })).toBe('/chat/c1');
-  expect(routeForPush({ kind: 'booking_requested', bookingId: 'b1' })).toBe('/booking/b1');
+  expect(routeForPush({ kind: 'chat_message', conversationId: C })).toBe(`/chat/${C}`);
+  expect(routeForPush({ kind: 'booking_requested', bookingId: B })).toBe(`/booking/${B}`);
+  // A payload that is not a real id never chooses the screen.
+  expect(routeForPush({ kind: 'chat_message', conversationId: '../login' })).toBe('/notifications');
+  expect(routeForPush({ kind: 'booking_requested', bookingId: 'b1/../../delete-account' })).toBe('/notifications');
   expect(routeForPush({ kind: 'vendor_approved', vendorId: 'v1' })).toBe('/notifications');
   expect(routeForPush(undefined)).toBe('/notifications');
 });

@@ -13,6 +13,12 @@ import jwt from 'jsonwebtoken';
 import { AppConfig, CONFIG } from '../config';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
+import { openSecret, STEP_UP_HEADER, STEP_UP_KEY, STEP_UP_MIN } from './admin-2fa';
+import { totpStep } from './totp';
+
+/** Wrong 2FA codes (at login or for a sensitive action) before the account locks for 15 minutes. */
+export const ADMIN_MAX_FAILED_LOGINS = 5;
+export const ADMIN_LOCK_MIN = 15;
 
 export const ADMIN_ROLES = ['super', 'support', 'verifier', 'finance'] as const;
 export type AdminRole = (typeof ADMIN_ROLES)[number];
@@ -25,6 +31,8 @@ export const ADMIN_AUDIENCE = 'admin';
 export interface AdminContext {
   adminId: string;
   role: AdminRole;
+  /** Which login this is (token issue time, ms): a 2FA re-check counts for this login only. */
+  session: number;
 }
 
 type AdminRequest = Request & { admin?: AdminContext };
@@ -61,9 +69,10 @@ export class AdminGuard implements CanActivate {
     }
     // Checked on every request, so deactivating an admin locks them out at once.
     // Tokens issued before the admin's last logout stop working at once.
-    const admin = await this.db.one<{ role: AdminRole }>(
+    const admin = await this.db.one<{ role: AdminRole; totp_secret: string; stepped: boolean; locked: boolean }>(
       this.db,
-      `SELECT role FROM admin_users
+      `SELECT role, totp_secret, COALESCE(step_up_until > now() AND step_up_session = $2::bigint, false) AS stepped, COALESCE(locked_until > now(), false) AS locked
+         FROM admin_users
         WHERE id = $1 AND is_active AND (tokens_valid_after IS NULL OR $2::bigint > extract(epoch FROM tokens_valid_after) * 1000)`,
       [adminId, issuedAt ?? 0],
     );
@@ -73,8 +82,46 @@ export class AdminGuard implements CanActivate {
     if (allowed && admin.role !== 'super' && !allowed.includes(admin.role)) {
       throw new AppError('FORBIDDEN', 'Your admin role cannot do this.', HttpStatus.FORBIDDEN);
     }
-    req.admin = { adminId, role: admin.role };
+    if (this.reflector.getAllAndOverride<boolean>(STEP_UP_KEY, [ctx.getHandler(), ctx.getClass()]) && !admin.stepped) {
+      await this.stepUp(adminId, issuedAt ?? 0, admin, req.headers[STEP_UP_HEADER]);
+    }
+    req.admin = { adminId, role: admin.role, session: issuedAt ?? 0 };
     return true;
+  }
+
+  /**
+   * A sensitive action needs a fresh, unused 2FA code (sent in the X-Admin-2FA header). It then opens
+   * a short window in which other sensitive actions need no new code. Wrong codes count towards the
+   * same lock as wrong logins.
+   */
+  private async stepUp(adminId: string, session: number, admin: { totp_secret: string; locked: boolean }, header: string | string[] | undefined) {
+    if (admin.locked) throw new AppError('ADMIN_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.', HttpStatus.TOO_MANY_REQUESTS);
+    const code = typeof header === 'string' ? header.trim() : '';
+    if (!/^\d{6}$/.test(code)) {
+      throw new AppError('ADMIN_2FA_REQUIRED', 'Enter a fresh code from your authenticator app to do this.', HttpStatus.FORBIDDEN, {
+        windowMinutes: STEP_UP_MIN,
+      });
+    }
+    const step = totpStep(openSecret(admin.totp_secret, this.config.bankDetailsKey), code);
+    const claimed =
+      step !== null &&
+      (
+        await this.db.query(
+          `UPDATE admin_users SET totp_last_step = $2, step_up_until = now() + make_interval(mins => $3), step_up_session = $4, failed_logins = 0
+            WHERE id = $1 AND (totp_last_step IS NULL OR totp_last_step < $2)`,
+          [adminId, step, STEP_UP_MIN, session],
+        )
+      ).rowCount;
+    if (!claimed) {
+      await this.db.query(
+        `UPDATE admin_users SET
+           locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END,
+           failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END
+         WHERE id = $1`,
+        [adminId, ADMIN_MAX_FAILED_LOGINS, ADMIN_LOCK_MIN],
+      );
+      throw new AppError('ADMIN_2FA_INVALID', 'That code is wrong or was already used. Wait for the next code and try again.', HttpStatus.FORBIDDEN);
+    }
   }
 }
 

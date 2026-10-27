@@ -7,6 +7,7 @@ import { Db } from '../db/db.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { Admin, AdminContext, AdminGuard, AdminRole, AdminRoles } from './admin-auth';
 import { toCsv } from './csv';
+import { StepUp } from './admin-2fa';
 
 class CityDto {
   @IsString() @Length(2, 60) name: string;
@@ -145,6 +146,7 @@ export class AdminExtrasController {
 
   // ---- CSV downloads ----
 
+  @StepUp()
   @Get('export/:kind')
   @Header('Cache-Control', 'no-store')
   async export(@Admin() admin: AdminContext, @Param('kind') kind: string, @Query() q: ExportQuery, @Res() res: Response) {
@@ -168,6 +170,7 @@ export class AdminExtrasController {
   // ---- partial refund ----
 
   @AdminRoles('finance')
+  @StepUp()
   @Post('bookings/:id/refund')
   @HttpCode(HttpStatus.OK)
   refund(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() b: RefundDto) {

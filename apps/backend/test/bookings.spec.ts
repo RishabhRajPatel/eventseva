@@ -234,7 +234,7 @@ describe('bookings', () => {
     const b = await requestDj();
     await t.db.query(`UPDATE bookings SET respond_by = now() - interval '1 minute'`);
     expect((await as(vendorToken).post(`/v1/partner/bookings/${b.id}/accept`).expect(409)).body.error.code).toBe('BOOKING_EXPIRED');
-    expect(await service.sweep()).toEqual({ expired: 1, completed: 0 });
+    expect(await service.sweep()).toMatchObject({ expired: 1, completed: 0 });
     expect((await as(customer).get(`/v1/bookings/${b.id}`)).body.status).toBe('expired');
     expect((await notifications('+919822222222')).at(-1)).toEqual({ kind: 'booking_expired', title: 'No reply from vendor' });
   });
@@ -323,11 +323,11 @@ describe('bookings', () => {
 
   it('after the event day: completed, payout scheduled (advance − commission, 3 days for new vendors)', async () => {
     const b = await confirmedDj(5);
-    expect(await service.sweep()).toEqual({ expired: 0, completed: 0 });
+    expect(await service.sweep()).toMatchObject({ expired: 0, completed: 0 });
 
     const yesterday = inDays(-1);
     await t.db.query(`UPDATE bookings SET day = $1`, [yesterday]);
-    expect(await service.sweep()).toEqual({ expired: 0, completed: 1 });
+    expect(await service.sweep()).toMatchObject({ expired: 0, completed: 1 });
     expect((await as(customer).get(`/v1/bookings/${b.id}`)).body.status).toBe('completed');
 
     const payout = await t.db.one(t.db, `SELECT amount_paise, status, release_after FROM payouts WHERE booking_id = $1`, [b.id]);
@@ -336,7 +336,7 @@ describe('bookings', () => {
     expected.setUTCDate(expected.getUTCDate() + 3);
     expect(new Date(payout.release_after).toISOString()).toBe(expected.toISOString());
     expect((await notifications('+919811111111')).at(-1)).toEqual({ kind: 'payout_scheduled', title: 'Payout scheduled' });
-    expect(await service.sweep()).toEqual({ expired: 0, completed: 0 });
+    expect(await service.sweep()).toMatchObject({ expired: 0, completed: 0 });
   });
 
   it('event page lists its bookings and totals', async () => {

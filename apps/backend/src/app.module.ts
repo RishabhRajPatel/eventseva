@@ -121,6 +121,12 @@ export function configureApp(app: INestApplication) {
   // Behind a load balancer, req.ip must be the user's IP (from X-Forwarded-For), not the proxy's.
   if (config.trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
   app.use(helmet());
+  // Personal answers (bookings, chats, phone numbers) must never sit in a shared cache or a proxy.
+  // Public catalogue routes replace this with their own Cache-Control (see PublicCache).
+  app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   // gzip for JSON over ~1 KB: vendor lists and chats are 5–10× smaller on mobile data.
   app.use(compression({ threshold: 1024 }));
   app.useGlobalPipes(new TrimBodyPipe(), new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));

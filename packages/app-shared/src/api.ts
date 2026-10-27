@@ -33,7 +33,15 @@ export interface ApiClientOptions {
   canRefresh?: boolean;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  /**
+   * Admin panel: a sensitive action answered "enter a fresh 2FA code". Ask the person and resolve
+   * with the 6-digit code to send it again, or null to give up. `wrong` = the last code was refused.
+   */
+  askSecondFactor?: (wrong: boolean) => Promise<string | null>;
 }
+
+/** Codes that mean "confirm with a fresh 2FA code and send again". */
+const SECOND_FACTOR_CODES = ['ADMIN_2FA_REQUIRED', 'ADMIN_2FA_INVALID'];
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
@@ -42,6 +50,7 @@ export interface RequestOptions {
   body?: unknown;
   /** false for public routes (no token sent). */
   auth?: boolean;
+  headers?: Record<string, string>;
 }
 
 export function createApiClient(opts: ApiClientOptions) {
@@ -61,6 +70,7 @@ export function createApiClient(opts: ApiClientOptions) {
     const headers: Record<string, string> = { Accept: 'application/json', 'Accept-Language': opts.getLanguage?.() ?? 'en' };
     if (o.body !== undefined) headers['Content-Type'] = 'application/json';
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    Object.assign(headers, o.headers);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 20_000);
     try {
@@ -130,6 +140,14 @@ export function createApiClient(opts: ApiClientOptions) {
       }
       // A failed refresh has already ended the session if the server said no; after a
       // network error the tokens are kept and the 401 below reaches the caller.
+    }
+    // Confirm with a fresh 2FA code, at most 3 tries; the server locks after too many wrong codes.
+    for (let attempt = 0; attempt < 3 && res.status === 403 && opts.askSecondFactor; attempt++) {
+      const code = ((await res.clone().json().catch(() => null)) as ApiErrorBody | null)?.error?.code;
+      if (!code || !SECOND_FACTOR_CODES.includes(code)) break;
+      const answer = await opts.askSecondFactor(code === 'ADMIN_2FA_INVALID');
+      if (!answer) break;
+      res = await send(method, path, { ...o, headers: { ...o.headers, 'X-Admin-2FA': answer } }, (await opts.tokens.get())?.accessToken);
     }
     return parse<T>(res);
   }

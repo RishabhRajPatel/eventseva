@@ -7,6 +7,8 @@ import { notify } from '../notifications/notify';
 import { PAYMENT_GATEWAY, PaymentGateway } from '../payments/gateway';
 import { CouponsService } from '../coupons/coupons.service';
 import { RefundsService } from '../payments/refunds.service';
+import { postBookingEvent } from '../chat/booking-events';
+import { pointOf, progressAllowed, REMINDER_HOUR_IST, travelBetween } from './travel';
 import type { PricingUnit } from '../vendors/vendor.queries';
 import {
   daysUntil,
@@ -26,6 +28,8 @@ import {
 } from './booking.rules';
 
 export interface BookingRequest {
+  /** 'HH:MM' India time: when the vendor should be at the venue (optional). */
+  arriveBy?: string;
   eventId: string;
   vendorId: string;
   serviceId?: string;
@@ -62,6 +66,17 @@ const niceDay = (day: string, lang: 'en' | 'hi') =>
 const hoursLeft = (until: Date) => Math.max(1, Math.floor((until.getTime() - Date.now()) / 3600_000));
 /** "Not free that day." for a reason typed as "Not free that day" or "Not free that day." */
 const sentence = (text: string) => text.replace(/[\s.।!]+$/u, '');
+/** "5:40 pm" India time. */
+const clockIst = (d: Date) => d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true });
+/** '17:30' → "5:30 pm". */
+const timeLabel = (hhmm: string) => {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`;
+};
+const SLOT_TEXT = {
+  en: { full: 'Full-day', day: 'Daytime', night: 'Evening' },
+  hi: { full: 'पूरे दिन', day: 'दिन', night: 'शाम' },
+} as const;
 const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
 
 /**
@@ -178,12 +193,17 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id`,
         [body.eventId, customerId, body.vendorId, body.serviceId ?? null, body.packageId ?? null, event.event_date, body.slot,
-          quantity, { note: body.note?.trim() || null }, money.amountPaise, money.advancePaise, money.commissionPaise, respondBy],
+          quantity, { note: body.note?.trim() || null, arriveBy: body.arriveBy ?? null }, money.amountPaise, money.advancePaise, money.commissionPaise, respondBy],
       );
       await notify(client, vendor.user_id, 'booking_requested', {
         en: { title: 'New booking request', body: `${item.title} on ${niceDay(event.event_date, 'en')}. Reply within ${hoursLeft(respondBy)} hours.` },
         hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${niceDay(event.event_date, 'hi')}। ${hoursLeft(respondBy)} घंटे में जवाब दें।` },
       }, { bookingId: booking!.id }, 'partner');
+      await postBookingEvent(client, { id: booking!.id, customer_id: customerId, vendor_id: body.vendorId }, 'requested', customerId, {
+        item: item.title,
+        day: event.event_date,
+        slot: body.slot,
+      });
       return booking!.id;
     });
   }
@@ -276,6 +296,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           en: { title: 'Booking confirmed', body: `The customer paid the advance for ${niceDay(b.day, 'en')}. Their phone number is now visible.` },
           hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
         }, { bookingId: b.id }, 'partner');
+        await postBookingEvent(client, b, 'confirmed', b.customer_id);
         return 'confirmed';
       }
 
@@ -315,6 +336,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
             (compensation ? ` देर से रद्द होने के कारण आपको फिर भी ${rupees(compensation)} मिलेंगे।` : ''),
         },
       }, { bookingId: b.id }, 'partner');
+      await postBookingEvent(client, b, 'cancelled_by_customer', b.customer_id, { reason, refundPaise: refunded });
       return { refundPaise: refunded };
     }));
   }
@@ -364,6 +386,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise - b.discount_paise)} within ${hoursLeft(payBy)} hours to confirm ${niceDay(b.day, 'en')}.` },
         hi: { title: 'वेंडर ने मंज़ूर किया', body: `${niceDay(b.day, 'hi')} पक्का करने के लिए ${hoursLeft(payBy)} घंटे में ${rupees(b.advance_paise - b.discount_paise)} एडवांस दें।` },
       }, { bookingId: b.id }, 'customer');
+      await postBookingEvent(client, b, 'accepted', vendorUserId, { payBy });
     });
   }
 
@@ -376,6 +399,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         en: { title: 'Vendor is not available', body: `${sentence(reason)}. You can book another vendor for ${niceDay(b.day, 'en')}.` },
         hi: { title: 'वेंडर उपलब्ध नहीं', body: `${sentence(reason)}। आप ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुन सकते हैं।` },
       }, { bookingId: b.id }, 'customer');
+      await postBookingEvent(client, b, 'rejected', vendorUserId, { reason });
     });
   }
 
@@ -398,6 +422,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           body: refunded ? `${rupees(refunded)} पूरा वापस किया जा रहा है। माफ़ कीजिए! दूसरा वेंडर चुनें।` : 'माफ़ कीजिए! दूसरा वेंडर चुनें।',
         },
       }, { bookingId: b.id }, 'customer');
+      await postBookingEvent(client, b, 'cancelled_by_vendor', vendorUserId, { reason, refundPaise: refunded });
       return { refundPaise: refunded };
     }));
   }
@@ -408,8 +433,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    * count tells the admin how many still need a call.
    */
   async closeOpenFor(q: Queryable, vendorId: string): Promise<{ closed: number; confirmed: number }> {
-    const open = await q.query<{ id: string; customer_id: string; status: BookingStatus; day: string }>(
-      `SELECT id, customer_id, status, day FROM bookings WHERE vendor_id = $1 AND status IN ('requested', 'accepted') FOR UPDATE`,
+    const open = await q.query<{ id: string; customer_id: string; vendor_id: string; status: BookingStatus; day: string }>(
+      `SELECT id, customer_id, vendor_id, status, day FROM bookings WHERE vendor_id = $1 AND status IN ('requested', 'accepted') FOR UPDATE`,
       [vendorId],
     );
     for (const b of open.rows) {
@@ -418,6 +443,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         en: { title: 'Vendor not available', body: `This vendor is not taking bookings right now. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
         hi: { title: 'वेंडर उपलब्ध नहीं', body: `यह वेंडर अभी बुकिंग नहीं ले रहा। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
       }, { bookingId: b.id }, 'customer');
+      await postBookingEvent(q, b, b.status === 'requested' ? 'rejected' : 'cancelled_by_vendor', null, { reason: 'not_available' });
     }
     const confirmed = await this.db.one<{ n: number }>(q, `SELECT count(*)::int AS n FROM bookings WHERE vendor_id = $1 AND status = 'confirmed'`, [vendorId]);
     return { closed: open.rows.length, confirmed: confirmed!.n };
@@ -451,29 +477,31 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    * Runs every minute: expires unanswered requests and unpaid acceptances, and completes
    * bookings whose event day is over (which schedules the vendor payout).
    */
-  async sweep(): Promise<{ expired: number; completed: number }> {
+  async sweep(now = new Date()): Promise<{ expired: number; completed: number; reminded: number }> {
     let expired = 0;
-    const noReply = await this.db.query<{ id: string; customer_id: string; day: string }>(
+    const noReply = await this.db.query<{ id: string; customer_id: string; vendor_id: string; day: string }>(
       `UPDATE bookings SET status = 'expired', updated_at = now()
-        WHERE status = 'requested' AND respond_by < now() RETURNING id, customer_id, day`,
+        WHERE status = 'requested' AND respond_by < now() RETURNING id, customer_id, vendor_id, day`,
     );
     for (const b of noReply.rows) {
       expired++;
+      await postBookingEvent(this.db, b, 'expired', null, { why: 'no_reply' });
       await notify(this.db, b.customer_id, 'booking_expired', {
         en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
         hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
       }, { bookingId: b.id }, 'customer');
     }
 
-    const unpaid = await this.db.query<{ id: string; customer_id: string; vendor_user_id: string; day: string }>(
+    const unpaid = await this.db.query<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; day: string }>(
       `WITH e AS (
          UPDATE bookings SET status = 'expired', updated_at = now()
           WHERE status = 'accepted' AND pay_by < now() RETURNING id, customer_id, vendor_id, day
        ), freed AS (DELETE FROM availability WHERE booking_id IN (SELECT id FROM e))
-       SELECT e.id, e.customer_id, v.user_id AS vendor_user_id, e.day FROM e JOIN vendors v ON v.id = e.vendor_id`,
+       SELECT e.id, e.customer_id, e.vendor_id, v.user_id AS vendor_user_id, e.day FROM e JOIN vendors v ON v.id = e.vendor_id`,
     );
     for (const b of unpaid.rows) {
       expired++;
+      await postBookingEvent(this.db, b, 'expired', null, { why: 'not_paid' });
       await notify(this.db, b.customer_id, 'booking_expired', {
         en: { title: 'Booking expired', body: `The advance for ${niceDay(b.day, 'en')} was not paid in time.` },
         hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${niceDay(b.day, 'hi')} का एडवांस समय पर नहीं दिया गया।` },
@@ -521,7 +549,122 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
        )
        UPDATE bookings SET discount_paise = 0 WHERE id IN (SELECT booking_id FROM r)`,
     );
-    return { expired, completed: done.rows.length };
+    const reminded = await this.sendReminders(now);
+    return { expired, completed: done.rows.length, reminded };
+  }
+
+  /** The customer changed the venue: vendors with an open booking for this event hear about it. */
+  async venueChanged(q: Queryable, eventId: string, customerId: string) {
+    const { rows } = await q.query<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; status: BookingStatus; day: string }>(
+      `SELECT b.id, b.customer_id, b.vendor_id, v.user_id AS vendor_user_id, b.status, b.day
+         FROM bookings b JOIN vendors v ON v.id = b.vendor_id
+        WHERE b.event_id = $1 AND b.status IN ('requested', 'accepted', 'confirmed')`,
+      [eventId],
+    );
+    for (const b of rows) {
+      await postBookingEvent(q, b, 'venue_updated', customerId);
+      // Only a confirmed vendor can see the venue, so only they get a push about it.
+      if (b.status === 'confirmed') {
+        await notify(q, b.vendor_user_id, 'venue_updated', {
+          en: { title: 'Venue updated', body: `The customer changed the venue details for ${niceDay(b.day, 'en')}. Check the booking before you leave.` },
+          hi: { title: 'वेन्यू बदला', body: `ग्राहक ने ${niceDay(b.day, 'hi')} के वेन्यू की जानकारी बदली है। निकलने से पहले बुकिंग देख लें।` },
+        }, { bookingId: b.id }, 'partner');
+      }
+    }
+  }
+
+  // ---------- event day ----------
+
+  /**
+   * The vendor tells the customer they are on the way (with an ETA) or have reached. The ETA is what
+   * the vendor says, or else our estimate from the two pins. Allowed on the event day and the
+   * evening before (for long trips).
+   */
+  async progress(vendorUserId: string, bookingId: string, status: 'on_the_way' | 'reached', etaMinutes?: number) {
+    return this.db.tx(async (client) => {
+      const b = await this.lockBooking(client, bookingId, { vendorUserId });
+      if (b.status !== 'confirmed') {
+        throw new AppError('BOOKING_BAD_STATUS', 'Only confirmed bookings can be updated.', HttpStatus.CONFLICT, { status: b.status });
+      }
+      if (!progressAllowed(daysUntil(b.day))) {
+        throw new AppError('PROGRESS_NOT_ALLOWED', 'You can share this on the event day, or the evening before.', HttpStatus.CONFLICT);
+      }
+      const t = await this.db.one<{ business_name: string; lat: string | null; lng: string | null; venue_lat: string | null; venue_lng: string | null; progress: string | null }>(
+        client,
+        `SELECT v.business_name, v.lat, v.lng, e.venue_lat, e.venue_lng, b.progress
+           FROM bookings b JOIN vendors v ON v.id = b.vendor_id JOIN events e ON e.id = b.event_id WHERE b.id = $1`,
+        [b.id],
+      );
+      if (status === 'on_the_way' && t!.progress === 'reached') {
+        throw new AppError('BOOKING_BAD_STATUS', 'You have already marked that you reached.', HttpStatus.CONFLICT, { status: b.status });
+      }
+      const estimate = travelBetween(pointOf(t!.lat, t!.lng), pointOf(t!.venue_lat, t!.venue_lng));
+      const minutes = status === 'on_the_way' ? (etaMinutes ?? estimate?.minutes ?? null) : null;
+      const etaAt = minutes ? new Date(Date.now() + minutes * 60_000) : null;
+      await client.query(`UPDATE bookings SET progress = $2, progress_at = now(), eta_at = $3, updated_at = now() WHERE id = $1`, [b.id, status, etaAt]);
+      const name = t!.business_name;
+      const at = etaAt ? clockIst(etaAt) : null;
+      await notify(client, b.customer_id, `vendor_${status}`, status === 'on_the_way'
+        ? {
+            en: { title: `${name} is on the way`, body: minutes ? `Expected in about ${minutes} min (by ${at}).` : 'They will reach soon.' },
+            hi: { title: `${name} रास्ते में हैं`, body: minutes ? `लगभग ${minutes} मिनट में पहुँचेंगे (${at} तक)।` : 'जल्द ही पहुँचेंगे।' },
+          }
+        : {
+            en: { title: `${name} has reached`, body: 'The vendor is at your venue.' },
+            hi: { title: `${name} पहुँच गए`, body: 'वेंडर आपके वेन्यू पर पहुँच गए हैं।' },
+          }, { bookingId: b.id }, 'customer');
+      await postBookingEvent(client, b, status, vendorUserId, { minutes, etaAt });
+    });
+  }
+
+  /**
+   * The evening before (from 5 pm India time) both sides get a reminder: what, where, how far and
+   * when to arrive. Each booking is reminded once.
+   */
+  async sendReminders(now = new Date()): Promise<number> {
+    const istHour = Number(new Date(now.getTime() + 5.5 * 3600_000).toISOString().slice(11, 13));
+    if (istHour < REMINDER_HOUR_IST) return 0;
+    const tomorrow = new Date(Date.parse(`${todayIst(now)}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    const { rows } = await this.db.query<{
+      id: string; customer_id: string; vendor_user_id: string; slot: Slot; details: { arriveBy?: string | null };
+      business_name: string; event_title: string; venue_address: string | null; venue_lat: string | null; venue_lng: string | null;
+      lat: string | null; lng: string | null;
+    }>(
+      `UPDATE bookings b SET reminder_sent_at = now()
+         FROM events e, vendors v
+        WHERE e.id = b.event_id AND v.id = b.vendor_id AND b.status = 'confirmed' AND b.reminder_sent_at IS NULL AND b.day = $1
+        RETURNING b.id, b.customer_id, v.user_id AS vendor_user_id, b.slot, b.details, v.business_name, e.title AS event_title,
+                  e.venue_address, e.venue_lat, e.venue_lng, v.lat, v.lng`,
+      [tomorrow],
+    );
+    for (const r of rows) {
+      const trip = travelBetween(pointOf(r.lat, r.lng), pointOf(r.venue_lat, r.venue_lng));
+      const arrive = r.details?.arriveBy ? timeLabel(r.details.arriveBy) : null;
+      const noPin = !r.venue_lat;
+      await notify(this.db, r.customer_id, 'booking_reminder', {
+        en: {
+          title: `Tomorrow: ${r.business_name}`,
+          body: `${SLOT_TEXT.en[r.slot]} booking tomorrow.` + (noPin ? ' Add your venue location so the vendor can find you easily.' : ' The vendor has your venue details.'),
+        },
+        hi: {
+          title: `कल: ${r.business_name}`,
+          body: `कल ${SLOT_TEXT.hi[r.slot]} की बुकिंग है।` + (noPin ? ' वेन्यू की लोकेशन जोड़ें, ताकि वेंडर आसानी से पहुँच सकें।' : ' वेंडर के पास आपके वेन्यू की जानकारी है।'),
+        },
+      }, { bookingId: r.id }, 'customer');
+      await notify(this.db, r.vendor_user_id, 'booking_reminder', {
+        en: {
+          title: `Tomorrow: ${r.event_title}`,
+          body: [r.venue_address ? `At ${r.venue_address}.` : 'Ask the customer for the venue address.',
+            trip ? `About ${trip.roadKm} km, ${trip.minutes} min.` : '', arrive ? `Reach by ${arrive}.` : ''].filter(Boolean).join(' '),
+        },
+        hi: {
+          title: `कल: ${r.event_title}`,
+          body: [r.venue_address ? `पता: ${r.venue_address}।` : 'ग्राहक से वेन्यू का पता पूछ लें।',
+            trip ? `लगभग ${trip.roadKm} किमी, ${trip.minutes} मिनट।` : '', arrive ? `${arrive} तक पहुँचें।` : ''].filter(Boolean).join(' '),
+        },
+      }, { bookingId: r.id }, 'partner');
+    }
+    return rows.length;
   }
 
   // ---------- helpers ----------

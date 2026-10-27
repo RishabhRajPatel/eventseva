@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
 import { keys } from './queries';
+import { isUuid } from '@eventseva/app-shared';
 
 const TOKEN_KEY = 'eventseva.partner.pushToken';
 
@@ -65,8 +66,9 @@ export async function unregisterPush() {
 
 /** Where tapping a notification goes, from the data the server attaches. */
 export function routeForPush(data: Record<string, unknown> | undefined): Href {
-  if (typeof data?.conversationId === 'string') return `/chat/${data.conversationId}`;
-  if (typeof data?.bookingId === 'string') return `/booking/${data.bookingId}`;
+  // Only real ids become paths: a payload like "../login" must never pick the screen.
+  if (isUuid(data?.conversationId)) return `/chat/${data.conversationId}`;
+  if (isUuid(data?.bookingId)) return `/booking/${data.bookingId}`;
   return '/notifications';
 }
 

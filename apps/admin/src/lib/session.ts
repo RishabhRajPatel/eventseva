@@ -20,6 +20,10 @@ export interface AdminLoginResult {
   accessToken: string;
   expiresInSec: number;
   admin: { id: string; email: string; role: string };
+  /** One-time recovery codes still unused. */
+  recoveryCodesLeft?: number;
+  /** This login used a recovery code instead of the authenticator app. */
+  usedRecoveryCode?: boolean;
 }
 
 /** The part of the Web Storage API the store needs (sessionStorage in the browser). */

@@ -1,6 +1,6 @@
 // First time – name (Role board). Shown once after the first login.
 import { useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { PARTNER_APP_URL } from '../lib/config';
@@ -12,6 +12,7 @@ import { Pill } from '../components/Bits';
 import { Button } from '../components/Button';
 import { TextField } from '../components/Form';
 import { Screen } from '../components/Screen';
+import { openLink } from '../lib/links';
 
 
 export default function WelcomeScreen() {
@@ -66,7 +67,7 @@ export default function WelcomeScreen() {
           {t('welcome.vendorTitle')}
         </AppText>
         <AppText size="sm">{t('welcome.vendorBody')}</AppText>
-        <AppText variant="bold" size="md" color={c.royal} accessibilityRole="link" onPress={() => Linking.openURL(PARTNER_APP_URL)} style={styles.link}>
+        <AppText variant="bold" size="md" color={c.royal} accessibilityRole="link" onPress={() => openLink(PARTNER_APP_URL)} style={styles.link}>
           {t('welcome.vendorLink')}
         </AppText>
       </View>

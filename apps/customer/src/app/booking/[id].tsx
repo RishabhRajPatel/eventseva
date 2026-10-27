@@ -1,10 +1,10 @@
 // One booking, with what the customer can do in each status (docs/API.md status table).
 import { useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatDateTime, formatDay, formatPhone, rupees, timeLeft, type Booking } from '@eventseva/app-shared';
+import { addDays, formatDateTime, formatDay, formatPhone, rupees, timeLeft, todayIst, type Booking } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { canCancel, isConfirmed, isPending } from '../../lib/booking';
 import { errorText } from '../../lib/errors';
@@ -19,14 +19,21 @@ import { Button } from '../../components/Button';
 import { CouponBox, CouponMoneyRows, minus } from '../../components/Coupons';
 import { Icon, type IconName } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
+import { ProgressBanner, TripCard } from '../../components/TripCard';
 import { CardsSkeleton } from '../../components/Skeleton';
 import { ErrorState } from '../../components/States';
+import { openLink } from '../../lib/links';
 
 export default function BookingScreen() {
   const { id, sent } = useLocalSearchParams<{ id: string; sent?: string }>();
   const { t } = useTranslation();
   const { lang } = useLanguage();
-  const booking = useQuery({ queryKey: keys.booking(id), queryFn: () => api.booking(id), refetchInterval: 60_000 });
+  // On the event day the vendor's "on the way" / "reached" should show up quickly.
+  const booking = useQuery({
+    queryKey: keys.booking(id),
+    queryFn: () => api.booking(id),
+    refetchInterval: (q) => (q.state.data?.status === 'confirmed' && q.state.data.day <= addDays(todayIst(), 1) ? 20_000 : 60_000),
+  });
   const [sheet, setSheet] = useState<'cancel' | 'review' | null>(null);
   const [reviewed, setReviewed] = useState(false);
   // Reuse the existing conversation when the booking has one; otherwise start (get-or-create) it.
@@ -64,6 +71,8 @@ export default function BookingScreen() {
         </Notice>
       ) : null}
 
+      <ProgressBanner booking={b} />
+
       <StatusCard booking={b} onPay={() => router.push({ pathname: '/pay/[id]', params: { id: b.id } })} onReview={() => setSheet('review')} reviewed={reviewed || b.reviewed} />
 
       <Card style={styles.card}>
@@ -71,9 +80,11 @@ export default function BookingScreen() {
         <Row icon="star" text={`${b.item.title}${qtyText}`} />
         <Row icon="home" text={`${b.event.title} · ${t(`eventTypes.${b.event.eventType}`)}`} />
         {b.event.guestCount ? <Row icon="user" text={t('events.guests', { count: b.event.guestCount })} /> : null}
-        {b.event.venueAddress ? <Row icon="pin" text={b.event.venueAddress} /> : null}
+        {b.event.venueAddress ? <Row icon="pin" text={b.event.venueLandmark ? `${b.event.venueAddress} (${b.event.venueLandmark})` : b.event.venueAddress} /> : null}
         {b.note ? <Row icon="chat" text={b.note} /> : null}
       </Card>
+
+      <TripCard booking={b} />
 
       <Card style={styles.card}>
         <MoneyRow label={t('booking.total')} value={rupees(b.amountPaise)} />
@@ -175,7 +186,7 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
           {b.vendor.phone ? (
             <>
               <AppText size="md">{t('booking.vendorPhone', { phone: formatPhone(b.vendor.phone) })}</AppText>
-              <Button label={t('booking.call')} icon="phone" variant="dark" onPress={() => Linking.openURL(`tel:${b.vendor.phone}`)} />
+              <Button label={t('booking.call')} icon="phone" variant="dark" onPress={() => openLink(`tel:${b.vendor.phone}`)} />
             </>
           ) : null}
           <AppText size="sm">{t('booking.balanceAtEvent', { amount: rupees(b.balancePaise) })}</AppText>

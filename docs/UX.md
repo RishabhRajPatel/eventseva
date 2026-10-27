@@ -104,7 +104,26 @@ Ask before anything that cannot be undone or costs money: delete, cancel a booki
 - **Rendering:** no heavy work in render; memoise derived lists; split big screens into memoised sections.
 - **Startup:** load only the 6 font files used; keep the splash until fonts and session are ready; no blocking network calls before the first screen.
 
-## 8. Admin panel (web)
+## 8. Distance and the event day
+
+- **Wording:** distances and times are estimates, so always say "about": "About 6.5 km · about 20 min drive".
+  Use `formatDistance` / `formatMinutes` from app-shared, which give metres under 1 km and "1 h 10 min" for long trips.
+- **Venue pin:**
+  - Offer both "Find on map" (from the typed address) and "I'm at the venue" (GPS).
+  - Show the result as a mint line with "Check" (opens Google Maps at the pin) and "Remove".
+  - Typing a new address drops the old pin.
+  - Location problems (permission off, GPS off, address not found) get their own sentence, saying what to do.
+- **Outside the vendor's range:** a peach notice, never a block: "Usually travels up to 20 km. Ask about travel charges in chat."
+- **Event day (Partner app):** two big buttons, "On the way" and "Reached", visible only on the event day or the evening before.
+  - "On the way" asks for an ETA with chips (the estimate first, then 15 / 30 / 45 / 60 min).
+  - The customer sees a lavender banner that counts down live, then a mint "Reached" banner.
+- **Chat:** booking updates are small centred lines (not bubbles), translated from `data.event`, each with a "View booking" link.
+  Quick-reply chips sit above the input and fill it (they never send on their own).
+- **Privacy:**
+  - The vendor sees only the distance until the advance is paid.
+  - Customers never see where a vendor starts from.
+
+## 9. Admin panel (web)
 
 The same rules, adapted for the web:
 

@@ -86,6 +86,73 @@ the API prints pushes in its log and the apps simply skip push.
    - **This key is secret:** never commit it or put it in the apps.
 4. Make new app builds (`eas build`), because push is part of the native app.
 
+## How a booking works (customer ↔ vendor)
+
+1. **Plan the event.** The customer adds the date, guests and venue. The venue can be pinned with "Find on map" (the
+   phone's own geocoder turns the address into a pin) or "I'm at the venue" (GPS). No Google Maps API key is needed.
+2. **Pick a vendor.**
+   - Search can sort by distance from the venue (`sort=nearest`).
+   - Before sending a request, the form shows "about 6.5 km, 20 min", and warns when the venue is beyond the vendor's
+     usual range (they may charge for travel).
+   - The customer can ask the vendor to arrive by a time.
+3. **Request → accept → pay.**
+   - Every step is a push notification and also a line in the pair's chat, so the whole story is in one place.
+   - The chat opens automatically with the request.
+   - Quick replies help with common questions.
+   - Phone numbers, the venue address, the landmark and the pin are shared with the vendor only after the advance is paid.
+4. **The evening before** (from 5 pm), both sides get a reminder:
+   - the vendor's says where, how far and when to arrive;
+   - the customer's asks them to pin the venue if it is missing.
+5. **Event day.**
+   - The vendor taps "Directions" (Google Maps from where they are).
+   - They tap "On the way", with an ETA (their own or the estimate). The customer sees "reaching in about 18 min (5:40 pm)".
+   - On arrival the vendor taps "Reached".
+6. **Venue changed?** The customer edits it on the booking. Confirmed vendors get a push, and the new distance shows at once.
+
+Distances are estimates: straight line × 1.3 for roads, at 25 km/h city speed. Vendors set where they start from and how
+far they usually travel (Partner app → Business profile). Customers never see a vendor's exact location, only distances.
+
+## Admin login security (two-factor)
+
+- **Every admin login needs three things:** email, password, and a 6-digit code from an authenticator app
+  (Google Authenticator or Authy).
+- **Codes and locks:**
+  - Each code works once.
+  - 5 wrong attempts lock the account for 15 minutes.
+  - Logout ends all of that admin's sessions.
+- **Fresh code for sensitive actions:** refunds, payouts, bank details, CSV exports, blocking and featured grants ask
+  for a fresh code even when logged in. After one good code, the next 5 minutes need none, in that same login only.
+  A stolen session token alone therefore cannot move money or export customer data.
+- **Lost phone:**
+  - Each admin has 8 one-time recovery codes. `create-admin` prints them once; new ones are made under My security.
+  - Using one sends the admin to My security with a warning.
+- **Storage:** the 2FA secret is encrypted in the database (`BANK_DETAILS_KEY`). Recovery codes are stored only as keyed hashes.
+- **Setup:** create admins with `ADMIN_PASSWORD='…' pnpm --filter @eventseva/backend create-admin <email> <role>`,
+  using the same `BANK_DETAILS_KEY` as the API server.
+
+## Security of URLs and links
+
+- **Ids:** every id in a URL is a random UUID (not 1, 2, 3), checked for its format before any query runs.
+  Every route also checks that the record belongs to the caller. Another user's id gives 404, and
+  `apps/backend/test/url-security.spec.ts` tries this for every booking, event and chat route.
+- **Tokens:** they travel only in the `Authorization` header, never in a URL, so they do not end up in logs or browser history.
+- **Caching:** personal answers are `Cache-Control: no-store`. Only the public catalogue may be cached.
+- **App deep links:**
+  - A push notification can open a chat or booking only when its id is a real UUID.
+  - The apps open outside links only from an allow-list: phone calls, Google Maps, our Play Store pages and Cloudinary
+    (`isSafeExternalUrl` in app-shared).
+- **Admin panel headers:**
+  - a strict Content-Security-Policy;
+  - `X-Frame-Options: DENY` (no clickjacking);
+  - `Referrer-Policy: no-referrer`, so booking ids never leak to other sites;
+  - HSTS.
+- **API headers:** helmet sends `nosniff`, HSTS and no `X-Powered-By`. There is no CORS: browsers reach the API only through
+  the admin panel's own `/api`.
+- **HTTPS:** store builds refuse to build unless `EXPO_PUBLIC_API_URL` is `https://`.
+- **Rate limits and payments:**
+  - every route has a rate limit, and distance lookups a tighter one (20 a minute);
+  - the payment webhook checks Razorpay's signature on the raw body.
+
 ## Before going live
 
 - `NODE_ENV=production` refuses development settings. Set `BANK_DETAILS_KEY` (`openssl rand -base64 32`, never change it),

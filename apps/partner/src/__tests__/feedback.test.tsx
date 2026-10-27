@@ -137,7 +137,9 @@ describe('error messages', () => {
   // Codes in docs/API.md that are not API errors (env vars, HTTP verbs, admin-only, a constant).
   const NOT_FOR_THIS_APP = new Set(['CATEGORY_ICONS', 'CLOUDINARY_URL', 'COUNTED_UNITS', 'PATCH', 'POST', 'PORT', 'REVIEW_OTP', 'REVIEW_PHONE', 'TRUST_PROXY', 'ADMIN_LOCKED', 'ADMIN_LOGIN_FAILED', 'CATEGORY_EXISTS', 'LAST_CITY',
     // Customer app and admin panel only.
-    'TOO_LATE_TO_BOOK', 'TOO_MANY_OPEN_REQUESTS', 'QUANTITY_OUT_OF_RANGE', 'NO_VENDOR_PAYOUT']);
+    'TOO_LATE_TO_BOOK', 'TOO_MANY_OPEN_REQUESTS', 'QUANTITY_OUT_OF_RANGE', 'NO_VENDOR_PAYOUT',
+    // Server settings, not error codes.
+    'BANK_DETAILS_KEY']);
   // Read the API docs straight from the repo (no Node types in this app, hence the typed require).
   const { readFileSync } = jest.requireActual<{ readFileSync: (path: string, enc: string) => string }>('fs');
   const doc = readFileSync(`${__dirname}/../../../../docs/API.md`, 'utf8');

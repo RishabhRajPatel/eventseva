@@ -89,11 +89,12 @@ export class ChatController {
       `SELECT c.id, c.last_message_at AS "lastMessageAt",
               v.id AS "vendorId", v.business_name AS "vendorName",
               COALESCE(cu.name, 'Customer') AS "customerName",
-              (SELECT body FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) AS "lastMessage",
+              last.body AS "lastMessage", last.kind AS "lastKind", last.data AS "lastData",
               (SELECT count(*)::int FROM messages m WHERE m.conversation_id = c.id AND m.sender_id <> $1 AND m.read_at IS NULL) AS "unreadCount",
               EXISTS (SELECT 1 FROM bookings b WHERE b.customer_id = c.customer_id AND b.vendor_id = c.vendor_id
                        AND b.status IN ('confirmed', 'completed')) AS "hasBooking"
          FROM conversations c JOIN vendors v ON v.id = c.vendor_id JOIN users cu ON cu.id = c.customer_id
+         LEFT JOIN LATERAL (SELECT body, kind, data FROM messages m WHERE m.conversation_id = c.id ORDER BY m.id DESC LIMIT 1) last ON true
         WHERE ${asVendor ? 'v.user_id = $1' : 'c.customer_id = $1'}
         ORDER BY c.last_message_at DESC NULLS LAST LIMIT 100`,
       [auth.userId],
@@ -109,7 +110,7 @@ export class ChatController {
     const conv = await this.member(this.db, auth, id);
     const share = await this.hasBooking(conv);
     const { rows } = await this.db.query(
-      `SELECT id::int, sender_id AS "senderId", body, read_at AS "readAt", created_at AS "createdAt"
+      `SELECT id::int, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"
          FROM messages WHERE conversation_id = $1 AND ($2::bigint IS NULL OR id < $2) ORDER BY id DESC LIMIT $3`,
       [id, query.beforeId ?? null, PAGE + 1],
     );
@@ -132,7 +133,7 @@ export class ChatController {
       const conv = await this.member(client, auth, id);
       const recent = await this.db.one<{ n: number }>(
         client,
-        `SELECT count(*)::int AS n FROM messages WHERE sender_id = $1 AND created_at > now() - interval '1 minute'`,
+        `SELECT count(*)::int AS n FROM messages WHERE sender_id = $1 AND kind = 'text' AND created_at > now() - interval '1 minute'`,
         [auth.userId],
       );
       if (recent!.n >= MAX_MESSAGES_PER_MIN) {
@@ -144,7 +145,7 @@ export class ChatController {
       const msg = await this.db.one(
         client,
         `INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1, $2, $3)
-         RETURNING id::int, sender_id AS "senderId", body, read_at AS "readAt", created_at AS "createdAt"`,
+         RETURNING id::int, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"`,
         [id, auth.userId, text],
       );
       await client.query('UPDATE conversations SET last_message_at = now() WHERE id = $1', [id]);

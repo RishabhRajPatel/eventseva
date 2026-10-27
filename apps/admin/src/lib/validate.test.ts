@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkLength, checkLogin, cleanTotp, isEmail, REASON_LIMITS, safeNextPath } from './validate.ts';
+import { checkLength, checkLogin, cleanTotp, isEmail, REASON_LIMITS, safeNextPath, cleanRecoveryCode } from './validate.ts';
 
 test('reason length follows the API limits', () => {
   assert.equal(checkLength('   ', REASON_LIMITS.vendor), 'Reason is required.');
@@ -25,4 +25,12 @@ test('only same-site paths are allowed after login', () => {
   assert.equal(safeNextPath('//evil.example'), '/dashboard');
   assert.equal(safeNextPath('/\\evil.example'), '/dashboard');
   assert.equal(safeNextPath('/login?next=/x'), '/dashboard');
+});
+
+test('login with a recovery code instead of the 6-digit code', () => {
+  assert.equal(cleanRecoveryCode('abcde fghjk'), 'ABCDE-FGHJK');
+  assert.equal(cleanRecoveryCode('ABCDE-FGHJ'), null);
+  assert.deepEqual(checkLogin({ email: 'a@b.in', password: 'x', totp: '', useRecovery: true, recoveryCode: 'ABCDE-FGHJK' }), {});
+  assert.ok(checkLogin({ email: 'a@b.in', password: 'x', totp: '', useRecovery: true, recoveryCode: '123' }).recoveryCode);
+  assert.ok(checkLogin({ email: 'a@b.in', password: 'x', totp: '' }).totp);
 });

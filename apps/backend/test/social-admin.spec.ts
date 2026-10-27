@@ -141,10 +141,11 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
     const b = (await as(customer).post('/v1/bookings', { eventId: event.id, vendorId, serviceId, slot: 'night' }).expect(201)).body;
     const req = (await as(vendorToken).get(`/v1/partner/bookings/${b.id}`).expect(200)).body;
     expect(req.event).toMatchObject({ guestCount: 300, venueAddress: null });
-    expect(req.conversationId).toBeNull();
+    // The request itself opens the chat (with a "Booking requested" line), so both sides land in the same one.
+    expect(req.conversationId).toBeTruthy();
 
     const conv = (await as(vendorToken).post('/v1/conversations', { bookingId: b.id }).expect(201)).body;
-    expect((await as(vendorToken).get(`/v1/partner/bookings/${b.id}`)).body.conversationId).toBe(conv.id);
+    expect(conv.id).toBe(req.conversationId);
     expect((await as(customer).post('/v1/conversations', { vendorId }).expect(201)).body.id).toBe(conv.id);
     expect((await as(customer).get(`/v1/bookings/${b.id}`)).body.event.venueAddress).toBe('Civil Lines, Prayagraj');
 

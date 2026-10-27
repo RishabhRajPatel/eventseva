@@ -6,11 +6,12 @@ const labels = (role: (typeof ADMIN_ROLES)[number]) => navFor(role).map((item) =
 
 test('nav is filtered by role', () => {
   assert.deepEqual(labels('super'), [
-    'Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log',
+    'Dashboard', 'Vendors', 'Photos', 'Bookings', 'Payouts', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
   ]);
-  assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos']);
-  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Complaints', 'Users']);
-  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Coupons', 'Featured']);
+  // Every admin manages their own 2FA recovery codes.
+  assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos', 'My security']);
+  assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Complaints', 'Users', 'My security']);
+  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Coupons', 'Featured', 'My security']);
 });
 
 test('page access follows the nav, including detail pages', () => {

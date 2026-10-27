@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsDateString, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 import { BOOKING_STATUSES, type BookingStatus } from '@eventseva/core';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
@@ -21,6 +21,12 @@ class ReasonDto {
 class SlotDto {
   @IsDateString({ strict: true }) @Length(10, 10) day: string;
   @IsIn(SLOTS) slot: Slot;
+}
+
+class ProgressDto {
+  @IsIn(['on_the_way', 'reached']) status: 'on_the_way' | 'reached';
+  /** Minutes to reach; without it the estimate from the two pins is used. */
+  @IsOptional() @IsInt() @Min(1) @Max(600) etaMinutes?: number;
 }
 
 class MonthQuery {
@@ -64,6 +70,14 @@ export class PartnerBookingsController {
   @HttpCode(HttpStatus.OK)
   async cancel(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ReasonDto) {
     await this.bookings.cancelByVendor(auth.userId, id, body.reason.trim());
+    return this.one(auth.userId, id);
+  }
+
+  /** Event day: "on the way" (with an ETA) or "reached". The customer gets a push and a chat line. */
+  @Post('bookings/:id/progress')
+  @HttpCode(HttpStatus.OK)
+  async progress(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ProgressDto) {
+    await this.bookings.progress(auth.userId, id, body.status, body.etaMinutes);
     return this.one(auth.userId, id);
   }
 

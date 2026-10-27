@@ -81,19 +81,21 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 | Route | Notes |
 |---|---|
-| `GET /v1/vendors?category=dj&cityId=1&q=raj&page=1&limit=20` | `Paged<VendorCard>`, approved only. `q` searches name and area. Featured first, then by rating |
-| `GET /v1/vendors/:id` | `VendorDetail` (address hidden; approved media only). `VENDOR_NOT_FOUND` 404 |
+| `GET /v1/vendors?category=dj&cityId=1&q=raj&page=1&limit=20&lat=&lng=&sort=` | `Paged<VendorCard>`, approved only. `q` searches name and area. Featured first, then by rating. With the event venue's `lat`/`lng`, every card has `distanceKm` (estimated by road, nearest 0.5 km; null when the vendor has no pin) and `serviceRadiusKm`, and `sort=nearest` puts the closest first |
+| `GET /v1/vendors/:id` | `VendorDetail` (address and `location` hidden: customers only ever see a distance; `serviceRadiusKm` = how far they usually travel; approved media only). `VENDOR_NOT_FOUND` 404 |
 | `GET /v1/vendors/:id/reviews?page=` | `Paged<Review>` |
+| `GET /v1/vendors/:id/travel?lat=&lng=` | `{travel: Travel \| null}`: how far this vendor would travel to the venue, before booking (null when the vendor has no pin) |
 | `GET /v1/vendors/:id/availability?month=2026-11` | `{month, busy: [{day, slot}]}` for the date picker |
 
 **Events and bookings (login)**
 
 | Route | Notes |
 |---|---|
-| `POST /v1/events` | `{title, eventType, eventDate, cityId, venueAddress?, guestCount?, budgetPaise?}` → `EventSummary`. `EVENT_IN_PAST`, `DATE_TOO_FAR` (more than 2 years ahead, with `lastDay`) |
+| `POST /v1/events` | `{title, eventType, eventDate, cityId, venueAddress?, venueLandmark?, venueLat?, venueLng?, guestCount?, budgetPaise?}` → `EventSummary` (with `venueLocation {lat, lng}` and `venueLandmark`). The pin comes from the address (geocoded on the phone) or the phone's location; send both numbers. `EVENT_IN_PAST`, `DATE_TOO_FAR` (more than 2 years ahead, with `lastDay`) |
 | `GET /v1/events` | `{items: EventSummary[]}` with `confirmedCount`, `pendingCount`, `committedPaise` |
 | `GET /v1/events/:id` | `EventSummary & {bookings: Booking[]}` |
-| `POST /v1/bookings` | `{eventId, vendorId, serviceId \| packageId, slot: 'full'\|'day'\|'night', quantity?, note?}` → `Booking` |
+| `PATCH /v1/events/:id` | `{title?, venueAddress?, venueLandmark?, venueLat?, venueLng?, guestCount?, budgetPaise?}`; `null` clears. The date cannot change (400). A venue change adds a chat line for every open booking and pushes `venue_updated` to confirmed vendors |
+| `POST /v1/bookings` | `{eventId, vendorId, serviceId \| packageId, slot: 'full'\|'day'\|'night', quantity?, note?, arriveBy?: 'HH:MM'}` → `Booking`. Opens the chat with the vendor (a "Booking requested" line) |
 | `GET /v1/bookings?eventId=&status=` | `{items: Booking[]}` |
 | `GET /v1/bookings/:id` | `Booking` |
 | `POST /v1/bookings/:id/pay` | → `PaymentOrder` for the Razorpay checkout |
@@ -114,6 +116,13 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   everything finishes before the event day starts (midnight, India); the vendor's reply deadline ends 1 hour before that.
 - **Vendor paused or blocked:** requests waiting for a reply become `rejected` and unpaid acceptances `cancelled_by_vendor`,
   with a notification; confirmed bookings stay.
+- **Distance and event day (both apps):** every `Booking` has
+  - `travel {roadKm, minutes, serviceRadiusKm, outsideServiceArea}` (null until both pins exist): estimated from
+    the vendor's pin and the venue pin (straight line × 1.3, 25 km/h); show "about".
+  - `event.venueLocation` and `event.venueLandmark` (the vendor sees them, like the address, only once paid),
+    and for the vendor `directionsUrl` (Google Maps directions from wherever the phone is).
+  - `arriveBy` ('HH:MM') and `progress {status: on_the_way | reached, at, etaAt}`.
+  - The evening before (from 5 pm), both sides get one `booking_reminder` push with the trip and arrival time.
 - **Text fields:** every string in a request body is trimmed first (except passwords), so a reason or title made of spaces fails validation.
 - **Payment:** the app shows the checkout with `keyId`, `orderId` and `amountPaise`, then calls verify.
   - With a coupon, `amountPaise` is `payNowPaise`: the advance minus the discount.
@@ -157,8 +166,8 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 |---|---|
 | `GET /v1/shortlist` · `PUT /v1/shortlist/:vendorId` · `DELETE /v1/shortlist/:vendorId` | Saved vendors (heart) |
 | `POST /v1/conversations` | Customer app: `{vendorId}`. Partner app: `{bookingId}` (only its own customers). → `{id}` (get-or-create) |
-| `GET /v1/conversations` | `{items: Conversation[]}` (both apps) |
-| `GET /v1/conversations/:id/messages?beforeId=` | `{items: Message[] newest first, hasMore, phoneShared}`; marks as read |
+| `GET /v1/conversations` | `{items: Conversation[]}` (both apps); `lastKind` / `lastData` say when the last line is a booking update |
+| `GET /v1/conversations/:id/messages?beforeId=` | `{items: Message[] newest first, hasMore, phoneShared}`; marks as read. `kind: 'booking'` lines are automatic booking updates: show them centred, translated from `data.event` (`requested`, `accepted`, `confirmed`, `rejected`, `cancelled_by_customer`, `cancelled_by_vendor`, `expired`, `on_the_way` with `minutes`/`etaAt`, `reached`, `venue_updated`) and `data.bookingId`; `senderId` is null for system lines |
 | `POST /v1/conversations/:id/messages` | `{body}` → `Message`. At most 20 per minute per person: `TOO_MANY_MESSAGES` 429. Before a confirmed booking, phone numbers (also in Hindi digits or split up), e-mails and WhatsApp / Telegram links are hidden |
 | `POST /v1/complaints` · `GET /v1/complaints` | `{bookingId?, subject, details}` (Help & support) |
 | `GET /v1/notifications?beforeId=` | `{items, hasMore, unreadCount}` |
@@ -174,7 +183,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | Route | Notes |
 |---|---|
 | `GET /v1/partner/vendor` | `OwnVendor` (all media with status, `missingForReview`). `VENDOR_NOT_FOUND` 404 = start onboarding |
-| `POST /v1/partner/vendor` | `{businessName, categoryId, cityId, area?, address?, lat?, lng?, about?}` → `OwnVendor` (draft). `VENDOR_EXISTS` |
+| `POST /v1/partner/vendor` | `{businessName, categoryId, cityId, area?, address?, lat?, lng?, about?, serviceRadiusKm?}` → `OwnVendor` (draft). `VENDOR_EXISTS`. `lat`/`lng` = where the vendor starts from (never shown to customers); `serviceRadiusKm` 1–500 or null |
 | `PATCH /v1/partner/vendor` | same fields, all optional. `VENDOR_UNDER_REVIEW` 409 while pending; `CATEGORY_LOCKED` once approved |
 | `POST /v1/partner/vendor/submit` | draft or rejected → pending. `VENDOR_INCOMPLETE` with `missing[]` |
 | `POST /v1/partner/services` · `PATCH`·`DELETE /v1/partner/services/:id` | `{title, description?, pricePaise ≥ 100, unit, minGuests?, maxGuests?}`, up to 30 |
@@ -185,6 +194,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/partner/bookings/:id/accept` | holds the slot; customer then has 24 h to pay. `SLOT_TAKEN`, `BOOKING_EXPIRED`, `VENDOR_NOT_ACTIVE` |
 | `POST /v1/partner/bookings/:id/reject` | `{reason}` |
 | `POST /v1/partner/bookings/:id/cancel` | `{reason}`; accepted or confirmed; the customer gets 100% back |
+| `POST /v1/partner/bookings/:id/progress` | `{status: 'on_the_way'\|'reached', etaMinutes?}` → `Booking`. Confirmed bookings, on the event day or the evening before (`PROGRESS_NOT_ALLOWED` 409). Without `etaMinutes` the estimate is used. The customer gets a push and a chat line |
 | `GET /v1/partner/calendar?month=2026-11` | `{month, items: CalendarEntry[]}`; days not listed are free |
 | `POST /v1/partner/calendar/block` · `DELETE …/block` | `{day, slot}` → 204. `SLOT_TAKEN`, `DATE_IN_PAST`, `DATE_TOO_FAR` |
 | `GET /v1/partner/earnings?month=` | `Earnings` (Kamai screen) |
@@ -232,10 +242,21 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 ## Admin panel (`/v1/admin/*`, admin token)
 
-- **Login:** `POST /v1/admin/login {email, password, totp}` → `{accessToken, expiresInSec, admin{id, email, role}}`.
-  Any wrong part returns `ADMIN_LOGIN_FAILED` 401. After 5 wrong attempts the account is locked for 15 min
-  (`ADMIN_LOCKED` 429). Each 2FA code works only once: a code (or an older one) that already logged in is
-  refused. `POST /v1/admin/logout` (204) ends every token already issued to that admin.
+- **Login:** `POST /v1/admin/login {email, password, totp}` (or `recoveryCode` instead of `totp`, if the phone is lost)
+  → `{accessToken, expiresInSec, admin{id, email, role}, recoveryCodesLeft, usedRecoveryCode}`.
+  - Any wrong part returns `ADMIN_LOGIN_FAILED` 401. After 5 wrong attempts the account is locked for 15 min
+    (`ADMIN_LOCKED` 429).
+  - Each 2FA code works only once: a code (or an older one) that was already used is refused.
+  - Each recovery code works once. 2FA secrets are stored encrypted with `BANK_DETAILS_KEY`.
+  - `POST /v1/admin/logout` (204) ends every token already issued to that admin.
+- **Fresh 2FA for sensitive actions:**
+  - Refunds, marking or holding payouts, viewing or verifying bank details, CSV exports, blocking and unblocking
+    users, granting featured days, and new recovery codes answer `ADMIN_2FA_REQUIRED` 403 (with `windowMinutes`)
+    until the admin sends a fresh, unused code in the `X-Admin-2FA` header (`ADMIN_2FA_INVALID` 403 if it is wrong or used).
+  - After one good code, such actions need no code for 5 minutes in that same login.
+  - Wrong codes count towards the lock.
+- `GET /v1/admin/me` → `{id, email, role, recoveryCodesLeft, stepUpUntil}`.
+  `POST /v1/admin/me/recovery-codes` (fresh 2FA) → `{codes}`: 8 new codes, shown once; the old ones stop working.
   Create admins with `pnpm --filter @eventseva/backend create-admin`.
 - **Roles:**
   - `super`: everything.

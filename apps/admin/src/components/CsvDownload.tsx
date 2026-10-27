@@ -7,6 +7,7 @@ import { describeError } from '@/lib/errors';
 import { canExport, type ExportKind } from '@/lib/roles';
 import { Button } from './Button';
 import { useShell } from './ShellContext';
+import { askSecondFactor } from '@/lib/second-factor';
 
 /**
  * "Download CSV" with optional from/to dates (inclusive India days). Fetched with the admin
@@ -32,7 +33,17 @@ export function CsvDownload({ kind, hint }: { kind: ExportKind; hint?: string })
 
   async function save(token: string) {
     try {
-      const res = await fetch(exportUrl(kind, from, to), { headers: { Authorization: `Bearer ${token}`, Accept: 'text/csv' } });
+      const get = (code?: string) =>
+        fetch(exportUrl(kind, from, to), { headers: { Authorization: `Bearer ${token}`, Accept: 'text/csv', ...(code ? { 'X-Admin-2FA': code } : {}) } });
+      let res = await get();
+      // Exports are bulk personal data: they need a fresh 2FA code (asked at most 3 times).
+      for (let attempt = 0; attempt < 3 && res.status === 403; attempt++) {
+        const err = ((await res.clone().json().catch(() => null)) as { error?: { code?: string } } | null)?.error?.code;
+        if (err !== 'ADMIN_2FA_REQUIRED' && err !== 'ADMIN_2FA_INVALID') break;
+        const code = await askSecondFactor(err === 'ADMIN_2FA_INVALID');
+        if (!code) return;
+        res = await get(code);
+      }
       if (res.status === 401) {
         sessionStore.clear();
         goToLogin('expired');

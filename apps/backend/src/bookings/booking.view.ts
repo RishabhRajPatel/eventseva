@@ -1,5 +1,6 @@
 import type { BookingStatus } from '@eventseva/core';
 import { Queryable } from '../db/db.service';
+import { pointOf, travelBetween } from './travel';
 
 /** Phone numbers are shared only once the advance is paid (design: "visible after confirmation"). */
 const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
@@ -7,7 +8,9 @@ const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
 const SELECT = `
   SELECT b.id, b.status, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
+         b.progress, b.progress_at, b.eta_at,
          e.id AS event_id, e.title AS event_title, e.event_type, e.guest_count, e.venue_address,
+         e.venue_lat, e.venue_lng, e.venue_landmark, v.lat AS vendor_lat, v.lng AS vendor_lng, v.service_radius_km,
          (SELECT cp.code FROM coupon_redemptions r JOIN coupons cp ON cp.id = r.coupon_id
            WHERE r.booking_id = b.id AND r.status <> 'released') AS coupon_code,
          (SELECT c.id FROM conversations c WHERE c.customer_id = b.customer_id AND c.vendor_id = b.vendor_id) AS conversation_id,
@@ -30,6 +33,9 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
   const share = SHARES_PHONE.includes(r.status);
   // A deleted account keeps its bookings, but not its phone number.
   const phone = (p: string) => (share && !p.startsWith('deleted:') ? p : null);
+  // The customer always sees their own venue; the vendor only once the booking is paid.
+  const showVenue = viewer === 'customer' || share;
+  const venue = pointOf(r.venue_lat, r.venue_lng);
   return {
     id: r.id,
     status: r.status,
@@ -43,9 +49,21 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
       title: r.event_title,
       eventType: r.event_type,
       guestCount: r.guest_count,
-      // The customer always sees their own venue; the vendor only once the booking is paid.
-      venueAddress: viewer === 'customer' || share ? r.venue_address : null,
+      venueAddress: showVenue ? r.venue_address : null,
+      venueLandmark: showVenue ? r.venue_landmark : null,
+      venueLocation: showVenue ? venue : null,
     },
+    /** Estimated trip from the vendor to the venue (both sides see it; neither pin is revealed by it). */
+    travel: travelBetween(pointOf(r.vendor_lat, r.vendor_lng), venue, r.service_radius_km),
+    /** Vendor app, once the venue is shared: opens Google Maps with directions from where the phone is. */
+    directionsUrl:
+      viewer === 'vendor' && share && (venue || r.venue_address)
+        ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venue ? `${venue.lat},${venue.lng}` : r.venue_address)}`
+        : null,
+    /** 'HH:MM' India time the customer asked the vendor to arrive by. */
+    arriveBy: r.details?.arriveBy ?? null,
+    /** Event-day updates from the vendor. */
+    progress: r.progress ? { status: r.progress, at: r.progress_at, etaAt: r.eta_at } : null,
     conversationId: r.conversation_id,
     amountPaise: r.amount_paise,
     advancePaise: r.advance_paise,

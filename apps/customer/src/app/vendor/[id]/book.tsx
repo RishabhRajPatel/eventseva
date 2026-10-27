@@ -1,10 +1,10 @@
 // Booking details (BookingForm board): event, slot, quantity, note → send request. No payment now.
 import { useMemo, useRef, useState } from 'react';
-import { StyleSheet, View, type LayoutChangeEvent, type ScrollViewInstance, type TextInputInstance } from 'react-native';
+import { ScrollView, StyleSheet, View, type LayoutChangeEvent, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatDay, rupees, SLOTS, todayIst, type Slot } from '@eventseva/app-shared';
+import { formatClock, formatDay, formatDistance, formatMinutes, rupees, SLOTS, todayIst, type Slot } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
 import { ADVANCE_PERCENT, estimate, needsQuantity, parseQuantity } from '../../../lib/booking';
 import { errorText } from '../../../lib/errors';
@@ -20,7 +20,7 @@ import { Card, Divider, MoneyRow, Notice } from '../../../components/Bits';
 import { Button } from '../../../components/Button';
 import { monthOf } from '../../../components/DatePicker';
 import { EventForm } from '../../../components/EventForm';
-import { ChoiceRow, FieldError, OptionTile, TextField } from '../../../components/Form';
+import { Chip, ChoiceRow, FieldError, OptionTile, TextField } from '../../../components/Form';
 import { usePriceLabel } from '../../../components/ItemOption';
 import { Screen, ScreenHeader } from '../../../components/Screen';
 import { CardsSkeleton } from '../../../components/Skeleton';
@@ -29,6 +29,14 @@ import { useToast } from '../../../components/Toast';
 import { VendorImage } from '../../../components/VendorImage';
 
 const NEW = 'new';
+
+/** Arrival times to offer (every 30 min), around the chosen slot. */
+export function arrivalTimes(slot: Slot): string[] {
+  const [from, to] = slot === 'day' ? [7, 15] : slot === 'night' ? [13, 21] : [6, 20];
+  const out: string[] = [];
+  for (let h = from; h <= to; h++) for (const m of [0, 30]) out.push(`${String(h).padStart(2, '0')}:${m ? '30' : '00'}`);
+  return out;
+}
 type Section = 'event' | 'slot' | 'quantity';
 
 export default function BookingFormScreen() {
@@ -51,6 +59,7 @@ export default function BookingFormScreen() {
   const [quantity, setQuantity] = useState('');
   const [quantityTouched, setQuantityTouched] = useState(false);
   const [note, setNote] = useState('');
+  const [arriveBy, setArriveBy] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -73,6 +82,16 @@ export default function BookingFormScreen() {
   const availability = useAvailability(id, months);
   const taken = availability.busy.filter((b) => b.day === eventDate).map((b) => b.slot);
   const free = freeSlots(taken);
+
+  // How far this vendor travels to the chosen venue, before sending the request.
+  const pin = chosenEvent === NEW ? draft.pin : (event?.venueLocation ?? null);
+  const trip = useQuery({
+    queryKey: ['vendor', id, 'travel', pin?.lat, pin?.lng],
+    queryFn: () => api.vendorTravel(id, pin!),
+    enabled: !!pin,
+    staleTime: 10 * 60_000,
+  });
+  const travel = pin ? (trip.data?.travel ?? null) : null;
 
   const items = useMemo(() => (vendor.data ? vendorItems(vendor.data) : []), [vendor.data]);
   const item = items.find((i) => itemKey(i) === itemKeyState) ?? items[0];
@@ -100,6 +119,7 @@ export default function BookingFormScreen() {
         slot,
         quantity: counted ? qty! : undefined,
         note: note.trim() || undefined,
+        arriveBy: arriveBy ?? undefined,
       });
     },
     onSuccess: (booking) => {
@@ -248,7 +268,10 @@ export default function BookingFormScreen() {
               sublabel={free[s] ? t(`slots.${s}.hours`) : t('book.slotBooked')}
               selected={slot === s}
               disabled={!free[s]}
-              onPress={() => setSlot(s)}
+              onPress={() => {
+                setSlot(s);
+                if (arriveBy && !arrivalTimes(s).includes(arriveBy)) setArriveBy(null);
+              }}
             />
           ))}
         </View>
@@ -271,6 +294,34 @@ export default function BookingFormScreen() {
             hint={t('book.quantityHint', { price: price(item) })}
           />
         </View>
+      ) : null}
+
+      <View style={styles.gap8}>
+        <AppText variant="bold" size="sm">
+          {t('arrive.label')}
+        </AppText>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup" accessibilityLabel={t('arrive.title')}>
+          <Chip label={t('arrive.none')} selected={!arriveBy} onPress={() => setArriveBy(null)} />
+          {arrivalTimes(slot).map((time) => (
+            <Chip key={time} label={formatClock(time)} selected={arriveBy === time} onPress={() => setArriveBy(time)} />
+          ))}
+        </ScrollView>
+        <AppText size="xs" color={c.textMuted}>
+          {t('arrive.hint')}
+        </AppText>
+      </View>
+
+      {travel ? (
+        <Notice icon="pin" tone={travel.outsideServiceArea ? 'peach' : 'lavender'}>
+          <AppText size="md">
+            {t('trip.distance', { km: formatDistance(travel.roadKm, lang) })} · {t('trip.time', { time: formatMinutes(travel.minutes, lang) })}
+          </AppText>
+          {travel.outsideServiceArea && travel.serviceRadiusKm ? (
+            <AppText size="sm" color={c.warningText}>
+              {t('trip.outside', { radius: formatDistance(travel.serviceRadiusKm, lang) })}
+            </AppText>
+          ) : null}
+        </Notice>
       ) : null}
 
       <TextField label={t('book.note')} placeholder={t('book.notePlaceholder')} value={note} onChangeText={setNote} multiline maxLength={500} />
@@ -304,5 +355,6 @@ const styles = StyleSheet.create({
   thumb: { borderRadius: radius.md },
   newEvent: { padding: space.lg },
   slots: { flexDirection: 'row', gap: space.sm },
+  chips: { gap: space.sm },
   money: { padding: space.lg, gap: space.sm },
 });

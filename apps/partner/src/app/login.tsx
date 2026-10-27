@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { Button, LinkButton } from '../components/Button';
 import { Field } from '../components/Field';
 import { Icon } from '../components/Icon';
 import { FontLanguage, Txt } from '../components/Txt';
+import { openLink } from '../lib/links';
 
 
 /** Phone login (PartnerLogin board). Always English; Hindi is chosen later in Profile. */
@@ -104,7 +105,7 @@ export default function Login() {
           <Button testID="send-otp" kind="indigo" size="lg" label={t('login.sendOtp')} loading={sending} onPress={() => void send()} />
           <View style={styles.footer}>
             <Txt size="sm">{t('login.customerQuestion')}</Txt>
-            <LinkButton label={t('login.customerLink')} onPress={() => void Linking.openURL('https://play.google.com/store/apps/details?id=in.eventseva.app')} />
+            <LinkButton label={t('login.customerLink')} onPress={() => void openLink('https://play.google.com/store/apps/details?id=in.eventseva.app')} />
           </View>
         </View>
       </ScrollView>

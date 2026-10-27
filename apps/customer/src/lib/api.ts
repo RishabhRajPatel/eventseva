@@ -9,6 +9,8 @@ import {
   type Conversation,
   type EventSummary,
   type EventType,
+  type LatLng,
+  type Travel,
   type Language,
   type Me,
   type Message,
@@ -46,7 +48,18 @@ export interface NewEvent {
   eventType: EventType;
   eventDate: string;
   venueAddress?: string;
+  venueLandmark?: string;
+  venueLat?: number;
+  venueLng?: number;
   guestCount?: number;
+}
+
+/** PATCH /v1/events/:id: null clears a field. */
+export interface EventChanges {
+  venueAddress?: string | null;
+  venueLandmark?: string | null;
+  venueLat?: number | null;
+  venueLng?: number | null;
 }
 
 export interface BookingRequest {
@@ -57,6 +70,8 @@ export interface BookingRequest {
   slot: Slot;
   quantity?: number;
   note?: string;
+  /** 'HH:MM' */
+  arriveBy?: string;
 }
 
 export interface MessagesPage {
@@ -91,9 +106,10 @@ export const api = {
   categories: () => client.get<{ items: Category[] }>('/v1/categories', undefined, { auth: false }),
 
   // ---- vendors ----
-  vendors: (q: { category?: string; page?: number; limit?: number }) =>
+  vendors: (q: { category?: string; page?: number; limit?: number; lat?: number; lng?: number; sort?: 'nearest' }) =>
     client.get<Paged<VendorCard>>('/v1/vendors', { cityId: CITY.id, ...q }, { auth: false }),
   vendor: (id: string) => client.get<VendorDetail>(`/v1/vendors/${id}`, undefined, { auth: false }),
+  vendorTravel: (id: string, p: LatLng) => client.get<{ travel: Travel | null }>(`/v1/vendors/${id}/travel`, { lat: p.lat, lng: p.lng }, { auth: false }),
   reviews: (id: string, page = 1) => client.get<Paged<Review>>(`/v1/vendors/${id}/reviews`, { page }, { auth: false }),
   availability: (id: string, month: string) =>
     client.get<{ month: string; busy: { day: string; slot: Slot }[] }>(`/v1/vendors/${id}/availability`, { month }, { auth: false }),
@@ -102,6 +118,7 @@ export const api = {
   events: () => client.get<{ items: EventSummary[] }>('/v1/events'),
   event: (id: string) => client.get<EventSummary & { bookings: Booking[] }>(`/v1/events/${id}`),
   createEvent: (e: NewEvent) => client.post<EventSummary>('/v1/events', { ...e, cityId: CITY.id }),
+  updateEvent: (id: string, e: EventChanges) => client.patch<EventSummary>(`/v1/events/${id}`, e),
   bookings: (q: { eventId?: string } = {}) => client.get<{ items: Booking[] }>('/v1/bookings', q),
   booking: (id: string) => client.get<Booking>(`/v1/bookings/${id}`),
   createBooking: (b: BookingRequest) => client.post<Booking>('/v1/bookings', b),

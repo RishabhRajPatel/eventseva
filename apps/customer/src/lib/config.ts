@@ -13,7 +13,7 @@ export const CLOUD_NAME = envCloud || '';
 export const CITY = { id: 1, name: 'Prayagraj' } as const;
 
 /** The vendor app ("Are you a vendor?" links). */
-export const PARTNER_APP_URL = 'https://play.google.com/store/search?q=EventSeva%20Partner&c=apps';
+export const PARTNER_APP_URL = 'https://play.google.com/store/apps/details?id=in.eventseva.partner';
 
 /** How often an open chat checks for new messages. */
 export const CHAT_POLL_MS = 4_000;

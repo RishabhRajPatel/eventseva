@@ -11,6 +11,7 @@ import { DOC_LABELS, docNumber, humanize, isLinkStale, MEDIA_STATUS } from '@/li
 import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
 import styles from './vendor.module.css';
+import { isSafeExternalUrl } from '@eventseva/app-shared';
 
 const DOC_REJECT_PRESETS = [
   'Photo is blurry or cut off',
@@ -38,7 +39,8 @@ export function VendorDocuments({
   const docs = vendor.documents ?? [];
 
   async function view(doc: VendorDocument) {
-    if (receivedAt !== undefined && !isLinkStale(receivedAt) && doc.viewUrl) {
+    // Only a signed Cloudinary link is ever opened, whatever the API returned.
+    if (receivedAt !== undefined && !isLinkStale(receivedAt) && isSafeExternalUrl(doc.viewUrl)) {
       window.open(doc.viewUrl, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -48,7 +50,7 @@ export function VendorDocuments({
     try {
       const fresh = await api.get<AdminVendor>(`/v1/admin/vendors/${vendor.id}`);
       const url = fresh.documents?.find((d) => d.id === doc.id)?.viewUrl;
-      if (!url) throw new Error('No link');
+      if (!isSafeExternalUrl(url)) throw new Error('No link');
       if (tab) {
         tab.opener = null;
         tab.location.href = url;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime, formatDay, formatPhone, rupees, todayIst, type Booking } from '@eventseva/app-shared';
@@ -18,6 +18,7 @@ import { Notice } from './Notice';
 import { ReasonSheet } from './ReasonSheet';
 import { RequestActions } from './RequestActions';
 import { Txt } from './Txt';
+import { openLink } from '../lib/links';
 
 /** Everything about one booking and what the vendor can do next. Used full-screen and in the tablet side panel. */
 export function BookingDetail({ booking, now }: { booking: Booking; now: number }) {
@@ -100,7 +101,7 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
           {phone ? (
             <>
               <Txt size="md">{formatPhone(phone)}</Txt>
-              <Button testID="call" icon="phone" label={t('booking.call')} onPress={() => void Linking.openURL(`tel:${phone}`)} />
+              <Button testID="call" icon="phone" label={t('booking.call')} onPress={() => void openLink(`tel:${phone}`)} />
             </>
           ) : null}
         </Card>

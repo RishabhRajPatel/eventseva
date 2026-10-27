@@ -210,7 +210,10 @@ CREATE TABLE public.admin_users (
     failed_logins integer DEFAULT 0 NOT NULL,
     locked_until timestamp with time zone,
     tokens_valid_after timestamp with time zone,
-    totp_last_step bigint
+    totp_last_step bigint,
+    recovery_codes text[] DEFAULT '{}'::text[] NOT NULL,
+    step_up_until timestamp with time zone,
+    step_up_session bigint
 );
 
 --
@@ -220,10 +223,34 @@ CREATE TABLE public.admin_users (
 COMMENT ON TABLE public.admin_users IS 'EventSeva team logins for the admin panel: email, scrypt password hash, 2FA secret, role, and lockout state.';
 
 --
+-- Name: COLUMN admin_users.totp_secret; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.admin_users.totp_secret IS '2FA secret, encrypted with BANK_DETAILS_KEY (v1:…); old plain rows are encrypted at the next login';
+
+--
 -- Name: COLUMN admin_users.totp_last_step; Type: COMMENT; Schema: public; Owner: -
 --
 
 COMMENT ON COLUMN public.admin_users.totp_last_step IS 'Time step of the last 2FA code accepted; older or equal steps are refused';
+
+--
+-- Name: COLUMN admin_users.recovery_codes; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.admin_users.recovery_codes IS 'HMAC hashes of unused one-time recovery codes; a used code is removed';
+
+--
+-- Name: COLUMN admin_users.step_up_until; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.admin_users.step_up_until IS 'Money and personal-data actions need no new 2FA code until this time (5 minutes after one)';
+
+--
+-- Name: COLUMN admin_users.step_up_session; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.admin_users.step_up_session IS 'The login (token issue time, ms) the window belongs to: another login never inherits it';
 
 --
 -- Name: availability; Type: TABLE; Schema: public; Owner: -
@@ -271,9 +298,14 @@ CREATE TABLE public.bookings (
     refund_paise integer DEFAULT 0 NOT NULL,
     discount_paise integer DEFAULT 0 NOT NULL,
     payout_deduction_paise integer DEFAULT 0 NOT NULL,
+    progress text,
+    progress_at timestamp with time zone,
+    eta_at timestamp with time zone,
+    reminder_sent_at timestamp with time zone,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
     CONSTRAINT bookings_payout_deduction_paise_check CHECK ((payout_deduction_paise >= 0)),
+    CONSTRAINT bookings_progress_check CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text]))),
     CONSTRAINT bookings_quantity_check CHECK ((quantity > 0)),
     CONSTRAINT bookings_slot_check CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text])))
 );
@@ -283,6 +315,18 @@ CREATE TABLE public.bookings (
 --
 
 COMMENT ON TABLE public.bookings IS 'One vendor booked for one event and slot. requested → accepted → confirmed (advance paid) → completed; money in paise, priced by the server.';
+
+--
+-- Name: COLUMN bookings.progress; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.progress IS 'Event day: on_the_way (with eta_at) or reached, set by the vendor';
+
+--
+-- Name: COLUMN bookings.reminder_sent_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.reminder_sent_at IS 'When the day-before reminder went to both sides';
 
 --
 -- Name: categories; Type: TABLE; Schema: public; Owner: -
@@ -529,7 +573,11 @@ CREATE TABLE public.events (
     venue_address text,
     guest_count integer,
     budget_paise integer,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    venue_lat numeric(9,6),
+    venue_lng numeric(9,6),
+    venue_landmark text,
+    CONSTRAINT events_venue_pin CHECK (((venue_lat IS NULL) = (venue_lng IS NULL)))
 );
 
 --
@@ -537,6 +585,18 @@ CREATE TABLE public.events (
 --
 
 COMMENT ON TABLE public.events IS 'A customer''s occasion (wedding, birthday …) that bookings belong to.';
+
+--
+-- Name: COLUMN events.venue_lat; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.events.venue_lat IS 'Venue pin (with venue_lng); from the address or the phone''s location';
+
+--
+-- Name: COLUMN events.venue_landmark; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.events.venue_landmark IS 'Nearby landmark to help the vendor find the venue';
 
 --
 -- Name: featured_plans; Type: TABLE; Schema: public; Owner: -
@@ -645,11 +705,15 @@ COMMENT ON TABLE public.media IS 'Vendor photos and videos on Cloudinary. Custom
 CREATE TABLE public.messages (
     id bigint NOT NULL,
     conversation_id uuid NOT NULL,
-    sender_id uuid NOT NULL,
+    sender_id uuid,
     body text NOT NULL,
     read_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT messages_body_check CHECK (((length(body) >= 1) AND (length(body) <= 2000)))
+    kind text DEFAULT 'text'::text NOT NULL,
+    data jsonb,
+    CONSTRAINT messages_body_check CHECK (((length(body) >= 1) AND (length(body) <= 2000))),
+    CONSTRAINT messages_kind_check CHECK ((kind = ANY (ARRAY['text'::text, 'booking'::text]))),
+    CONSTRAINT messages_sender_for_text CHECK (((kind = 'booking'::text) OR (sender_id IS NOT NULL)))
 );
 
 --
@@ -657,6 +721,12 @@ CREATE TABLE public.messages (
 --
 
 COMMENT ON TABLE public.messages IS 'Chat messages. Phone numbers are masked in the API until a booking between the two is confirmed.';
+
+--
+-- Name: COLUMN messages.kind; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.messages.kind IS 'text = typed by a person; booking = an automatic booking update (data has the details)';
 
 --
 -- Name: messages_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -1066,7 +1136,9 @@ CREATE TABLE public.vendors (
     rating_count integer DEFAULT 0 NOT NULL,
     featured_until timestamp with time zone,
     approved_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    service_radius_km integer,
+    CONSTRAINT vendors_service_radius_km_check CHECK (((service_radius_km >= 1) AND (service_radius_km <= 500)))
 );
 
 --
@@ -1074,6 +1146,12 @@ CREATE TABLE public.vendors (
 --
 
 COMMENT ON TABLE public.vendors IS 'A business profile owned by one user. status: draft → pending → approved / rejected / on_hold. featured_until puts it first in search.';
+
+--
+-- Name: COLUMN vendors.service_radius_km; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.vendors.service_radius_km IS 'Usual travel range from the vendor''s location; null = not set';
 
 --
 -- Name: admin_audit_log id; Type: DEFAULT; Schema: public; Owner: -
@@ -1514,6 +1592,12 @@ CREATE UNIQUE INDEX bookings_one_open_per_event_vendor ON public.bookings USING 
 --
 
 CREATE INDEX bookings_package_id_idx ON public.bookings USING btree (package_id) WHERE (package_id IS NOT NULL);
+
+--
+-- Name: bookings_reminder_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_reminder_due_idx ON public.bookings USING btree (day) WHERE ((status = 'confirmed'::public.booking_status) AND (reminder_sent_at IS NULL));
 
 --
 -- Name: bookings_service_id_idx; Type: INDEX; Schema: public; Owner: -
