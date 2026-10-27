@@ -22,6 +22,7 @@ import {
 } from '@eventseva/app-shared';
 import i18n from '../i18n';
 import { API_URL, CITY } from './config';
+import { trackingFetch } from './network';
 import { secureTokens } from './tokens';
 
 let sessionEndedHandler: () => void = () => undefined;
@@ -36,6 +37,8 @@ export const client = createApiClient({
   tokens: secureTokens,
   getLanguage: () => (i18n.language === 'hi' ? 'hi' : 'en'),
   onSessionEnded: () => sessionEndedHandler(),
+  // Network failures switch on the offline banner; the next answer from the server switches it off.
+  fetchImpl: trackingFetch(),
 });
 
 export interface NewEvent {

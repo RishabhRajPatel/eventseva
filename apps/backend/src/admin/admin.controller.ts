@@ -12,6 +12,7 @@ import { hashPassword, verifyPassword } from './password';
 import { verifyTotp } from './totp';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
+import { BookingsService } from '../bookings/bookings.service';
 
 class AdminLoginDto {
   @IsEmail() @MaxLength(120) email: string;
@@ -74,6 +75,7 @@ export class AdminController {
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly cloudinary: CloudinaryService,
+    private readonly bookings: BookingsService,
   ) {}
 
   @Throttle({ default: { limit: () => Number(process.env.AUTH_RATE_LIMIT_PER_MIN || 10), ttl: 60_000 } })
@@ -274,9 +276,11 @@ export class AdminController {
          VALUES ($1, $2, 'vendor', $3, $4, $5)`,
         [admin.adminId, `vendor.${decision}`, vendorId, { status: v.status, reason: v.reject_reason }, { status, reason }],
       );
+      // A paused vendor cannot answer or honour new bookings, so those customers hear now.
+      const open = status === 'on_hold' ? await this.bookings.closeOpenFor(client, vendorId) : null;
       const text = (lang: Language) => ({ title: NOTICE[decision][lang].title, body: NOTICE[decision][lang].body(reason) });
       await notify(client, v.user_id, `vendor_${status}`, { en: text('en'), hi: text('hi') }, { vendorId }, 'partner');
-      return { id: vendorId, status, rejectReason: reason };
+      return { id: vendorId, status, rejectReason: reason, ...(open && { closedBookings: open.closed, confirmedBookings: open.confirmed }) };
     });
   }
 }

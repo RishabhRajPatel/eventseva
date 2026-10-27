@@ -1,8 +1,11 @@
 // Display text and colour tone for every status the API returns, plus small display helpers.
 import type { BookingStatus, VendorStatus } from '@eventseva/core';
 
-/** Matches a .tone-* class in globals.css (colours from the design boards). */
-export type Tone = 'info' | 'warning' | 'success' | 'successSoft' | 'dark' | 'outline' | 'neutral';
+/**
+ * Matches a .tone-* class in globals.css. Meanings follow docs/UX.md §1 in every app: success = mint,
+ * waiting / warning = peach, error / ended badly = red pair, info = lavender, neutral = no judgement.
+ */
+export type Tone = 'info' | 'warning' | 'success' | 'successSoft' | 'danger' | 'dark' | 'outline' | 'neutral';
 
 export interface StatusLabel {
   label: string;
@@ -10,22 +13,22 @@ export interface StatusLabel {
 }
 
 export const BOOKING_STATUS: Record<BookingStatus, StatusLabel> = {
-  requested: { label: 'Requested', tone: 'info' },
+  requested: { label: 'Requested', tone: 'warning' },
   accepted: { label: 'Payment pending', tone: 'warning' },
   confirmed: { label: 'Confirmed', tone: 'success' },
   completed: { label: 'Completed', tone: 'successSoft' },
-  rejected: { label: 'Rejected by vendor', tone: 'dark' },
-  expired: { label: 'Expired', tone: 'outline' },
-  cancelled_by_customer: { label: 'Cancelled · customer', tone: 'dark' },
-  cancelled_by_vendor: { label: 'Cancelled · vendor', tone: 'dark' },
+  rejected: { label: 'Rejected by vendor', tone: 'neutral' },
+  expired: { label: 'Expired', tone: 'neutral' },
+  cancelled_by_customer: { label: 'Cancelled · customer', tone: 'danger' },
+  cancelled_by_vendor: { label: 'Cancelled · vendor', tone: 'danger' },
 };
 
 export const VENDOR_STATUS: Record<VendorStatus, StatusLabel> = {
   pending: { label: 'Pending', tone: 'warning' },
   approved: { label: 'Approved', tone: 'success' },
-  rejected: { label: 'Rejected', tone: 'dark' },
-  on_hold: { label: 'On hold', tone: 'outline' },
-  draft: { label: 'Draft', tone: 'info' },
+  rejected: { label: 'Rejected', tone: 'danger' },
+  on_hold: { label: 'On hold', tone: 'warning' },
+  draft: { label: 'Draft', tone: 'neutral' },
 };
 
 export type PayoutStatus = 'scheduled' | 'processing' | 'paid' | 'failed' | 'held';
@@ -34,8 +37,8 @@ export const PAYOUT_STATUS: Record<PayoutStatus, StatusLabel> = {
   scheduled: { label: 'Scheduled', tone: 'warning' },
   processing: { label: 'Processing', tone: 'info' },
   paid: { label: 'Paid', tone: 'success' },
-  failed: { label: 'Failed', tone: 'outline' },
-  held: { label: 'On hold', tone: 'dark' },
+  failed: { label: 'Failed', tone: 'danger' },
+  held: { label: 'On hold', tone: 'warning' },
 };
 
 export type ComplaintStatus = 'open' | 'in_progress' | 'resolved';
@@ -51,14 +54,33 @@ export const MEDIA_STATUSES: MediaStatus[] = ['pending', 'approved', 'rejected']
 export const MEDIA_STATUS: Record<MediaStatus, StatusLabel> = {
   pending: { label: 'Pending', tone: 'warning' },
   approved: { label: 'Approved', tone: 'success' },
-  rejected: { label: 'Rejected', tone: 'dark' },
+  rejected: { label: 'Rejected', tone: 'danger' },
 };
 
 export const BANK_STATUS: Record<'pending' | 'verified' | 'rejected', StatusLabel> = {
   pending: { label: 'To verify', tone: 'warning' },
   verified: { label: 'Verified', tone: 'success' },
-  rejected: { label: 'Sent back', tone: 'dark' },
+  rejected: { label: 'Sent back', tone: 'danger' },
 };
+
+/** Razorpay payment rows on the booking page. */
+export const PAYMENT_STATUS: Record<string, StatusLabel> = {
+  created: { label: 'Not paid', tone: 'neutral' },
+  paid: { label: 'Paid', tone: 'success' },
+  captured: { label: 'Paid', tone: 'success' },
+  refunded: { label: 'Refunded', tone: 'info' },
+  failed: { label: 'Failed', tone: 'danger' },
+};
+
+/** Yes / no states drawn as pills (user blocked, coupon active, city shown …). */
+export const ON_OFF = {
+  active: { label: 'Active', tone: 'success' },
+  blocked: { label: 'Blocked', tone: 'danger' },
+  inactive: { label: 'Inactive', tone: 'neutral' },
+  shown: { label: 'Shown', tone: 'success' },
+  hidden: { label: 'Hidden', tone: 'neutral' },
+  onSale: { label: 'On sale', tone: 'success' },
+} as const satisfies Record<string, StatusLabel>;
 
 /** Falls back to the raw value, so a status added on the backend still shows. */
 export function statusLabel<S extends string>(map: Record<S, StatusLabel>, status: string): StatusLabel {

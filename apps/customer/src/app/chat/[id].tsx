@@ -1,14 +1,17 @@
-// Chat thread (Chat board). Polls every 4 s while open and focused.
-import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+// Chat thread (Chat board). Polls every 4 s while open and focused. Sent messages show at once with
+// a "Sending…" state; a failed one says so and is sent again with a tap.
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, Linking, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
+import { FlashList } from '@shopify/flash-list';
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { Message } from '@eventseva/app-shared';
+import type { Language, Message } from '@eventseva/app-shared';
 import { api, type MessagesPage } from '../../lib/api';
 import { CHAT_POLL_MS } from '../../lib/config';
 import { errorText } from '../../lib/errors';
+import { haptic } from '../../lib/haptics';
 import { keys } from '../../lib/queryClient';
 import { clockTime } from '../../lib/time';
 import { c, radius, space } from '../../lib/theme';
@@ -16,8 +19,21 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { AppText } from '../../components/AppText';
 import { IconButton } from '../../components/Button';
 import { Icon } from '../../components/Icon';
-import { ErrorState, Loading } from '../../components/States';
+import { MessagesSkeleton } from '../../components/Skeleton';
+import { EmptyState, ErrorState } from '../../components/States';
 
+/** A message typed here that the server has not confirmed yet. */
+interface Outgoing {
+  key: string;
+  body: string;
+  status: 'sending' | 'failed';
+  error?: string;
+  createdAt: string;
+  /** Set once the server has it; the bubble stays until that message is in the list, so nothing flickers. */
+  sentId?: number;
+}
+
+type Row = { kind: 'sent'; message: Message; seen: boolean } | { kind: 'out'; out: Outgoing };
 
 export default function ChatThreadScreen() {
   const { id, name } = useLocalSearchParams<{ id: string; name?: string }>();
@@ -26,6 +42,8 @@ export default function ChatThreadScreen() {
   const qc = useQueryClient();
   const focused = useIsFocused();
   const [text, setText] = useState('');
+  const [outgoing, setOutgoing] = useState<Outgoing[]>([]);
+  const counter = useRef(0);
 
   const messages = useInfiniteQuery({
     queryKey: keys.messages(id),
@@ -43,22 +61,84 @@ export default function ChatThreadScreen() {
   const items = useMemo(() => messages.data?.pages.flatMap((p) => p.items) ?? [], [messages.data]);
   const phoneShared = messages.data?.pages[0]?.phoneShared ?? false;
   const title = conv?.vendorName ?? name ?? t('chat.title');
-  const lastMineSeen = items.find((m) => m.mine)?.readAt;
 
-  const send = useMutation({
-    mutationFn: (body: string) => api.sendMessage(id, body),
-    onSuccess: (msg: Message) => {
-      setText('');
-      qc.setQueryData<InfiniteData<MessagesPage, number | undefined>>(keys.messages(id), (data) =>
-        data ? { ...data, pages: data.pages.map((p, i) => (i === 0 ? { ...p, items: [msg, ...p.items.filter((m) => m.id !== msg.id)] } : p)) } : data,
-      );
-      void qc.invalidateQueries({ queryKey: keys.conversations });
+  // Newest first, because the list is inverted: unconfirmed messages, then the conversation.
+  const rows = useMemo<Row[]>(() => {
+    const lastMine = items.find((m) => m.mine);
+    const have = new Set(items.map((m) => m.id));
+    return [
+      ...[...outgoing]
+        .reverse()
+        .filter((o) => o.sentId == null || !have.has(o.sentId))
+        .map((out): Row => ({ kind: 'out', out })),
+      ...items.map((message): Row => ({ kind: 'sent', message, seen: message === lastMine && !!message.readAt })),
+    ];
+  }, [items, outgoing]);
+
+  // Forget sent bubbles once their message is in the list.
+  useEffect(() => {
+    const have = new Set(items.map((m) => m.id));
+    setOutgoing((list) => (list.some((o) => o.sentId != null && have.has(o.sentId)) ? list.filter((o) => o.sentId == null || !have.has(o.sentId)) : list));
+  }, [items]);
+
+  const deliver = useCallback(
+    async (key: string, body: string) => {
+      setOutgoing((list) => list.map((o) => (o.key === key ? { ...o, status: 'sending', error: undefined } : o)));
+      try {
+        const msg = await api.sendMessage(id, body);
+        // Swap the pending bubble for the real message in one render, so it never shows twice.
+        qc.setQueryData<InfiniteData<MessagesPage, number | undefined>>(keys.messages(id), (data) =>
+          data ? { ...data, pages: data.pages.map((p, i) => (i === 0 ? { ...p, items: [msg, ...p.items.filter((m) => m.id !== msg.id)] } : p)) } : data,
+        );
+        setOutgoing((list) => list.map((o) => (o.key === key ? { ...o, sentId: msg.id } : o)));
+        void qc.invalidateQueries({ queryKey: keys.conversations });
+      } catch (e) {
+        haptic.error();
+        setOutgoing((list) => list.map((o) => (o.key === key ? { ...o, status: 'failed', error: errorText(t, e) } : o)));
+      }
     },
-  });
+    [id, qc, t],
+  );
+
   const submit = () => {
     const body = text.trim();
-    if (body && !send.isPending) send.mutate(body);
+    if (!body) return;
+    counter.current += 1;
+    const key = `out-${counter.current}`;
+    setOutgoing((list) => [...list, { key, body, status: 'sending', createdAt: new Date().toISOString() }]);
+    setText('');
+    void deliver(key, body);
   };
+
+  const renderItem = useCallback(
+    ({ item }: { item: Row }) =>
+      item.kind === 'sent' ? (
+        <Bubble message={item.message} seen={item.seen} lang={lang} />
+      ) : (
+        <OutgoingBubble out={item.out} lang={lang} onRetry={deliver} />
+      ),
+    [deliver, lang],
+  );
+
+  let list;
+  if (messages.isPending) list = <MessagesSkeleton />;
+  else if (messages.error && items.length === 0) list = <ErrorState error={messages.error} onRetry={() => messages.refetch()} />;
+  else if (rows.length === 0) list = <EmptyState compact icon="chat" title={t('chat.startHint')} />;
+  else {
+    list = (
+      <FlashList
+        data={rows}
+        inverted
+        keyExtractor={rowKey}
+        getItemType={rowType}
+        renderItem={renderItem}
+        contentContainerStyle={styles.list}
+        onEndReached={() => messages.hasNextPage && !messages.isFetchingNextPage && void messages.fetchNextPage()}
+        onEndReachedThreshold={0.3}
+        keyboardShouldPersistTaps="handled"
+      />
+    );
+  }
 
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.flex}>
@@ -88,43 +168,7 @@ export default function ChatThreadScreen() {
       ) : null}
 
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {messages.isPending ? (
-          <Loading />
-        ) : messages.error && items.length === 0 ? (
-          <ErrorState error={messages.error} onRetry={() => messages.refetch()} />
-        ) : (
-          <FlatList
-            data={items}
-            inverted
-            keyExtractor={(m) => String(m.id)}
-            contentContainerStyle={styles.list}
-            onEndReached={() => messages.hasNextPage && !messages.isFetchingNextPage && messages.fetchNextPage()}
-            onEndReachedThreshold={0.3}
-            ListEmptyComponent={
-              <AppText size="sm" align="center" style={styles.empty}>
-                {t('chat.startHint')}
-              </AppText>
-            }
-            renderItem={({ item, index }) => (
-              <View style={[styles.bubbleWrap, item.mine ? styles.right : styles.left]}>
-                <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
-                  <AppText size="md" color={item.mine ? c.white : c.text}>
-                    {item.body}
-                  </AppText>
-                </View>
-                <AppText size="xs" color={c.textMuted}>
-                  {index === 0 && item.mine && lastMineSeen ? `${clockTime(item.createdAt, lang)} · ${t('chat.seen')}` : clockTime(item.createdAt, lang)}
-                </AppText>
-              </View>
-            )}
-          />
-        )}
-
-        {send.error ? (
-          <AppText size="sm" color={c.danger} align="center">
-            {errorText(t, send.error)}
-          </AppText>
-        ) : null}
+        <View style={[styles.flex, rows.length === 0 && !messages.isPending && styles.center]}>{list}</View>
         <View style={styles.composer}>
           <View style={styles.inputBox}>
             <TextInput
@@ -143,8 +187,8 @@ export default function ChatThreadScreen() {
             accessibilityLabel={t('chat.send')}
             accessibilityState={{ disabled: !text.trim() }}
             onPress={submit}
-            disabled={!text.trim() || send.isPending}
-            style={[styles.send, (!text.trim() || send.isPending) && styles.sendOff]}
+            disabled={!text.trim()}
+            style={({ pressed }) => [styles.send, !text.trim() && styles.sendOff, pressed && styles.pressed]}
           >
             <Icon name="send" size={20} color={c.white} />
           </Pressable>
@@ -154,8 +198,71 @@ export default function ChatThreadScreen() {
   );
 }
 
+const rowKey = (r: Row) => (r.kind === 'sent' ? String(r.message.id) : r.out.key);
+const rowType = (r: Row) => (r.kind === 'out' ? 'out' : r.message.mine ? 'mine' : 'theirs');
+
+const Bubble = memo(function Bubble({ message: m, seen, lang }: { message: Message; seen: boolean; lang: Language }) {
+  const { t } = useTranslation();
+  return (
+    <View style={[styles.bubbleWrap, m.mine ? styles.right : styles.left]}>
+      <View style={[styles.bubble, m.mine ? styles.mine : styles.theirs]}>
+        <AppText size="md" color={m.mine ? c.white : c.text}>
+          {m.body}
+        </AppText>
+      </View>
+      <AppText size="xs" color={c.textMuted}>
+        {seen ? `${clockTime(m.createdAt, lang)} · ${t('chat.seen')}` : clockTime(m.createdAt, lang)}
+      </AppText>
+    </View>
+  );
+});
+
+const OutgoingBubble = memo(function OutgoingBubble({ out, lang, onRetry }: { out: Outgoing; lang: Language; onRetry: (key: string, body: string) => void }) {
+  const { t } = useTranslation();
+  if (out.status === 'sending') {
+    return (
+      <View style={[styles.bubbleWrap, styles.right]} accessibilityLabel={`${out.body}. ${t('chat.sending')}`}>
+        <View style={[styles.bubble, styles.mine, styles.sending]}>
+          <AppText size="md" color={c.white}>
+            {out.body}
+          </AppText>
+        </View>
+        <View style={styles.meta}>
+          <Icon name="clock" size={12} color={c.textMuted} />
+          <AppText size="xs" color={c.textMuted}>
+            {`${clockTime(out.createdAt, lang)} · ${t('chat.sending')}`}
+          </AppText>
+        </View>
+      </View>
+    );
+  }
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${out.body}. ${t('chat.failed')}`}
+      accessibilityHint={out.error}
+      onPress={() => onRetry(out.key, out.body)}
+      style={({ pressed }) => [styles.bubbleWrap, styles.right, pressed && styles.pressed]}
+    >
+      <View style={[styles.bubble, styles.failed]}>
+        <AppText size="md" color={c.danger}>
+          {out.body}
+        </AppText>
+      </View>
+      <View style={styles.meta}>
+        <Icon name="alert" size={14} color={c.danger} />
+        <AppText size="xs" variant="bold" color={c.danger}>
+          {t('chat.failed')}
+        </AppText>
+      </View>
+    </Pressable>
+  );
+});
+
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  center: { justifyContent: 'center', paddingHorizontal: space.xl },
+  pressed: { opacity: 0.85 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -179,14 +286,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: space.sm,
   },
-  list: { paddingHorizontal: space.xl, paddingVertical: space.lg, gap: 10, flexGrow: 1 },
-  empty: { marginTop: space.xxl, transform: [{ scaleY: -1 }] },
-  bubbleWrap: { maxWidth: '78%', gap: 2 },
+  list: { paddingHorizontal: space.xl, paddingVertical: space.lg },
+  bubbleWrap: { maxWidth: '78%', gap: 2, marginVertical: 5 },
   right: { alignSelf: 'flex-end', alignItems: 'flex-end' },
   left: { alignSelf: 'flex-start', alignItems: 'flex-start' },
   bubble: { paddingVertical: 10, paddingHorizontal: 14 },
   mine: { backgroundColor: c.royal, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomLeftRadius: 16, borderBottomRightRadius: 4 },
   theirs: { backgroundColor: c.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderBottomRightRadius: 16, borderBottomLeftRadius: 4 },
+  sending: { opacity: 0.7 },
+  failed: {
+    backgroundColor: c.dangerBg,
+    borderWidth: 1.5,
+    borderColor: c.danger,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 4,
+  },
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -201,5 +318,5 @@ const styles = StyleSheet.create({
   inputBox: { flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, backgroundColor: c.cream, paddingHorizontal: space.lg, justifyContent: 'center' },
   input: { fontSize: 16, color: c.text, paddingVertical: 12 },
   send: { width: 48, height: 48, borderRadius: 24, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
-  sendOff: { opacity: 0.5 },
+  sendOff: { opacity: 0.45 },
 });

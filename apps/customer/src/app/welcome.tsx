@@ -19,23 +19,24 @@ export default function WelcomeScreen() {
   const session = useSession();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   async function save() {
     const clean = name.trim().replace(/\s+/g, ' ');
-    if (clean.length < 2) return setError(t('welcome.nameTooShort'));
-    setBusy(true);
+    if (clean.length < 2) {
+      setError(t('welcome.nameTooShort'));
+      return false;
+    }
     try {
       // The root layout moves on to Home once the profile has a name.
       session.setMe(await api.updateMe({ name: clean }));
     } catch (e) {
       setError(errorText(t, e));
-      setBusy(false);
+      throw e;
     }
   }
 
   return (
-    <Screen keyboard scroll contentStyle={styles.content} footer={<Button label={t('welcome.start')} onPress={save} loading={busy} disabled={!name.trim()} />}>
+    <Screen keyboard scroll contentStyle={styles.content} footer={<Button label={t('welcome.start')} onPress={save} />}>
       <View style={styles.gap8}>
         <Pill label={t('welcome.verified')} tone="mint" />
         <AppText variant="display" size="display" accessibilityRole="header">
@@ -58,13 +59,13 @@ export default function WelcomeScreen() {
         maxLength={80}
         error={error}
         returnKeyType="done"
-        onSubmitEditing={save}
+        onSubmitEditing={() => void save().catch(() => undefined)}
       />
       <View style={styles.vendorBox}>
         <AppText variant="bold" size="lg">
           {t('welcome.vendorTitle')}
         </AppText>
-        <AppText size={14}>{t('welcome.vendorBody')}</AppText>
+        <AppText size="sm">{t('welcome.vendorBody')}</AppText>
         <AppText variant="bold" size="md" color={c.royal} accessibilityRole="link" onPress={() => Linking.openURL(PARTNER_APP_URL)} style={styles.link}>
           {t('welcome.vendorLink')}
         </AppText>

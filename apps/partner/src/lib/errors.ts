@@ -11,6 +11,8 @@ export const isVendorMissing = (e: unknown) => e instanceof ApiError && (e.statu
 const KNOWN: Record<string, string> = {
   NETWORK: 'errors.network',
   SLOT_TAKEN: 'errors.slotTaken',
+  DATE_TOO_FAR: 'errors.dateTooFar',
+  TOO_MANY_MESSAGES: 'errors.tooManyMessages',
   BOOKING_EXPIRED: 'errors.bookingExpired',
   VENDOR_NOT_ACTIVE: 'errors.vendorNotActive',
   BOOKING_BAD_STATUS: 'errors.bookingBadStatus',
@@ -32,7 +34,44 @@ const KNOWN: Record<string, string> = {
   VIDEO_TOO_LONG: 'errors.videoTooLong',
   PLAN_NOT_FOUND: 'errors.planNotFound',
   PAYMENT_INVALID: 'errors.paymentInvalid',
+  // Common codes (docs/API.md "Errors").
+  VALIDATION: 'errors.validation',
+  UNAUTHORIZED: 'errors.unauthorized',
+  FORBIDDEN: 'errors.forbidden',
+  NOT_FOUND: 'errors.notFound',
+  PARTNER_APP_ONLY: 'errors.partnerAppOnly',
+  // Login and account.
+  OTP_SERVICE_BUSY: 'errors.otpServiceBusy',
+  CITY_NOT_FOUND: 'errors.cityNotFound',
+  ACCOUNT_HAS_PENDING_PAYOUT: 'errors.accountPendingPayout',
+  // Profile and catalogue.
+  VENDOR_EXISTS: 'errors.vendorExists',
+  VENDOR_NOT_FOUND: 'errors.vendorNotFound',
+  VENDOR_BAD_STATUS: 'errors.vendorBadStatus',
+  ITEM_NOT_FOUND: 'errors.itemNotFound',
+  // Bookings and money (mostly customer-side, but they can reach a vendor through shared screens).
+  BOOKING_EXISTS: 'errors.bookingExists',
+  EVENT_IN_PAST: 'errors.dateInPast',
+  EVENT_NOT_FOUND: 'errors.eventNotFound',
+  OWN_VENDOR: 'errors.ownVendor',
+  QUANTITY_REQUIRED: 'errors.quantityRequired',
+  PAYMENT_TIME_OVER: 'errors.paymentTimeOver',
+  PAYOUT_ALREADY_PAID: 'errors.payoutAlreadyPaid',
+  REFUND_TOO_HIGH: 'errors.refundTooHigh',
+  REVIEW_EXISTS: 'errors.reviewExists',
+  REVIEW_NOT_ALLOWED: 'errors.reviewNotAllowed',
+  COUPON_INVALID: 'errors.couponInvalid',
+  COUPON_NOT_APPLICABLE: 'errors.couponNotApplicable',
+  COUPON_NOT_ALLOWED: 'errors.couponNotAllowed',
+  COUPON_ALREADY_USED: 'errors.couponAlreadyUsed',
+  COUPON_USED_UP: 'errors.couponUsedUp',
+  // Found on the phone before uploading.
+  UNSUPPORTED_FILE: 'errors.unsupportedFile',
+  CANCELLED: 'upload.cancelledOne',
 };
+
+/** Every API error code the app explains in its own words (tested against docs/API.md). */
+export const KNOWN_CODES = [...Object.keys(KNOWN), 'OTP_INVALID', 'OTP_TOO_SOON', 'FILE_TOO_BIG', 'ACCOUNT_HAS_ACTIVE_BOOKINGS'];
 
 /** The message to show for a failed call: our translation when we know the code, else the server's text. */
 export function errorText(t: TFunction, e: unknown): string {
@@ -51,7 +90,19 @@ export function errorText(t: TFunction, e: unknown): string {
     const max = (e as { details?: { maxBytes?: unknown } }).details?.maxBytes;
     return typeof max === 'number' ? t('errors.fileTooBigMax', { mb: Math.round(max / 1_048_576) }) : t('errors.fileTooBig');
   }
+  if (code === 'ACCOUNT_HAS_ACTIVE_BOOKINGS') {
+    const n = e instanceof ApiError && typeof e.details.bookings === 'number' ? e.details.bookings : 0;
+    return n ? t('errors.accountActiveBookings', { count: n }) : t('errors.accountActiveBookingsNoCount');
+  }
+  if (code === 'LIMIT_REACHED') {
+    const limit = (e as { details?: { limit?: unknown } }).details?.limit;
+    if (limit === 'videos') return t('errors.limitVideos');
+    if (limit === 'photos') return t('errors.limitPhotos');
+  }
   if (code && KNOWN[code]) return t(KNOWN[code]);
+  // A server error we have no words for: say so plainly, never "Error 500".
+  if (e instanceof ApiError && e.status >= 500) return t('errors.server');
+  // The API writes its messages as full sentences in the vendor's language (Accept-Language).
   if (e instanceof ApiError && e.message) return e.message;
   return t('errors.generic');
 }

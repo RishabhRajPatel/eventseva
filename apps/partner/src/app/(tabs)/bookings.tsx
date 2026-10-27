@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { FlatList, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +30,8 @@ export default function Bookings() {
   const options = SEGMENTS.map((key) => ({ key, label: t(`requests.segments.${key}`), count: key === 'past' ? undefined : groups[key].length }));
   const items = groups[segment];
   const selected = tablet ? items.find((b) => b.id === selectedId) ?? items[0] : undefined;
-  const open = (b: Booking) => (tablet ? setSelectedId(b.id) : router.push(`/booking/${b.id}`));
+  const open = useCallback((b: Booking) => (tablet ? setSelectedId(b.id) : router.push(`/booking/${b.id}`)), [tablet]);
+  const empty = EMPTY_ACTION[segment];
 
   return (
     <View style={[styles.page, { paddingTop: insets.top }]} testID="bookings">
@@ -39,20 +41,30 @@ export default function Bookings() {
         </Txt>
         <Segmented options={options} value={segment} onChange={setSegment} />
       </View>
-      <QueryView query={bookings}>
+      <QueryView query={bookings} padded>
         {() => (
           <View style={styles.split}>
-            <FlatList
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.list}
-              data={items}
-              keyExtractor={(b) => b.id}
-              refreshControl={<RefreshControl refreshing={bookings.isRefetching} onRefresh={() => void bookings.refetch()} colors={[c.royal]} />}
-              renderItem={({ item }) => <BookingCard booking={item} now={now} onOpen={() => open(item)} selected={tablet && item.id === selected?.id} />}
-              ListEmptyComponent={<Empty icon="bookings" title={t(`requests.empty.${segment}.title`)} body={t(`requests.empty.${segment}.body`)} />}
-            />
+            <View style={{ flex: 1 }}>
+              <FlashList
+                contentContainerStyle={styles.list}
+                data={items}
+                keyExtractor={keyOf}
+                extraData={selected?.id}
+                ItemSeparatorComponent={Gap}
+                refreshControl={<RefreshControl refreshing={bookings.isRefetching} onRefresh={() => void bookings.refetch()} colors={[c.royal]} />}
+                renderItem={({ item }) => <BookingCard booking={item} now={now} onOpen={open} selected={tablet && item.id === selected?.id} />}
+                ListEmptyComponent={
+                  <Empty
+                    icon="bookings"
+                    title={t(`requests.empty.${segment}.title`)}
+                    body={t(`requests.empty.${segment}.body`)}
+                    action={empty ? { label: t(empty.label), onPress: () => router.navigate(empty.href) } : undefined}
+                  />
+                }
+              />
+            </View>
             {tablet ? (
-              <ScrollView style={styles.detailPane} contentContainerStyle={styles.list}>
+              <ScrollView style={styles.detailPane} contentContainerStyle={styles.pane}>
                 {selected ? <BookingDetail booking={selected} now={now} /> : <Txt color={c.textMuted}>{t('requests.selectOne')}</Txt>}
               </ScrollView>
             ) : null}
@@ -63,10 +75,23 @@ export default function Bookings() {
   );
 }
 
+const keyOf = (b: Booking) => b.id;
+const Gap = () => <View style={styles.gap} />;
+
+/** One next step for each empty list (UX.md §5). */
+const EMPTY_ACTION: Record<Segment, { label: string; href: '/calendar' | '/profile' } | null> = {
+  new: { label: 'requests.empty.new.action', href: '/calendar' },
+  awaitingPayment: null,
+  upcoming: { label: 'requests.empty.upcoming.action', href: '/profile' },
+  past: null,
+};
+
 const styles = StyleSheet.create({
+  gap: { height: space.lg },
   page: { flex: 1, backgroundColor: c.cream },
   head: { paddingHorizontal: space.xl, paddingTop: space.xxl, paddingBottom: space.lg, gap: space.lg },
   split: { flex: 1, flexDirection: 'row' },
-  list: { paddingHorizontal: space.xl, paddingBottom: space.xxxl, gap: space.lg },
+  list: { paddingHorizontal: space.xl, paddingBottom: space.xxxl },
+  pane: { paddingHorizontal: space.xl, paddingBottom: space.xxxl },
   detailPane: { flex: 1.2, borderLeftWidth: 1, borderLeftColor: c.lavender },
 });

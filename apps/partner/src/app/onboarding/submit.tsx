@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ApiError, type OwnVendor } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { errorCode, errorText } from '../../lib/errors';
-import { remainingSlots, usablePhotoCount } from '../../lib/media';
+import { usablePhotoCount } from '../../lib/media';
 import { invalidateVendor, keys, useVendor } from '../../lib/queries';
 import { routeFor } from '../../lib/routing';
+import { toast } from '../../lib/toast';
 import { useSession } from '../../lib/session';
 import { c, radius, space } from '../../lib/theme';
 import { usePhotoUpload } from '../../hooks/usePhotoUpload';
@@ -16,7 +17,6 @@ import { Button, LinkButton } from '../../components/Button';
 import { Card, CardHeader, Row } from '../../components/Card';
 import { DocumentsCard } from '../../components/DocumentsCard';
 import { Icon } from '../../components/Icon';
-import { UploadStatus } from '../../components/UploadStatus';
 import { MediaGrid } from '../../components/MediaGrid';
 import { Notice } from '../../components/Notice';
 import { Screen } from '../../components/Screen';
@@ -36,7 +36,7 @@ function SubmitStep({ vendor, refetch, refreshing }: { vendor: OwnVendor; refetc
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { me, signOut } = useSession();
-  const upload = usePhotoUpload({ limit: remainingSlots(vendor.media) });
+  const upload = usePhotoUpload({ media: vendor.media });
   const [serverMissing, setServerMissing] = useState<Missing[] | null>(null);
   const missing = serverMissing ?? vendor.missingForReview;
 
@@ -45,6 +45,7 @@ function SubmitStep({ vendor, refetch, refreshing }: { vendor: OwnVendor; refetc
     onSuccess: (v) => {
       qc.setQueryData(keys.vendor, v);
       invalidateVendor(qc);
+      toast.success(t('onboarding.submitted'));
       router.replace(routeFor({ name: me?.name ?? 'x', vendorStatus: v.status }));
     },
     onError: (e) => {
@@ -52,7 +53,7 @@ function SubmitStep({ vendor, refetch, refreshing }: { vendor: OwnVendor; refetc
         setServerMissing(e.details.missing as Missing[]);
         refetch();
       }
-      Alert.alert(t('errors.title'), errorText(t, e));
+      toast.error(errorText(t, e));
     },
   });
 
@@ -73,8 +74,12 @@ function SubmitStep({ vendor, refetch, refreshing }: { vendor: OwnVendor; refetc
           size="lg"
           label={vendor.status === 'rejected' ? t('onboarding.resubmit') : t('onboarding.submit')}
           loading={submit.isPending}
+          loadingLabel={t('onboarding.submitting')}
           disabled={missing.length > 0}
-          onPress={() => submit.mutate()}
+          accessibilityHint={missing.length ? t('onboarding.submitHint') : undefined}
+          onPress={() => {
+            if (!submit.isPending) submit.mutate();
+          }}
         />
       }
     >
@@ -127,11 +132,21 @@ function SubmitStep({ vendor, refetch, refreshing }: { vendor: OwnVendor; refetc
             </Txt>
           }
         />
-        <MediaGrid media={vendor.media} columns={4} onAdd={() => void upload.pick()} adding={upload.busy} onPressItem={() => router.push('/photos')} />
+        <MediaGrid
+          media={vendor.media}
+          uploads={upload.items}
+          columns={4}
+          compact
+          onAdd={() => void upload.pick()}
+          canAdd={upload.canAdd}
+          onOpen={() => router.push('/photos')}
+          onCancelUpload={upload.cancel}
+          onRetryUpload={upload.retry}
+          onDismissUpload={upload.dismiss}
+        />
         <Txt size="xs" color={c.textMuted}>
           {t('photos.guidelines')}
         </Txt>
-        <UploadStatus progress={upload.progress} />
       </Card>
 
       <View style={styles.links}>

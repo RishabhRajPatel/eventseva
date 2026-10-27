@@ -1,5 +1,6 @@
 import '../i18n';
 import { useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -16,8 +17,11 @@ import { queryClient } from '../lib/queryClient';
 import { SessionProvider, useSession } from '../lib/session';
 import { usePush } from '../lib/push';
 import { c } from '../lib/theme';
+import { ConfirmProvider } from '../components/ConfirmDialog';
+import { OfflineBanner } from '../components/OfflineBanner';
 import { Screen } from '../components/Screen';
 import { OfflineState } from '../components/States';
+import { ToastProvider } from '../components/Toast';
 
 // The native splash (royal blue, Splash board) stays up until fonts and the login state are ready.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -37,10 +41,18 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <SessionProvider>
-          <StatusBar style="dark" />
-          <RootNavigator />
-        </SessionProvider>
+        <ToastProvider>
+          <ConfirmProvider>
+            <SessionProvider>
+              <StatusBar style="dark" />
+              <View style={styles.root}>
+                {/* In the layout flow, so screens below start under it instead of being covered. */}
+                <OfflineBanner />
+                <RootNavigator />
+              </View>
+            </SessionProvider>
+          </ConfirmProvider>
+        </ToastProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
@@ -97,3 +109,5 @@ function RootNavigator() {
     </Stack>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: c.background } });

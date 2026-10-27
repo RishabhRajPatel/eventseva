@@ -26,8 +26,9 @@ test('per-plate service: estimate appears only after a quantity, then the reques
   const user = userEvent.setup();
   const router = await open('service:s1');
 
-  expect(await screen.findByText('Booking details')).toBeOnTheScreen();
-  expect(screen.getByText('No payment now. The vendor will reply within 24 hours.')).toBeOnTheScreen();
+  // A skeleton first, then the form.
+  expect(await screen.findByText('No payment now. The vendor will reply within 24 hours.')).toBeOnTheScreen();
+  expect(screen.getByText('Booking details')).toBeOnTheScreen();
   expect(screen.getByText('Enter how many to see an estimate.')).toBeOnTheScreen();
   // The existing upcoming event is picked by default.
   expect(screen.getByRole('radio', { name: /Rahul's Wedding/, checked: true })).toBeOnTheScreen();
@@ -45,6 +46,8 @@ test('per-plate service: estimate appears only after a quantity, then the reques
   expect(body).toEqual({ eventId: 'e1', vendorId: 'v1', serviceId: 's1', slot: 'night', quantity: 300, note: undefined });
   expect(Object.keys(body).some((k) => /amount|paise|price/i.test(k))).toBe(false);
   await waitFor(() => expect(router.getPathname()).toBe('/booking/b1'));
+  // Success toast survives the navigation.
+  expect(await screen.findByText('Request sent to Shree Ram Caterers. You will hear back within 24 hours.')).toBeOnTheScreen();
 });
 
 test('a counted unit cannot be sent without a quantity', async () => {

@@ -77,6 +77,7 @@
 .link[aria-current='page'] {
   background: var(--royal);
   font-weight: 700;
+  box-shadow: inset 4px 0 0 var(--lilac);
 }
 
 .badge {
@@ -88,6 +89,47 @@
   font-weight: 700;
   min-width: 1.5rem;
   text-align: center;
+}
+
+.badgeAlert {
+  background: var(--danger);
+  color: var(--white);
+}
+
+.alertLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 2.5rem;
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1.5px solid var(--danger);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.alertLink:hover {
+  background: var(--danger);
+  color: var(--white);
+}
+
+.expiry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.625rem 2rem;
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+  border-bottom: 2px solid var(--warning-ink);
+  font-size: 0.875rem;
+  position: sticky;
+  top: 3.75rem;
+  z-index: 9;
 }
 
 .sideFoot {
@@ -180,6 +222,12 @@
 
   .header {
     padding: 0.625rem 1rem;
+    flex-wrap: wrap;
+  }
+
+  .expiry {
+    padding: 0.625rem 1rem;
+    top: 0;
   }
 
   .content {
@@ -193,10 +241,23 @@
   }
 }
 
-/* Fallback while the shell loads in the browser. */
+/* Fallback while the shell loads in the browser: the same frame, with skeleton blocks. */
 .fallbackMain {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fallbackHeader {
+  height: 3.75rem;
+  background: var(--white);
+  border-bottom: 1px solid var(--lavender);
+}
+
+.fallbackBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 2rem;
 }

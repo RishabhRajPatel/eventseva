@@ -1416,6 +1416,12 @@ CREATE INDEX admin_audit_log_target_type_target_id_idx ON public.admin_audit_log
 CREATE INDEX bookings_customer_id_created_at_idx ON public.bookings USING btree (customer_id, created_at DESC);
 
 --
+-- Name: bookings_customer_requested_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_customer_requested_idx ON public.bookings USING btree (customer_id) WHERE (status = 'requested'::public.booking_status);
+
+--
 -- Name: bookings_one_open_per_event_vendor; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1516,6 +1522,12 @@ CREATE INDEX media_vendor_id_sort_order_idx ON public.media USING btree (vendor_
 --
 
 CREATE INDEX messages_conversation_id_id_idx ON public.messages USING btree (conversation_id, id DESC);
+
+--
+-- Name: messages_sender_recent_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX messages_sender_recent_idx ON public.messages USING btree (sender_id, created_at DESC);
 
 --
 -- Name: notifications_unpushed_idx; Type: INDEX; Schema: public; Owner: -

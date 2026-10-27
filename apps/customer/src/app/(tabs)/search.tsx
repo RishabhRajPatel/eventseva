@@ -1,11 +1,12 @@
 // Search and category results (Search / Empty / TabletSearch boards).
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { rupees } from '@eventseva/app-shared';
+import { rupees, type VendorCard as Vendor } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { keys } from '../../lib/queryClient';
 import { applyFilters, BUDGETS, matchCategory, type SortOrder } from '../../lib/search';
@@ -17,12 +18,12 @@ import { AppText } from '../../components/AppText';
 import { Button, IconButton } from '../../components/Button';
 import { Chip } from '../../components/Form';
 import { Icon } from '../../components/Icon';
-import { MasonryGrid } from '../../components/MasonryGrid';
 import { Sheet } from '../../components/Sheet';
-import { EmptyState, ErrorState, Loading } from '../../components/States';
-import { cardAspect, VendorCard } from '../../components/VendorCards';
+import { VendorGridSkeleton } from '../../components/Skeleton';
+import { EmptyState, ErrorState } from '../../components/States';
+import { VendorCard } from '../../components/VendorCards';
 
-const CARD_TEXT_HEIGHT = 92;
+const SORTS = ['popular', 'priceLow', 'rating'] as const;
 
 export default function SearchScreen() {
   const { t } = useTranslation();
@@ -50,11 +51,15 @@ export default function SearchScreen() {
     queryFn: ({ pageParam }) => api.vendors({ category, page: pageParam, limit: 20 }),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
+    staleTime: 5 * 60_000,
   });
 
   const textCategory = matchCategory(text, cats);
   const all = useMemo(() => vendors.data?.pages.flatMap((p) => p.items) ?? [], [vendors.data]);
-  const results = applyFilters(all, { text, minRating, maxPricePaise: maxPrice, sort }, textCategory != null && textCategory === category);
+  const results = useMemo(
+    () => applyFilters(all, { text, minRating, maxPricePaise: maxPrice, sort }, textCategory != null && textCategory === category),
+    [all, text, minRating, maxPrice, sort, textCategory, category],
+  );
   const catName = cats.find((x) => x.slug === category)?.name;
 
   function onChangeText(v: string) {
@@ -63,12 +68,10 @@ export default function SearchScreen() {
     if (slug) setCategory(slug);
   }
 
-  function onScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
-    const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    if (layoutMeasurement.height + contentOffset.y > contentSize.height - 600 && vendors.hasNextPage && !vendors.isFetchingNextPage) {
-      void vendors.fetchNextPage();
-    }
-  }
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = vendors;
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const clearAll = () => {
     setText('');
@@ -80,33 +83,67 @@ export default function SearchScreen() {
 
   const back = () => (router.canGoBack() ? router.back() : router.navigate('/'));
   const contentWidth = width - (hasRail ? 96 : 0) - gutter * 2;
+  const gap = isTablet ? 20 : 16;
+  // Masonry columns: each cell is (width + gap) / columns wide and pads itself by half a gap.
+  const cardWidth = Math.floor((contentWidth + gap) / gridColumns - gap);
+  const cellStyle = useMemo(() => ({ paddingHorizontal: gap / 2, paddingBottom: gap }), [gap]);
+  const renderItem = useCallback(
+    ({ item }: { item: Vendor }) => (
+      <View style={cellStyle}>
+        <VendorCard vendor={item} width={cardWidth} />
+      </View>
+    ),
+    [cellStyle, cardWidth],
+  );
   const countText = vendors.hasNextPage ? t('search.countMore', { count: results.length }) : t('search.count', { count: results.length });
 
+  const title = (
+    <View style={[styles.titleRow, { paddingHorizontal: gap / 2 }]}>
+      <AppText variant="display" size={isTablet ? 'display' : 'xl'} accessibilityRole="header" style={styles.flex}>
+        {t('search.title', { what: catName ?? t('search.allServices') })}
+      </AppText>
+      {!vendors.isPending && results.length > 0 ? <AppText size="sm">{countText}</AppText> : null}
+    </View>
+  );
+  const empty = (
+    <EmptyState
+      title={t('search.emptyTitle')}
+      body={maxPrice != null ? t('search.emptyBudget', { price: rupees(maxPrice) }) : t('search.emptyBody')}
+      actions={
+        <>
+          {maxPrice != null ? <Button label={t('search.removeBudget')} onPress={() => setMaxPrice(null)} /> : null}
+          <Button label={t('search.clearFilters')} variant={maxPrice != null ? 'outline' : 'primary'} onPress={clearAll} />
+        </>
+      }
+    />
+  );
+
   let body;
-  if (vendors.isPending) body = <Loading />;
-  else if (vendors.error && all.length === 0) body = <ErrorState error={vendors.error} onRetry={() => vendors.refetch()} />;
-  else if (results.length === 0) {
+  if (vendors.isPending) {
     body = (
-      <EmptyState
-        title={t('search.emptyTitle')}
-        body={maxPrice != null ? t('search.emptyBudget', { price: rupees(maxPrice) }) : t('search.emptyBody')}
-        actions={
-          <>
-            {maxPrice != null ? <Button label={t('search.removeBudget')} onPress={() => setMaxPrice(null)} /> : null}
-            <Button label={t('search.clearFilters')} variant={maxPrice != null ? 'outline' : 'primary'} onPress={clearAll} />
-          </>
-        }
-      />
+      <View style={[styles.results, { paddingHorizontal: gutter }]}>
+        <VendorGridSkeleton columns={gridColumns} width={contentWidth} rows={3} />
+      </View>
     );
+  } else if (vendors.error && all.length === 0) {
+    body = <ErrorState error={vendors.error} onRetry={() => vendors.refetch()} />;
   } else {
     body = (
-      <MasonryGrid
-        items={results}
-        columns={gridColumns}
-        gap={isTablet ? 20 : 16}
-        initialWidth={contentWidth}
-        estimateHeight={(v, w) => w * cardAspect(v) + CARD_TEXT_HEIGHT}
-        renderItem={(v, w) => <VendorCard vendor={v} width={w} />}
+      <FlashList
+        key={gridColumns}
+        data={results}
+        masonry
+        numColumns={gridColumns}
+        keyExtractor={(v) => v.id}
+        renderItem={renderItem}
+        ListHeaderComponent={title}
+        ListEmptyComponent={empty}
+        ListFooterComponent={isFetchingNextPage ? <VendorGridSkeleton columns={gridColumns} width={contentWidth} rows={1} /> : null}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.6}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ paddingHorizontal: gutter - gap / 2, paddingTop: space.lg, paddingBottom: space.xxxl }}
       />
     );
   }
@@ -117,7 +154,7 @@ export default function SearchScreen() {
         <View style={styles.searchRow}>
           <IconButton icon="back" label={t('common.back')} onPress={back} tone="lavender" />
           <View style={styles.inputBox}>
-            <Icon name="search" size={18} />
+            <Icon name="search" size={18} color={c.textMuted} />
             <TextInput
               value={text}
               onChangeText={onChangeText}
@@ -133,34 +170,26 @@ export default function SearchScreen() {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
           <Chip
+            role="button"
             label={maxPrice != null ? t('search.budgetUpTo', { price: rupees(maxPrice) }) : t('search.budget')}
             selected={maxPrice != null}
             onPress={() => setSheet('budget')}
           />
-          <Chip label={t('search.rating4')} selected={minRating} onPress={() => setMinRating((v) => !v)} />
-          <Chip label={sort === 'popular' ? t('search.sort') : t(`search.sortBy.${sort}`)} selected={sort !== 'popular'} onPress={() => setSheet('sort')} />
+          <Chip role="checkbox" label={t('search.rating4')} selected={minRating} onPress={() => setMinRating((v) => !v)} />
+          <Chip role="button" label={sort === 'popular' ? t('search.sort') : t(`search.sortBy.${sort}`)} selected={sort !== 'popular'} onPress={() => setSheet('sort')} />
         </ScrollView>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          <Chip label={t('search.allServices')} tone="ink" selected={!category} onPress={() => setCategory(undefined)} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup">
+          <Chip label={t('search.allServices')} selected={!category} onPress={() => setCategory(undefined)} />
           {cats.map((cat) => (
-            <Chip key={cat.slug} label={cat.name} tone="ink" selected={category === cat.slug} onPress={() => setCategory(cat.slug)} />
+            <Chip key={cat.slug} label={cat.name} selected={category === cat.slug} onPress={() => setCategory(cat.slug)} />
           ))}
         </ScrollView>
       </SafeAreaView>
 
-      <ScrollView contentContainerStyle={[styles.results, { paddingHorizontal: gutter }]} onScroll={onScroll} scrollEventThrottle={200} keyboardShouldPersistTaps="handled">
-        <View style={styles.titleRow}>
-          <AppText variant="display" size={isTablet ? 28 : 'xl'} accessibilityRole="header" style={styles.flex}>
-            {t('search.title', { what: catName ?? t('search.allServices') })}
-          </AppText>
-          {!vendors.isPending && results.length > 0 ? <AppText size="sm">{countText}</AppText> : null}
-        </View>
-        {body}
-        {vendors.isFetchingNextPage ? <ActivityIndicator color={c.royal} style={styles.more} /> : null}
-      </ScrollView>
+      {body}
 
       <Sheet visible={sheet === 'budget'} title={t('search.budgetTitle')} onClose={() => setSheet(null)}>
-        <View style={styles.options}>
+        <View style={styles.options} accessibilityRole="radiogroup">
           <Chip label={t('search.anyBudget')} selected={maxPrice == null} onPress={() => (setMaxPrice(null), setSheet(null))} />
           {BUDGETS.map((b) => (
             <Chip key={b} label={t('search.budgetUpTo', { price: rupees(b) })} selected={maxPrice === b} onPress={() => (setMaxPrice(b), setSheet(null))} />
@@ -169,8 +198,8 @@ export default function SearchScreen() {
         <AppText size="sm">{t('search.budgetHint')}</AppText>
       </Sheet>
       <Sheet visible={sheet === 'sort'} title={t('search.sort')} onClose={() => setSheet(null)}>
-        <View style={styles.options}>
-          {(['popular', 'priceLow', 'rating'] as const).map((s) => (
+        <View style={styles.options} accessibilityRole="radiogroup">
+          {SORTS.map((s) => (
             <Chip key={s} label={t(`search.sortBy.${s}`)} selected={sort === s} onPress={() => (setSort(s), setSheet(null))} />
           ))}
         </View>
@@ -183,11 +212,10 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   top: { backgroundColor: c.white, borderBottomWidth: 1, borderBottomColor: c.lavender, paddingTop: space.xxl, paddingBottom: space.md, gap: space.md },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  inputBox: { flex: 1, minHeight: 48, borderRadius: radius.md, borderWidth: 1.5, borderColor: c.lilac, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: space.md },
+  inputBox: { flex: 1, minHeight: 48, borderRadius: radius.md, borderWidth: 1.5, borderColor: c.outline, flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: space.md },
   input: { flex: 1, minHeight: 48, fontSize: 16, color: c.text },
   chips: { gap: space.sm },
-  results: { paddingTop: space.lg, paddingBottom: space.xxxl, gap: space.md, flexGrow: 1 },
-  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.md },
-  more: { marginVertical: space.lg },
+  results: { paddingTop: space.lg },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: space.md, paddingBottom: space.md },
   options: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
 });

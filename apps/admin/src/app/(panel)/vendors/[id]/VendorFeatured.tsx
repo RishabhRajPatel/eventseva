@@ -1,8 +1,8 @@
 'use client';
 import { useState } from 'react';
 import { formatDateTime } from '@eventseva/app-shared';
-import { ActionDialog } from '@/components/ActionDialog';
-import { FormDialog } from '@/components/FormDialog';
+import { ActionDialog } from '@/components/dialogs';
+import { FormDialog } from '@/components/dialogs';
 import { api } from '@/lib/api';
 import type { AdminVendor } from '@/lib/admin-types';
 import { grantFormErrors } from '@/lib/places';
@@ -30,7 +30,7 @@ export function VendorFeatured({ vendor: v, onDone }: { vendor: AdminVendor; onD
           Give free featured days
         </button>
         {until || v.featuredUntil === undefined ? (
-          <button type="button" className="btn" onClick={() => setOpen('stop')}>
+          <button type="button" className="btn btn-danger-outline" style={{ marginTop: '0.75rem' }} onClick={() => setOpen('stop')}>
             Stop featuring
           </button>
         ) : null}
@@ -49,6 +49,7 @@ export function VendorFeatured({ vendor: v, onDone }: { vendor: AdminVendor; onD
             </p>
           }
           confirmLabel="Stop featuring"
+          busyLabel="Stopping…"
           tone="danger"
           input={{ label: 'Reason (for the audit log)', limits: REASON_LIMITS.standard, presets: ['Open complaint', 'Paused by request'] }}
           onConfirm={(reason) => api.post(`/v1/admin/vendors/${v.id}/unfeature`, { reason })}
@@ -67,8 +68,9 @@ function GrantDialog({ vendor: v, onClose, onDone }: { vendor: AdminVendor; onCl
   const errors = grantFormErrors({ days, reason });
   return (
     <FormDialog
-      title="Give free featured days"
-      confirmLabel="Give featured days"
+      title={`Give ${v.businessName} free featured days?`}
+      confirmLabel={Number(days) > 0 && !errors.days ? `Give ${days} free day${days === '1' ? '' : 's'}` : 'Give featured days'}
+      busyLabel="Saving…"
       valid={Object.keys(errors).length === 0}
       onConfirm={() => api.post(`/v1/admin/vendors/${v.id}/feature`, { days: Number(days), reason: reason.trim() })}
       successMessage={`${v.businessName} is featured for ${days} more day(s). The vendor is notified.`}

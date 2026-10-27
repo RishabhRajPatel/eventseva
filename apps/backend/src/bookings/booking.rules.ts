@@ -23,6 +23,15 @@ export const EVENT_TYPES = [
 export const RESPOND_HOURS = 24;
 /** After acceptance, the customer has this long to pay the advance. */
 export const PAY_HOURS = 24;
+/**
+ * Everything (reply and payment) must finish before the event day starts (midnight, India).
+ * The vendor's reply deadline stops this long before that, so the customer still has time to pay.
+ */
+export const PAY_WINDOW_MIN_HOURS = 1;
+/** Events can be planned this far ahead at most (also the vendor calendar limit). */
+export const MAX_DAYS_AHEAD = 730;
+/** Unanswered requests one customer can have at a time (stops request spam to vendors). */
+export const MAX_OPEN_REQUESTS = 15;
 export const MAX_BOOKING_PAISE = 500_000_000; // ₹50 lakh
 /** Vendors with fewer completed bookings than this get paid 3 days after the event, not 1. */
 export const NEW_VENDOR_BOOKINGS = 5;
@@ -68,6 +77,30 @@ export const refundPaise = (advancePaise: number, percent: number) => Math.round
 export function todayIst(now = new Date()): string {
   return new Date(now.getTime() + 5.5 * 3600_000).toISOString().slice(0, 10);
 }
+
+/** Midnight at the start of an India date. */
+export const eventStart = (day: string) => new Date(`${day}T00:00:00+05:30`);
+
+/**
+ * When the vendor must reply by: RESPOND_HOURS from now, but never so late that the customer
+ * has less than PAY_WINDOW_MIN_HOURS left to pay before the event day starts. null = too late
+ * to book online (the vendor would get less than an hour to reply).
+ */
+export function respondByFor(day: string, now = new Date()): Date | null {
+  const latest = eventStart(day).getTime() - PAY_WINDOW_MIN_HOURS * 3600_000;
+  const respondBy = Math.min(now.getTime() + RESPOND_HOURS * 3600_000, latest);
+  return respondBy - now.getTime() < 3600_000 ? null : new Date(respondBy);
+}
+
+/** Pay deadline after the vendor accepts: PAY_HOURS, but always before the event day starts. */
+export const payByFor = (day: string, now = new Date()) =>
+  new Date(Math.min(now.getTime() + PAY_HOURS * 3600_000, eventStart(day).getTime()));
+
+/** The last day that can be planned or blocked: today + MAX_DAYS_AHEAD (India). */
+export const lastPlannableDay = (now = new Date()) => todayIst(new Date(now.getTime() + MAX_DAYS_AHEAD * 86_400_000));
+
+/** Units where the count is people, so the service's min / max guests apply. */
+export const GUEST_UNITS: PricingUnit[] = ['per_plate', 'per_person'];
 
 /** Whole days from today (India) to the event day; 0 on the day itself. */
 export function daysUntil(day: string, now = new Date()): number {

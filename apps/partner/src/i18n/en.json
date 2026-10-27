@@ -10,7 +10,14 @@
     "save": "Save",
     "seeAll": "See all",
     "tryAgain": "Try again",
-    "view": "View"
+    "view": "View",
+    "goBack": "Go back",
+    "keep": "Keep",
+    "loading": "Loading…",
+    "saveChanges": "Save changes",
+    "saving": "Saving…",
+    "stay": "Stay logged in",
+    "undo": "Undo"
   },
   "tabs": {
     "home": "Home",
@@ -78,7 +85,10 @@
     "rejectedTitle": "Your profile was not approved",
     "rejectedNoReason": "The team did not give a reason.",
     "rejectedHelp": "Fix the points above, then send it for review again.",
-    "editBusiness": "Edit business info"
+    "editBusiness": "Edit business info",
+    "submitHint": "Finish the checklist above first.",
+    "submitted": "Sent for review. We'll let you know within 24–48 hours.",
+    "submitting": "Sending…"
   },
   "pending": {
     "title": "Your profile is under review",
@@ -95,7 +105,9 @@
     },
     "lockedNote": "Your profile can't be edited while it is being reviewed. Once approved, you can change services, prices and photos any time.",
     "checkAgain": "Check status",
-    "talkToTeam": "Talk to the EventSeva team"
+    "talkToTeam": "Talk to the EventSeva team",
+    "checking": "Checking…",
+    "stillPending": "Still under review. We'll notify you as soon as it's done."
   },
   "onHold": {
     "banner": "Your profile is hidden from customers — contact support",
@@ -118,7 +130,8 @@
     "featuredTitle": "Get more bookings",
     "featuredBody": "Get featured: show at the top of search with a Featured badge.",
     "featuredActive": "Featured until {{day}}",
-    "featuredCta": "Get featured"
+    "featuredCta": "Get featured",
+    "keepCalendar": "Keep your calendar up to date"
   },
   "requests": {
     "title": "Bookings",
@@ -131,7 +144,8 @@
     "empty": {
       "new": {
         "title": "No new requests",
-        "body": "New booking requests will show up here. Answer them within 24 hours."
+        "body": "New booking requests will show up here. Answer them within 24 hours.",
+        "action": "Keep your calendar up to date"
       },
       "awaitingPayment": {
         "title": "Nothing waiting for payment",
@@ -139,7 +153,8 @@
       },
       "upcoming": {
         "title": "No upcoming bookings",
-        "body": "Confirmed bookings with the advance paid will show up here."
+        "body": "Confirmed bookings with the advance paid will show up here.",
+        "action": "Improve your profile"
       },
       "past": {
         "title": "No past bookings",
@@ -152,7 +167,12 @@
     "answerWithin": "Answer within {{time}}, or the request expires.",
     "waitingPaymentTitle": "Waiting for the customer to pay",
     "waitingPaymentBody": "The slot is held for you. The customer must pay the advance by {{time}}, or the booking is released.",
-    "selectOne": "Select a booking to see the details."
+    "selectOne": "Select a booking to see the details.",
+    "accepted": "Request accepted, the customer has 24 h to pay.",
+    "accepting": "Accepting…",
+    "declined": "Request declined. We've told the customer.",
+    "declineBody": "The customer sees your reason and can book someone else. This can't be undone.",
+    "declineConfirm": "Decline request"
   },
   "booking": {
     "title": "Booking",
@@ -171,11 +191,12 @@
     "cancelTitle": "Cancel this booking?",
     "cancelBodyPaid": "The customer will get 100% of the advance ({{amount}}) back. Cancel only if you really must — customers rely on you.",
     "cancelBodyUnpaid": "The customer has not paid yet, so nothing is charged. They will be told to book another vendor.",
-    "cancelConfirm": "Yes, cancel",
+    "cancelConfirm": "Yes, cancel booking",
     "reportProblem": "Report a problem with this booking",
     "guests": "Guests",
     "venue": "Venue",
-    "chat": "Chat with customer"
+    "chat": "Chat with customer",
+    "cancelled": "Booking cancelled. The customer gets the full advance back."
   },
   "money": {
     "title": "Payment",
@@ -198,7 +219,8 @@
     "doubleBooked": "Date clash with another booking",
     "more": "Anything else to add? (optional)",
     "placeholder": "Write a short note for the customer",
-    "required": "Pick a reason or write one (at least 3 letters)."
+    "required": "Pick a reason or write one (at least 3 letters).",
+    "pick": "Pick a reason"
   },
   "calendar": {
     "title": "Calendar",
@@ -217,7 +239,8 @@
       "free": "Free",
       "booked": "Booked",
       "blocked": "Blocked by you",
-      "selected": "Selected"
+      "selected": "Selected",
+      "past": "Past date"
     },
     "summary": {
       "free": "Free",
@@ -235,7 +258,10 @@
     "block": "Block",
     "unblock": "Unblock",
     "pickDay": "Tap a date to block it or see its bookings.",
-    "blockNote": "Dates you block show as \"not available\" to customers."
+    "blockNote": "Dates you block show as \"not available\" to customers.",
+    "pastNote": "This date has passed. You can still open its bookings, but not block or unblock it.",
+    "blocked": "Blocked {{what}}. Customers can't book it.",
+    "unblocked": "Opened {{what}}. Customers can book it again."
   },
   "slot": {
     "full": "Full day",
@@ -316,7 +342,9 @@
     "placeholder": "Type a message…",
     "send": "Send",
     "seen": "Seen",
-    "startHint": "Say hello and answer the customer's questions."
+    "startHint": "Say hello and answer the customer's questions.",
+    "emptyAction": "See your bookings",
+    "unreadLabel": "{{name}}, {{n}} unread"
   },
   "profile": {
     "earnings": "Earnings & payouts",
@@ -342,7 +370,8 @@
     "note": "Price and package changes go live instantly.",
     "notFound": "This item no longer exists.",
     "deleteTitle": "Delete this?",
-    "deleteBody": "Customers will no longer see it. Existing bookings are not affected."
+    "deleteBody": "Customers will no longer see it. Existing bookings are not affected.",
+    "deleteTitleNamed": "Delete “{{name}}”?"
   },
   "service": {
     "newTitle": "New service",
@@ -355,7 +384,13 @@
     "descriptionPlaceholder": "What's included, timings, anything customers should know",
     "minGuests": "Min guests (optional)",
     "maxGuests": "Max guests (optional)",
-    "guestRangeError": "Minimum guests can't be more than maximum guests."
+    "guestRangeError": "Minimum guests can't be more than maximum guests.",
+    "add": "Add service",
+    "delete": "Delete service",
+    "saved": "Service saved. Customers see the new details now.",
+    "added": "Service added. Customers can book it now.",
+    "deleted": "Service deleted.",
+    "titleRequired": "Enter a name for the service."
   },
   "package": {
     "newTitle": "New package",
@@ -366,7 +401,15 @@
     "itemPlaceholder": "e.g. DJ + lights",
     "itemsRequired": "Add at least one item.",
     "itemsMax": "You can add up to {{max}} items.",
-    "price": "Package price"
+    "price": "Package price",
+    "add": "Add package",
+    "delete": "Delete package",
+    "saved": "Package saved. Customers see the new details now.",
+    "added": "Package added. Customers can book it now.",
+    "deleted": "Package deleted.",
+    "titleRequired": "Enter a name for the package.",
+    "itemDuplicate": "This item is already in the package.",
+    "itemRemoved": "“{{item}}” removed"
   },
   "price": {
     "hint": "Price in rupees, at least ₹1.",
@@ -399,7 +442,9 @@
     "aboutPlaceholder": "Years of experience, what makes you special",
     "aboutHint": "Write at least {{min}} letters — customers read this first.",
     "aboutCount": "{{n}} / 1500",
-    "reviewNote": "Changes to your business info are checked by the EventSeva team."
+    "reviewNote": "Changes to your business info are checked by the EventSeva team.",
+    "saved": "Business info saved.",
+    "noChanges": "Nothing was changed."
   },
   "photos": {
     "title": "Photos & videos",
@@ -410,9 +455,9 @@
     "add": "Add photos",
     "cover": "Cover",
     "status": {
-      "pending": "In review",
-      "approved": "Approved",
-      "rejected": "Rejected"
+      "pending": "Waiting for review",
+      "approved": "Live",
+      "rejected": "Not approved"
     },
     "guidelines": "Clear photos, at least 1200px. No screenshots.",
     "reviewNote": "New photos show to customers after the team approves them.",
@@ -432,7 +477,29 @@
     "deleteBody": "It will be removed from your profile for good.",
     "photo": "Photo",
     "video": "Video",
-    "tapHint": "Tap a photo to make it the cover, move or delete it."
+    "tapHint": "Tap a photo to see it full screen; use ⋯ to make it the cover, move or delete it.",
+    "statusNote": {
+      "pending": "Customers will see this after the EventSeva team approves it, usually within a day.",
+      "approved": "Customers can see this on your profile.",
+      "rejected": "Customers can't see this."
+    },
+    "options": "{{kind}} options",
+    "optionsButton": "Cover, move or delete",
+    "position": "{{n}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next",
+    "coverLabel": "Cover photo. Tap to see it full screen.",
+    "videoPreviewNote": "This is the first frame of the video. Customers can play the whole video on your profile.",
+    "deletePhoto": "Delete photo",
+    "deleteVideo": "Delete video",
+    "deleteVideoTitle": "Delete this video?",
+    "deleteVideoBody": "Customers will no longer see it. This can't be undone.",
+    "deleteCoverTitle": "Delete your cover photo?",
+    "deleteCoverBody": "Customers will no longer see it, and your next photo becomes the cover. This can't be undone.",
+    "photoDeleted": "Photo deleted",
+    "videoDeleted": "Video deleted",
+    "deleteFailed": "Couldn't delete it, so it is back in your photos. {{reason}}",
+    "coverChanged": "Cover photo changed. Customers see it first."
   },
   "docs": {
     "title": "Documents",
@@ -455,7 +522,9 @@
     "last4Title": "Last 4 digits of Aadhaar",
     "last4Label": "Last 4 digits",
     "last4Error": "Enter exactly 4 digits.",
-    "chooseFile": "Choose Aadhaar photo"
+    "chooseFile": "Choose Aadhaar photo",
+    "uploaded": "{{doc}} uploaded. The team checks it within 24–48 hours.",
+    "uploadFailed": "{{doc}} was not uploaded. The reason is shown on its card."
   },
   "bank": {
     "title": "Bank account",
@@ -484,7 +553,14 @@
       "mismatch": "The two account numbers do not match.",
       "ifsc": "Enter a valid IFSC, e.g. SBIN0001234.",
       "upi": "UPI ID looks like name@bank."
-    }
+    },
+    "save": "Save bank details",
+    "savedToast": "Bank details saved ({{account}}). We'll check them within 1–2 working days.",
+    "show": "Show",
+    "hide": "Hide",
+    "endsWith": "Ends in {{last4}}. Check it against your passbook.",
+    "accountHint": "9 to 18 digits, no spaces.",
+    "matches": "✓ Both numbers match."
   },
   "earnings": {
     "title": "Earnings",
@@ -525,7 +601,11 @@
     "success": "Payment done. You are featured until {{day}}.",
     "successNoDate": "Payment done. Thank you!",
     "notLive": "Your profile must be live to get featured. Finish the review first, or contact EventSeva support.",
-    "paymentFailed": "Payment failed. No money was taken; please try again."
+    "paymentFailed": "Payment failed. No money was taken; please try again.",
+    "buyPlan": "Buy {{days}} for {{amount}}",
+    "devButtonPlan": "Test payment for {{days}} (development)",
+    "paying": "Opening payment…",
+    "cancelled": "Payment cancelled. No money was taken."
   },
   "reviews": {
     "title": "Reviews",
@@ -537,13 +617,17 @@
     "editReply": "Edit reply",
     "yourReply": "Your reply",
     "replyPlaceholder": "Thank the customer or answer their point politely",
-    "postReply": "Post reply"
+    "postReply": "Post reply",
+    "posting": "Posting…",
+    "replyPosted": "Reply posted. Customers can see it on your profile."
   },
   "notifications": {
     "title": "Notifications",
     "markAll": "Mark all read",
     "emptyTitle": "No notifications",
-    "emptyBody": "Booking requests, payments and messages will show up here."
+    "emptyBody": "Booking requests, payments and messages will show up here.",
+    "allRead": "All notifications marked as read.",
+    "unreadLabel": "Unread: {{title}}"
   },
   "help": {
     "title": "Help & support",
@@ -561,7 +645,9 @@
     "sent": "Sent! The EventSeva team will get back to you.",
     "history": "Your requests",
     "noHistory": "You haven't written to us yet.",
-    "resolution": "Our reply"
+    "resolution": "Our reply",
+    "sending": "Sending…",
+    "sentToast": "Sent to the EventSeva team. We usually reply within a day."
   },
   "language": {
     "title": "Choose language",
@@ -572,11 +658,13 @@
     "hindiSub": "Hindi",
     "info": "The whole app switches to this language — menus, buttons and notifications. Customer names and reviews stay as written.",
     "changeLater": "You can change this anytime from Profile → Language.",
-    "apply": "Apply"
+    "apply": "Apply",
+    "changed": "Language changed to English."
   },
   "offline": {
     "title": "No internet",
-    "body": "Check your connection and try again."
+    "body": "Check your connection and try again.",
+    "banner": "No internet. Showing saved data."
   },
   "errors": {
     "title": "Something went wrong",
@@ -589,8 +677,8 @@
     "underReview": "Your profile is being reviewed. You can edit it after the review.",
     "categoryLocked": "Your service type is fixed after approval. Contact EventSeva support to change it.",
     "incomplete": "Complete the checklist before sending your profile for review.",
-    "limitReached": "You've reached the limit. Remove one to add another.",
-    "dateInPast": "This date has already passed.",
+    "limitReached": "You've reached the limit. Delete one to add another.",
+    "dateInPast": "This date has already passed. Pick a later date.",
     "otpInvalid": "Wrong code. {{left}} attempts left.",
     "otpTooSoon": "Please wait {{sec}} seconds before asking for a new code.",
     "otpExpired": "This code has expired. Tap Resend OTP to get a new one.",
@@ -602,13 +690,48 @@
     "uploadNotConfigured": "Photo upload is not available right now. Please try again later or contact EventSeva support.",
     "uploadInvalid": "We could not verify this upload. Please try again.",
     "uploadFailed": "The upload did not finish. Please check your internet and try again.",
-    "mediaDuplicate": "You have already added this file.",
-    "videoTooLong": "Videos can be up to 2 minutes long.",
-    "fileTooBig": "This file is too big.",
-    "fileTooBigMax": "This file is too big. The limit is {{mb}} MB.",
+    "mediaDuplicate": "You have already added this file. Pick a different one.",
+    "videoTooLong": "Videos can be up to 2 minutes. Trim it in your gallery and add it again.",
+    "fileTooBig": "This file is too big. Pick a smaller one.",
+    "fileTooBigMax": "This file is too big — the limit is {{mb}} MB. Pick a smaller one, or trim the video.",
     "planNotFound": "This plan is no longer available. Please pick another one.",
     "paymentInvalid": "We could not verify this payment. If money was taken, it will be refunded automatically.",
-    "otpLimitUntil": "Too many OTP requests for this number. You can try again after {{time}}."
+    "otpLimitUntil": "Too many OTP requests for this number. You can try again after {{time}}.",
+    "accountActiveBookings_one": "You still have {{count}} open booking. Finish or cancel it first, then delete your account.",
+    "accountActiveBookings_other": "You still have {{count}} open bookings. Finish or cancel them first, then delete your account.",
+    "accountActiveBookingsNoCount": "You still have open bookings. Finish or cancel them first, then delete your account.",
+    "accountPendingPayout": "A payout is still on its way to your bank. You can delete your account once it has arrived.",
+    "bookingExists": "There is already a booking request for this. Check your bookings.",
+    "cityNotFound": "This city is not available. Pick a city from the list.",
+    "couponInvalid": "This coupon code is not valid. Check the code and try again.",
+    "couponNotApplicable": "This coupon can't be used for this booking.",
+    "couponNotAllowed": "Coupons can't be used on this booking.",
+    "couponAlreadyUsed": "This coupon has already been used.",
+    "couponUsedUp": "This coupon has been used up. Try another one.",
+    "eventNotFound": "This event no longer exists. Pull down to refresh.",
+    "forbidden": "You can't do this from your account. If you think this is a mistake, contact EventSeva support.",
+    "itemNotFound": "This service or package no longer exists. Pull down to refresh.",
+    "limitPhotos": "You can have up to 30 photos. Delete one to add another.",
+    "limitVideos": "You can have up to 5 videos. Delete one to add another.",
+    "notFound": "We couldn't find this. It may have been removed — pull down to refresh.",
+    "otpServiceBusy": "We can't send codes to new numbers right now. Please try again in a few hours.",
+    "ownVendor": "You can't book your own business.",
+    "partnerAppOnly": "Please log in again in the EventSeva Partner app.",
+    "paymentTimeOver": "The time to pay has run out, so this booking was released.",
+    "payoutAlreadyPaid": "This payout has already been sent to the bank.",
+    "quantityRequired": "Enter how many you need.",
+    "refundTooHigh": "The refund is more than what was paid.",
+    "reviewExists": "A review has already been written for this booking.",
+    "reviewNotAllowed": "A review can only be written after the event is done.",
+    "server": "Our server had a problem. Please try again in a minute.",
+    "unauthorized": "Your login has ended. Please log in again.",
+    "unsupportedFile": "This type of file can't be added. Pick a photo (JPG, PNG, HEIC) or a video (MP4).",
+    "validation": "Some details are not right. Check what you entered and try again.",
+    "vendorBadStatus": "Your profile's status has just changed. Pull down to refresh.",
+    "vendorExists": "You already have a business profile. Pull down to refresh.",
+    "vendorNotFound": "We couldn't find your business profile. Pull down to refresh, or start again.",
+    "dateTooFar": "You can block dates up to 2 years ahead. Please choose an earlier date.",
+    "tooManyMessages": "You are sending messages too fast. Wait a minute and try again."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -625,5 +748,23 @@
     "button": "Delete my account",
     "doneTitle": "Account deleted",
     "doneBody": "Your account has been deleted. You can sign up again any time."
+  },
+  "upload": {
+    "waiting": "Waiting",
+    "preparing": "Preparing…",
+    "saving": "Finishing…",
+    "done": "Added",
+    "failed": "Failed",
+    "percent": "Uploading {{n}}%",
+    "cancel": "Cancel upload",
+    "retry": "Try again",
+    "remove": "Remove",
+    "addMore": "Add more",
+    "cancelledOne": "Upload cancelled. Nothing was added.",
+    "allDone_one": "{{count}} file added. Customers see it after the team approves it.",
+    "allDone_other": "{{count}} files added. Customers see them after the team approves them.",
+    "allFailed_one": "The file was not added. The reason is shown under the photos.",
+    "allFailed_other": "{{count}} files were not added. The reasons are shown under the photos.",
+    "someFailed": "{{done}} added, {{failed}} not added. The reasons are shown under the photos."
   }
 }

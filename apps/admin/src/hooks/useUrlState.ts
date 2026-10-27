@@ -23,7 +23,15 @@ export function useUrlState() {
     [pathname, searchParams],
   );
 
-  const set = useCallback((updates: Updates) => router.push(hrefWith(updates), { scroll: false }), [router, hrefWith]);
+  /** `replace` for typing in a search box, so Back does not step through every letter. */
+  const set = useCallback(
+    (updates: Updates, options: { replace?: boolean } = {}) => {
+      const href = hrefWith(updates);
+      if (options.replace) router.replace(href, { scroll: false });
+      else router.push(href, { scroll: false });
+    },
+    [router, hrefWith],
+  );
 
   return { params: searchParams, hrefWith, set };
 }

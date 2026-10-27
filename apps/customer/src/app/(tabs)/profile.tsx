@@ -1,5 +1,5 @@
 // Profile (Profile board): name, phone, saved vendors, language, help, logout.
-import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -12,6 +12,8 @@ import { useShortlist } from '../../hooks/useShortlist';
 import { AppText } from '../../components/AppText';
 import { ListRow, Pill } from '../../components/Bits';
 import { Button } from '../../components/Button';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/Toast';
 
 export default function ProfileScreen() {
   const { t } = useTranslation();
@@ -20,11 +22,20 @@ export default function ProfileScreen() {
   const { gutter, isTablet } = useLayout();
   const shortlist = useShortlist();
 
+  const confirm = useConfirm();
+  const toast = useToast();
+
+  // UX.md §4: a question naming the thing, what will happen, and a red button naming the action.
   const confirmLogout = (everywhere: boolean) =>
-    Alert.alert(everywhere ? t('profile.logoutAllTitle') : t('profile.logoutTitle'), everywhere ? t('profile.logoutAllBody') : undefined, [
-      { text: t('common.cancel'), style: 'cancel' },
-      { text: t('profile.logout'), style: 'destructive', onPress: () => void session.signOut(everywhere) },
-    ]);
+    confirm({
+      title: everywhere ? t('profile.logoutAllTitle') : t('profile.logoutTitle'),
+      body: everywhere ? t('profile.logoutAllBody') : t('profile.logoutBody'),
+      confirmLabel: everywhere ? t('profile.logoutAllConfirm') : t('profile.logout'),
+      cancelLabel: t('profile.stay'),
+      busyLabel: t('profile.loggingOut'),
+      destructive: true,
+      action: () => session.signOut(everywhere),
+    });
 
   return (
     <SafeAreaView edges={['top']} style={styles.flex}>
@@ -39,7 +50,7 @@ export default function ProfileScreen() {
             <AppText variant="display" size="xxl" accessibilityRole="header" numberOfLines={1}>
               {me.name}
             </AppText>
-            <AppText size={14}>{`${formatPhone(me.phone)} · ${t('common.city')}`}</AppText>
+            <AppText size="sm">{`${formatPhone(me.phone)} · ${t('common.city')}`}</AppText>
           </View>
           <Button label={t('profile.edit')} variant="secondary" size="md" onPress={() => router.push('/edit-profile')} />
         </View>
@@ -55,14 +66,14 @@ export default function ProfileScreen() {
             onPress={() => router.push('/saved')}
           />
           <ListRow label={t('profile.events')} onPress={() => router.navigate('/bookings')} />
-          <ListRow label={t('profile.city')} value={t('common.city')} onPress={() => Alert.alert(t('profile.city'), t('profile.cityOnly'))} />
+          <ListRow label={t('profile.city')} value={t('common.city')} onPress={() => toast.info(t('profile.cityOnly'))} />
           <ListRow
             last
             label={t('profile.language')}
             value={
-              <AppText size={14}>
+              <AppText size="sm">
                 {`${t('language.english')} · `}
-                <AppText size={14} lang="hi">
+                <AppText size="sm" lang="hi">
                   {t('language.hindiNative')}
                 </AppText>
               </AppText>
@@ -86,7 +97,7 @@ export default function ProfileScreen() {
         <View style={styles.group}>
           <ListRow label={t('profile.logout')} onPress={() => confirmLogout(false)} />
           <ListRow label={t('profile.logoutAll')} onPress={() => confirmLogout(true)} />
-          <ListRow last label={t('deleteAccount.menu')} onPress={() => router.push('/delete-account')} />
+          <ListRow last tone="danger" label={t('deleteAccount.menu')} onPress={() => router.push('/delete-account')} />
         </View>
       </ScrollView>
     </SafeAreaView>

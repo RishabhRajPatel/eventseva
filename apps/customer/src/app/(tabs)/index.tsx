@@ -1,5 +1,5 @@
 // Home (Home / HomeHindi / TabletHome boards).
-import { useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +18,8 @@ import { Button, IconButton } from '../../components/Button';
 import { CategoryTile, useCategoryLabel } from '../../components/CategoryTile';
 import { OfferBanners } from '../../components/OfferBanners';
 import { Icon } from '../../components/Icon';
-import { ErrorState, isOffline, Loading } from '../../components/States';
+import { CategoryGridSkeleton, VendorGridSkeleton, VendorRowsSkeleton } from '../../components/Skeleton';
+import { EmptyState, ErrorState, isOffline } from '../../components/States';
 import { VendorCard, VendorRow } from '../../components/VendorCards';
 
 const openSearch = (params: { category?: string; focus?: string } = {}) => router.navigate({ pathname: '/search', params });
@@ -28,13 +29,15 @@ export default function HomeScreen() {
   const me = useMe();
   const { isTablet, gridColumns, gutter, width, hasRail } = useLayout();
   const categories = useCategories();
-  const top = useQuery({ queryKey: [...keys.vendors(), 'top'], queryFn: () => api.vendors({ limit: isTablet ? 8 : 5 }) });
+  const top = useQuery({ queryKey: [...keys.vendors(), 'top'], queryFn: () => api.vendors({ limit: isTablet ? 8 : 5 }), staleTime: 5 * 60_000 });
   const unread = useNotificationsBadge();
   const offers = useOffers();
   const label = useCategoryLabel();
   const [showAll, setShowAll] = useState(false);
 
   const refresh = () => Promise.all([categories.refetch(), top.refetch(), offers.refetch()]);
+  const cell = useMemo(() => ({ width: `${100 / (isTablet ? 8 : 4)}%` as const }), [isTablet]);
+  const openCategory = useCallback((slug: string) => openSearch({ category: slug }), []);
   if (isOffline(categories.error) && isOffline(top.error)) {
     return (
       <SafeAreaView style={styles.flex} edges={['top']}>
@@ -44,6 +47,7 @@ export default function HomeScreen() {
   }
 
   const perRow = isTablet ? 8 : 4;
+  const tileSize = isTablet ? 72 : 60;
   const cats = categories.data?.items ?? [];
   const visible = showAll || cats.length <= perRow ? cats : cats.slice(0, perRow - 1);
   const firstName = (me.name ?? '').split(' ')[0];
@@ -57,7 +61,7 @@ export default function HomeScreen() {
       onPress={() => openSearch({ focus: '1' })}
       style={[styles.search, isTablet && styles.searchTablet]}
     >
-      <Icon name="search" size={18} />
+      <Icon name="search" size={18} color={c.textMuted} />
       <AppText size="md" color={c.textMuted} numberOfLines={1}>
         {t('home.searchPlaceholder')}
       </AppText>
@@ -73,8 +77,8 @@ export default function HomeScreen() {
         {isTablet ? (
           <SafeAreaView edges={['top']} style={[styles.tabletHead, { paddingHorizontal: gutter }]}>
             <View style={styles.flex}>
-              <AppText size={14}>{t('common.city')}</AppText>
-              <AppText variant="display" size={32} accessibilityRole="header">
+              <AppText size="sm">{t('common.city')}</AppText>
+              <AppText variant="display" size="display" accessibilityRole="header">
                 {t('home.hello', { name: firstName })}
               </AppText>
             </View>
@@ -105,17 +109,17 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <SectionTitle title={t('home.services')} />
             {categories.isPending ? (
-              <Loading />
+              <CategoryGridSkeleton perRow={perRow} size={tileSize} />
             ) : (
               <View style={styles.grid}>
                 {visible.map((cat) => (
-                  <View key={cat.slug} style={{ width: `${100 / perRow}%` }}>
-                    <CategoryTile icon={cat.icon} label={label(cat.slug, cat.name)} onPress={() => openSearch({ category: cat.slug })} size={isTablet ? 72 : 60} />
+                  <View key={cat.slug} style={cell}>
+                    <CategoryTile icon={cat.icon} label={label(cat.slug, cat.name)} onPress={() => openCategory(cat.slug)} size={tileSize} />
                   </View>
                 ))}
                 {cats.length > perRow ? (
-                  <View style={{ width: `${100 / perRow}%` }}>
-                    <CategoryTile icon="more" more label={showAll ? t('home.less') : t('home.more')} onPress={() => setShowAll((s) => !s)} size={isTablet ? 72 : 60} />
+                  <View style={cell}>
+                    <CategoryTile icon="more" more label={showAll ? t('home.less') : t('home.more')} onPress={() => setShowAll((s) => !s)} size={tileSize} />
                   </View>
                 ) : null}
               </View>
@@ -128,7 +132,7 @@ export default function HomeScreen() {
             <View style={[styles.banner, isTablet && styles.bannerTablet]}>
               <View style={[styles.bannerText, isTablet && styles.flex]}>
                 <Pill label={t('home.bannerTag')} tone="peach" />
-                <AppText variant="display" size={22}>
+                <AppText variant="display" size="xl">
                   {t('home.bannerTitle')}
                 </AppText>
               </View>
@@ -139,11 +143,20 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <SectionTitle title={t('home.topVendors')} action={t('home.seeAll')} onAction={() => openSearch()} />
             {top.isPending ? (
-              <Loading />
+              isTablet ? (
+                <VendorGridSkeleton columns={gridColumns} width={contentWidth} rows={1} />
+              ) : (
+                <VendorRowsSkeleton />
+              )
             ) : top.error ? (
               <ErrorState error={top.error} onRetry={() => top.refetch()} />
             ) : top.data.items.length === 0 ? (
-              <AppText size="md">{t('home.noVendors')}</AppText>
+              <EmptyState
+                compact
+                icon="searchEmpty"
+                title={t('home.noVendors')}
+                actions={<Button label={t('home.bannerAction')} variant="outline" size="md" onPress={() => router.push('/event/new')} />}
+              />
             ) : isTablet ? (
               <View style={styles.cardGrid}>
                 {top.data.items.map((v) => (

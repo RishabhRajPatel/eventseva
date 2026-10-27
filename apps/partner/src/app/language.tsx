@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -9,6 +9,9 @@ import { errorText } from '../lib/errors';
 import { useSession } from '../lib/session';
 import { languageStore } from '../lib/tokens';
 import { applyLanguage } from '../i18n';
+import i18n from '../i18n';
+import { haptic } from '../lib/haptics';
+import { toast } from '../lib/toast';
 import { c, radius, space } from '../lib/theme';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
@@ -39,9 +42,10 @@ export default function LanguageScreen() {
       updateMe(me);
       // Category names and similar text come from the server in the chosen language.
       void qc.invalidateQueries();
+      toast.success(i18n.t('language.changed'));
       router.back();
     } catch (e) {
-      Alert.alert(t('errors.title'), errorText(t, e));
+      toast.error(errorText(t, e));
     } finally {
       setSaving(false);
     }
@@ -57,9 +61,12 @@ export default function LanguageScreen() {
               key={o.lang}
               testID={`lang-${o.lang}`}
               accessibilityRole="radio"
-              accessibilityState={{ checked: on }}
-              onPress={() => setChoice(o.lang)}
-              style={[styles.tile, on ? styles.tileOn : null]}
+              accessibilityState={{ checked: on, selected: on }}
+              onPress={() => {
+                if (!on) haptic.select();
+                setChoice(o.lang);
+              }}
+              style={({ pressed }) => [styles.tile, on ? styles.tileOn : null, pressed ? { opacity: 0.85 } : null]}
             >
               {on ? (
                 <View style={styles.tick}>
@@ -89,7 +96,7 @@ export default function LanguageScreen() {
 const styles = StyleSheet.create({
   tiles: { flexDirection: 'row', gap: space.md },
   tile: { flex: 1, minHeight: 112, borderRadius: radius.lg, backgroundColor: c.white, borderWidth: 1.5, borderColor: c.lilac, padding: space.lg, paddingVertical: space.xl, gap: 6 },
-  tileOn: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lavender },
+  tileOn: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lilac },
   tick: { position: 'absolute', top: 12, right: 12, width: 24, height: 24, borderRadius: 12, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
   info: { borderRadius: radius.md, backgroundColor: c.white, padding: 14, paddingHorizontal: space.lg },
 });

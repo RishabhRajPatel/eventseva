@@ -110,7 +110,7 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
 
       {['requested', 'accepted', 'confirmed', 'completed'].includes(booking.status) ? (
         <>
-          <Button testID="chat-customer" kind="secondary" icon="chat" label={t('booking.chat')} loading={openingChat} onPress={() => void openChat()} />
+          <Button testID="chat-customer" kind="secondary" icon="chat" label={t('booking.chat')} loading={openingChat} onPress={openChat} />
           {chatError ? <Notice tone="warning">{chatError}</Notice> : null}
         </>
       ) : null}
@@ -122,7 +122,7 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
       ) : null}
 
       {isCancellable(booking, todayIst()) ? (
-        <Button testID="cancel-booking" kind="danger" label={t('booking.cancel')} onPress={() => setCancelling(true)} />
+        <Button testID="cancel-booking" kind="dangerOutline" label={t('booking.cancel')} onPress={() => setCancelling(true)} />
       ) : null}
       <LinkButton label={t('booking.reportProblem')} onPress={() => router.push({ pathname: '/help', params: { bookingId: booking.id } })} />
 
@@ -134,7 +134,9 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
         confirmLabel={t('booking.cancelConfirm')}
         loading={cancel.isPending}
         onClose={() => setCancelling(false)}
-        onConfirm={(reason) => cancel.mutate(reason, { onSuccess: () => setCancelling(false) })}
+        onConfirm={(reason) => {
+          if (!cancel.isPending) cancel.mutate(reason, { onSuccess: () => setCancelling(false) });
+        }}
       />
     </View>
   );

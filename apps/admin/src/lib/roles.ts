@@ -33,11 +33,12 @@ export interface NavItem {
   href: `/${string}`;
   label: string;
   /** Dashboard count shown as a badge next to the link. */
-  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts';
+  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts' | 'openAlerts';
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
-  { section: 'dashboard', href: '/dashboard', label: 'Dashboard' },
+  // Open system alerts (SMS budget) are shown on the dashboard, for every role.
+  { section: 'dashboard', href: '/dashboard', label: 'Dashboard', badge: 'openAlerts' },
   { section: 'vendors', href: '/vendors', label: 'Vendors', badge: 'pendingVendors' },
   { section: 'photos', href: '/photos', label: 'Photos', badge: 'pendingMedia' },
   { section: 'bookings', href: '/bookings', label: 'Bookings' },
@@ -87,11 +88,12 @@ export type AdminAction =
   | 'coupon.manage'
   | 'featured.plans'
   | 'featured.grant'
-  | 'booking.refund';
+  | 'booking.refund'
+  | 'alert.resolve';
 
 const ACTIONS: Record<Exclude<AdminRole, 'super'>, readonly AdminAction[]> = {
   verifier: ['vendor.decide', 'media.moderate'],
-  support: ['review.hide', 'complaint.manage', 'user.block'],
+  support: ['review.hide', 'complaint.manage', 'user.block', 'alert.resolve'],
   finance: ['payout.manage', 'coupon.manage', 'booking.refund'],
 };
 

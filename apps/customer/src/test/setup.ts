@@ -10,3 +10,6 @@ jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
   __esModule: true,
   default: () => ({ ...size }),
 }));
+
+// FlashList measures its container natively; give it a phone-sized window in tests.
+require('@shopify/flash-list/jestSetup');

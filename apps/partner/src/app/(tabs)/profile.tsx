@@ -1,12 +1,13 @@
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { Image } from 'expo-image';
 import { useTranslation } from 'react-i18next';
 import { rupees, type OwnVendor } from '@eventseva/app-shared';
 import { canEdit, isCategoryLocked } from '../../lib/routing';
-import { coverOf, remainingSlots, thumbUrl } from '../../lib/media';
+import { coverOf, thumbUrl } from '../../lib/media';
 import { useDashboard, useVendor } from '../../lib/queries';
 import { useSession } from '../../lib/session';
+import { confirm } from '../../lib/confirm';
 import { istDay, vendorStatus } from '../../lib/labels';
 import { c, radius, space } from '../../lib/theme';
 import { usePhotoUpload } from '../../hooks/usePhotoUpload';
@@ -18,7 +19,6 @@ import { Card, CardHeader, Row } from '../../components/Card';
 import { CatalogList } from '../../components/CatalogList';
 import { Pill } from '../../components/Chip';
 import { CategoryIcon, Icon, type IconName } from '../../components/Icon';
-import { UploadStatus } from '../../components/UploadStatus';
 import { MediaGrid } from '../../components/MediaGrid';
 import { Notice } from '../../components/Notice';
 import { Screen } from '../../components/Screen';
@@ -42,12 +42,12 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
   const tablet = useIsTablet();
   const lang = useLang();
   const editable = canEdit(vendor.status);
-  const upload = usePhotoUpload({ limit: remainingSlots(vendor.media) });
+  const upload = usePhotoUpload({ media: vendor.media });
   const cover = coverOf(vendor.media);
   const coverUrl = cover ? thumbUrl(cover, 56, 56) : null;
   const status = vendor.status === 'approved' ? { label: t('home.verified'), tone: 'success' as const } : vendorStatus(t, vendor.status);
 
-  const menu: Array<{ icon: IconName; label: string; value?: string; onPress: () => void; testID: string }> = [
+  const menu: Array<{ icon: IconName; label: string; value?: string; onPress: () => unknown; testID: string }> = [
     { icon: 'rupee', label: t('profile.earnings'), value: dashboard.data ? t('profile.thisMonth', { amount: rupees(dashboard.data.monthEarningsPaise) }) : undefined, onPress: () => router.push('/earnings'), testID: 'menu-earnings' },
     {
       icon: 'search',
@@ -66,11 +66,10 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
       icon: 'logout',
       label: t('profile.logout'),
       testID: 'menu-logout',
-      onPress: () =>
-        Alert.alert(t('profile.logoutTitle'), t('profile.logoutBody'), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('profile.logout'), style: 'destructive', onPress: () => void signOut() },
-        ]),
+      onPress: async () => {
+        const ok = await confirm({ title: t('profile.logoutTitle'), body: t('profile.logoutBody'), confirmLabel: t('profile.logout'), cancelLabel: t('common.stay'), destructive: true });
+        if (ok) await signOut();
+      },
     },
   ];
 
@@ -82,8 +81,17 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
           title={t('photos.title')}
           right={<LinkButton testID="manage-photos" label={t('photos.manage', { n: vendor.media.length })} onPress={() => router.push('/photos')} />}
         />
-        <MediaGrid media={vendor.media.slice(0, 9)} onAdd={editable ? () => void upload.pick() : undefined} adding={upload.busy} canAdd={remainingSlots(vendor.media) > 0} onPressItem={() => router.push('/photos')} />
-        <UploadStatus progress={upload.progress} />
+        <MediaGrid
+          compact
+          media={vendor.media.slice(0, 9)}
+          uploads={upload.items}
+          onAdd={editable ? () => void upload.pick() : undefined}
+          canAdd={upload.canAdd}
+          onOpen={() => router.push('/photos')}
+          onCancelUpload={upload.cancel}
+          onRetryUpload={upload.retry}
+          onDismissUpload={upload.dismiss}
+        />
       </Card>
       <Card>
         <CardHeader title={t('business.title')} right={editable ? <LinkButton testID="edit-business" label={t('common.change')} onPress={() => router.push('/business')} /> : null} />
@@ -110,7 +118,7 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
       <BankCard />
       <Card style={{ paddingVertical: space.xs }}>
         {menu.map((m, i) => (
-          <Row key={m.testID} first={i === 0} onPress={m.onPress} testID={m.testID} chevron>
+          <Row key={m.testID} first={i === 0} onPress={() => void m.onPress()} testID={m.testID} chevron>
             <View style={styles.menuLabel}>
               <Icon name={m.icon} size={18} color={c.royal} />
               <Txt size="md">{m.label}</Txt>
@@ -130,7 +138,7 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
     <>
       <View style={styles.head}>
         <View style={styles.avatar}>
-          {coverUrl ? <Image source={{ uri: coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" /> : <CategoryIcon icon={vendor.category.icon} size={26} color={c.indigo} />}
+          {coverUrl && cover ? <Image source={{ uri: coverUrl }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" recyclingKey={cover.id} placeholder={cover.blurhash ? { blurhash: cover.blurhash } : undefined} /> : <CategoryIcon icon={vendor.category.icon} size={26} color={c.indigo} />}
         </View>
         <View style={{ flex: 1, gap: space.xs }}>
           <Txt variant="display" size="xxl" numberOfLines={2} accessibilityRole="header">

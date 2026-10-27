@@ -6,6 +6,7 @@ import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { todayIst } from '../bookings/booking.rules';
 import { notify } from '../notifications/notify';
+import { BookingsService } from '../bookings/bookings.service';
 import { refreshRating } from '../social/social.controller';
 import { AppConfig, CONFIG } from '../config';
 import { decrypt } from '../common/crypto';
@@ -71,6 +72,7 @@ export class AdminOpsController {
   constructor(
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly bookingsService: BookingsService,
   ) {}
 
   @Get('dashboard')
@@ -394,8 +396,17 @@ export class AdminOpsController {
       const res = await client.query('UPDATE users SET is_blocked = true WHERE id = $1 AND NOT is_blocked', [id]);
       if (!res.rowCount) throw new AppError('NOT_FOUND', 'User not found or already blocked.', HttpStatus.NOT_FOUND);
       await client.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [id]);
+      // A blocked vendor must not stay in search or keep receiving requests. Unblocking does not
+      // put it back: a verifier approves the profile again.
+      const vendor = await this.db.one<{ id: string }>(
+        client,
+        `UPDATE vendors SET status = 'on_hold', reject_reason = 'Owner account blocked'
+          WHERE user_id = $1 AND status IN ('pending', 'approved') RETURNING id`,
+        [id],
+      );
+      const open = vendor ? await this.bookingsService.closeOpenFor(client, vendor.id) : null;
       await audit(client, admin.adminId, 'user.block', 'user', id, { isBlocked: false }, { isBlocked: true, reason: body.reason });
-      return { id, isBlocked: true };
+      return { id, isBlocked: true, ...(open && { vendorOnHold: true, closedBookings: open.closed, confirmedBookings: open.confirmed }) };
     });
   }
 

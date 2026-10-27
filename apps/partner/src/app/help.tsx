@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import { formatDay, todayIst, type Complaint } from '@eventseva/app-shared';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { keys, useBookings, useComplaints } from '../lib/queries';
+import { toast } from '../lib/toast';
 import { c, space } from '../lib/theme';
 import { useLang } from '../hooks/useLang';
 import { Button } from '../components/Button';
@@ -15,7 +16,7 @@ import { ChoiceChip, Pill, type Tone } from '../components/Chip';
 import { Field } from '../components/Field';
 import { Notice } from '../components/Notice';
 import { Screen } from '../components/Screen';
-import { QueryView } from '../components/States';
+import { EmptyInline, QueryView } from '../components/States';
 import { Txt } from '../components/Txt';
 
 const STATUS_TONE: Record<Complaint['status'], Tone> = { open: 'warning', in_progress: 'info', resolved: 'success' };
@@ -41,9 +42,10 @@ export default function HelpScreen() {
       setDetails('');
       setTried(false);
       setSent(true);
+      toast.success(t('help.sentToast'));
       void qc.invalidateQueries({ queryKey: keys.complaints });
     },
-    onError: (e) => Alert.alert(t('errors.title'), errorText(t, e)),
+    onError: (e) => toast.error(errorText(t, e)),
   });
 
   const subjectError = subject.trim().length < 3 ? t('help.subjectShort') : null;
@@ -62,7 +64,7 @@ export default function HelpScreen() {
               {t('help.aboutBooking')}
             </Txt>
             <View style={styles.chips}>
-              <ChoiceChip label={t('help.noBooking')} selected={!bookingId} onPress={() => setBookingId(null)} />
+              <ChoiceChip testID="about-none" label={t('help.noBooking')} selected={!bookingId} onPress={() => setBookingId(null)} />
               {recent.map((b) => (
                 <ChoiceChip key={b.id} label={`${b.event.title} · ${formatDay(b.day, lang)}`} selected={bookingId === b.id} onPress={() => setBookingId(b.id)} />
               ))}
@@ -75,10 +77,11 @@ export default function HelpScreen() {
           testID="send-complaint"
           label={t('help.send')}
           loading={create.isPending}
+          loadingLabel={t('help.sending')}
           onPress={() => {
             setTried(true);
             setSent(false);
-            if (!subjectError && !detailsError) create.mutate();
+            if (!subjectError && !detailsError && !create.isPending) create.mutate();
           }}
         />
       </Card>
@@ -106,9 +109,9 @@ export default function HelpScreen() {
                 ))}
               </View>
             ) : (
-              <Txt size="sm" color={c.textMuted}>
-                {t('help.noHistory')}
-              </Txt>
+              <Card>
+                <EmptyInline icon="help" text={t('help.noHistory')} />
+              </Card>
             )
           }
         </QueryView>

@@ -33,7 +33,7 @@ one product. Colours come from `packages/app-shared/src/theme.ts` and the boards
 ## 2. Selecting things (chips, options, slots, dates, plans, photos)
 
 - **Selected:** lilac fill, a 2dp royal border and a ✓ icon. The state must never be shown by colour alone (the ✓ is for colour-blind users).
-- **Unselected:** white fill with a 1.5dp lavender border. **Disabled:** 40% opacity, plus the reason as a hint ("Booked", "Past date").
+- **Unselected:** white fill with a 1.5dp outline border `#8a78cf` (3.7:1 on white; lavender is too faint for a control edge). **Disabled:** 40% opacity, plus the reason as a hint ("Booked", "Past date").
 - **Feel:** a light haptic tap (`Haptics.selectionAsync()`) on every select or unselect, and a ripple / pressed opacity of 0.85.
 - **Accessibility:** `accessibilityRole="radio"` (single choice) or `"checkbox"` (multiple), plus `accessibilityState={{ selected }}`.
 

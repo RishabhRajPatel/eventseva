@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
 import { AppConfig, CONFIG, loadConfig } from './config';
 import { ErrorFilter } from './common/errors';
+import { TrimBodyPipe } from './common/trim.pipe';
 import { Db } from './db/db.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
@@ -117,7 +118,7 @@ export function configureApp(app: INestApplication) {
   // Behind a load balancer, req.ip must be the user's IP (from X-Forwarded-For), not the proxy's.
   if (config.trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
   app.use(helmet());
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalPipes(new TrimBodyPipe(), new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new ErrorFilter());
   app.enableShutdownHooks();
   return app;

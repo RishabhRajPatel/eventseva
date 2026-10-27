@@ -87,7 +87,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 | Route | Notes |
 |---|---|
-| `POST /v1/events` | `{title, eventType, eventDate, cityId, venueAddress?, guestCount?, budgetPaise?}` → `EventSummary`. `EVENT_IN_PAST` |
+| `POST /v1/events` | `{title, eventType, eventDate, cityId, venueAddress?, guestCount?, budgetPaise?}` → `EventSummary`. `EVENT_IN_PAST`, `DATE_TOO_FAR` (more than 2 years ahead, with `lastDay`) |
 | `GET /v1/events` | `{items: EventSummary[]}` with `confirmedCount`, `pendingCount`, `committedPaise` |
 | `GET /v1/events/:id` | `EventSummary & {bookings: Booking[]}` |
 | `POST /v1/bookings` | `{eventId, vendorId, serviceId \| packageId, slot: 'full'\|'day'\|'night', quantity?, note?}` → `Booking` |
@@ -103,7 +103,15 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 - **Slot:** `full` = whole day, `day` = 10–4, `night` = 6–11. `quantity` is required for `COUNTED_UNITS`
   (`QUANTITY_REQUIRED`).
-- **Booking request errors:** `SLOT_TAKEN` 409, `BOOKING_EXISTS` 409, `OWN_VENDOR`, `ITEM_NOT_FOUND`, `EVENT_NOT_FOUND`.
+- **Booking request errors:** `SLOT_TAKEN` 409, `BOOKING_EXISTS` 409, `OWN_VENDOR`, `ITEM_NOT_FOUND`, `EVENT_NOT_FOUND`, and:
+  - `TOO_LATE_TO_BOOK` 409: the event day starts in less than 2 hours, so the vendor could not reply in time.
+  - `TOO_MANY_OPEN_REQUESTS` 429 (`max`, 15): too many requests still waiting for a reply.
+  - `QUANTITY_OUT_OF_RANGE` 400 (`min`, `max`, either may be null): the guest count is outside the service's min / max guests (per plate / per person only).
+- **Deadlines:** `respondBy` is 24 h after the request and `payBy` 24 h after acceptance, but both are cut short so that
+  everything finishes before the event day starts (midnight, India); the vendor's reply deadline ends 1 hour before that.
+- **Vendor paused or blocked:** requests waiting for a reply become `rejected` and unpaid acceptances `cancelled_by_vendor`,
+  with a notification; confirmed bookings stay.
+- **Text fields:** every string in a request body is trimmed first (except passwords), so a reason or title made of spaces fails validation.
 - **Payment:** the app shows the checkout with `keyId`, `orderId` and `amountPaise`, then calls verify.
   - With a coupon, `amountPaise` is `payNowPaise`: the advance minus the discount.
   - EventSeva pays the discount. The vendor's payout and the balance paid at the event do not change.
@@ -143,7 +151,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/conversations` | Customer app: `{vendorId}`. Partner app: `{bookingId}` (only its own customers). → `{id}` (get-or-create) |
 | `GET /v1/conversations` | `{items: Conversation[]}` (both apps) |
 | `GET /v1/conversations/:id/messages?beforeId=` | `{items: Message[] newest first, hasMore, phoneShared}`; marks as read |
-| `POST /v1/conversations/:id/messages` | `{body}` → `Message` |
+| `POST /v1/conversations/:id/messages` | `{body}` → `Message`. At most 20 per minute per person: `TOO_MANY_MESSAGES` 429. Before a confirmed booking, phone numbers (also in Hindi digits or split up), e-mails and WhatsApp / Telegram links are hidden |
 | `POST /v1/complaints` · `GET /v1/complaints` | `{bookingId?, subject, details}` (Help & support) |
 | `GET /v1/notifications?beforeId=` | `{items, hasMore, unreadCount}` |
 | `POST /v1/notifications/read` | `{ids?}`; no ids marks all as read |
@@ -170,7 +178,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `POST /v1/partner/bookings/:id/reject` | `{reason}` |
 | `POST /v1/partner/bookings/:id/cancel` | `{reason}`; accepted or confirmed; the customer gets 100% back |
 | `GET /v1/partner/calendar?month=2026-11` | `{month, items: CalendarEntry[]}`; days not listed are free |
-| `POST /v1/partner/calendar/block` · `DELETE …/block` | `{day, slot}` → 204. `SLOT_TAKEN`, `DATE_IN_PAST` |
+| `POST /v1/partner/calendar/block` · `DELETE …/block` | `{day, slot}` → 204. `SLOT_TAKEN`, `DATE_IN_PAST`, `DATE_TOO_FAR` |
 | `GET /v1/partner/earnings?month=` | `Earnings` (Kamai screen) |
 | `GET /v1/partner/featured` | `FeaturedOverview`: current featured end date, plans (7 days ₹499 and 30 days ₹1,499 by default, set by admin), history |
 | `POST /v1/partner/featured/plans/:planId/order` | → `FeaturedOrder` for the Razorpay checkout. Live vendors only (`VENDOR_NOT_ACTIVE`) |
@@ -234,14 +242,14 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/vendors?status=pending&page=` | verifier, support | approval queue (oldest first) |
 | `GET /v1/admin/vendors/:id` | verifier, support | full vendor + `owner{phone}` + `history[]` + all media + `documents[]` (`viewUrl` for verifier/super only, valid 10 min) |
 | `POST /v1/admin/documents/:id/approve` · `/reject {reason}` | verifier | ID document review |
-| `POST /v1/admin/vendors/:id/approve` · `/reject {reason}` · `/hold {reason}` | verifier | `VENDOR_BAD_STATUS` 409 |
+| `POST /v1/admin/vendors/:id/approve` · `/reject {reason}` · `/hold {reason}` | verifier | `VENDOR_BAD_STATUS` 409. `/hold` closes the vendor's open requests and returns `closedBookings` and `confirmedBookings` (customers to call) |
 | `GET /v1/admin/bookings?status=&q=&page=` · `GET /v1/admin/bookings/:id` | support, finance | `q` matches vendor name, phone or booking id; detail has `payments[]` and `payout` |
 | `GET /v1/admin/payouts?status=&due=true&page=` | finance | each payout has `bankStatus` (`null` = no bank account) |
 | `GET /v1/admin/vendors/:id/bank-account` | finance | full account number; each view is audit-logged |
 | `POST /v1/admin/vendors/:id/bank-account/verify` · `/reject {reason}` | finance | the vendor is notified |
 | `POST /v1/admin/payouts/:id/mark-paid {reference}` · `/hold {reason}` | finance | records the bank UTR |
 | `GET /v1/admin/complaints?status=&page=` · `POST /v1/admin/complaints/:id {status, resolution?}` | support | resolving requires `resolution` |
-| `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere |
+| `GET /v1/admin/users?q=&page=` · `POST …/:id/block {reason}` · `POST …/:id/unblock` | support | block logs the user out everywhere; a vendor owner's profile goes `on_hold` with its open requests closed (`vendorOnHold`, `closedBookings`, `confirmedBookings`). Unblocking does not make the profile live again |
 | `GET /v1/admin/media?status=pending&page=` · `POST …/:id/approve` · `POST …/:id/reject {reason}` | verifier | photo moderation |
 | `POST /v1/admin/reviews/:id/hide {reason}` | support | |
 | `GET /v1/admin/alerts` · `POST /v1/admin/alerts/:id/resolve` | all view, support resolves | system alerts (SMS budget at 80%, used up, hard stop). The dashboard has `smsLast24h`, `smsBudgetPerDay`, `openAlerts` |
@@ -249,7 +257,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/featured-plans` · `POST` · `PATCH /:id` | finance views, super edits | `{nameEn, nameHi, days, pricePaise}`; update `{nameEn?, nameHi?, pricePaise?, isActive?}` |
 | `GET /v1/admin/featured-purchases?page=` | finance | sales and free grants |
 | `POST /v1/admin/vendors/:id/feature {days, reason}` · `POST …/unfeature {reason}` | super | free featured days / stop featuring |
-| `POST /v1/admin/bookings/:id/refund` | finance | `{amountPaise, reason, fromVendorPayout?}`: partial refund of any amount up to what is left (`REFUND_TOO_HIGH` with `maxPaise`). With `fromVendorPayout`, the vendor's payout is cut by the same amount (`PAYOUT_ALREADY_PAID` if already sent) |
+| `POST /v1/admin/bookings/:id/refund` | finance | `{amountPaise, reason, fromVendorPayout?}`: partial refund of any amount up to what is left (`REFUND_TOO_HIGH` with `maxPaise`). With `fromVendorPayout`, the vendor's payout is cut by the same amount (`PAYOUT_ALREADY_PAID` if already sent, `NO_VENDOR_PAYOUT` if the booking is not confirmed or completed). A payout cut to ₹0 is not created |
 | `GET /v1/admin/cities` · `POST` · `PATCH /:id` | super | `{name, nameHi, state}`; new cities start hidden; `{isActive}` shows or hides; `LAST_CITY` |
 | `GET /v1/admin/audit?action=&targetType=&targetId=&adminId=&page=` | super | 50 per page, newest first, plus `admins` for the filter |
 | `GET /v1/admin/export/:kind?from=&to=` | by kind | CSV download. `kind`: bookings, payouts (finance), users (support), vendors (verifier, support), coupons, featured (finance). Dates are inclusive India days |

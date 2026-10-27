@@ -44,12 +44,19 @@ test('confirmed: vendor phone and Call; cancelling shows the refund estimate fir
   await user.press(screen.getByRole('button', { name: 'Cancel booking' }));
   // 20 days before the event: 90% of ₹33,750
   expect(await screen.findByText(`You will get about ${rupees(3_037_500)} back (90% of the advance).`)).toBeOnTheScreen();
+  // UX.md §4: the question names the vendor; the buttons name the action and "Keep booking".
+  expect(screen.getByText('Cancel your booking with Shree Ram Caterers?')).toBeOnTheScreen();
+  expect(screen.getByRole('button', { name: 'Keep booking' })).toBeOnTheScreen();
   const confirm = screen.getByRole('button', { name: 'Yes, cancel booking' });
-  expect(confirm).toBeDisabled();
+  // Pressing without a reason explains what is missing instead of sending.
+  await user.press(confirm);
+  expect(await screen.findByText('Please tell the vendor why, in a few words (at least 3 letters).')).toBeOnTheScreen();
+  expect(mockedApi.cancelBooking).not.toHaveBeenCalled();
   await user.type(screen.getByLabelText('Why are you cancelling?'), 'Dates changed');
   await user.press(confirm);
   expect(mockedApi.cancelBooking).toHaveBeenCalledWith('b1', 'Dates changed');
   expect(await screen.findByText('You cancelled this booking')).toBeOnTheScreen();
+  expect(screen.getByText(`Booking cancelled. ${rupees(3_037_500)} will be refunded to your account.`)).toBeOnTheScreen();
   expect(screen.getByText(`${rupees(3_037_500)} will be refunded to you.`)).toBeOnTheScreen();
 });
 

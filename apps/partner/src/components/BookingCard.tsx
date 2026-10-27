@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { formatDay, type Booking } from '@eventseva/app-shared';
@@ -37,12 +38,13 @@ export function Detail({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function BookingCard({ booking, now, onOpen, selected }: { booking: Booking; now: number; onOpen: () => void; selected?: boolean }) {
+/** One request or booking in a list. Memoised: pass a stable `onOpen`. */
+export const BookingCard = memo(function BookingCard({ booking, now, onOpen, selected }: { booking: Booking; now: number; onOpen: (b: Booking) => void; selected?: boolean }) {
   const { t } = useTranslation();
   const lang = useLang();
   const isRequest = booking.status === 'requested' && !!remaining(booking.respondBy, now);
   return (
-    <Card testID={`booking-${booking.id}`} onPress={onOpen} style={[{ gap: space.md }, selected ? styles.selected : null]} accessibilityLabel={booking.event.title}>
+    <Card testID={`booking-${booking.id}`} onPress={() => onOpen(booking)} style={[styles.card, selected ? styles.selected : null]} accessibilityLabel={booking.event.title}>
       <View style={styles.head}>
         <Txt variant="bold" size="lg" style={{ flex: 1 }} numberOfLines={2}>
           {booking.event.title}
@@ -64,12 +66,13 @@ export function BookingCard({ booking, now, onOpen, selected }: { booking: Booki
       {isRequest ? <RequestActions bookingId={booking.id} /> : null}
     </Card>
   );
-}
+});
 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: space.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.sm },
   detail: { width: '50%', paddingRight: space.sm },
   note: { backgroundColor: c.cream, borderRadius: radius.md, paddingVertical: 10, paddingHorizontal: space.md },
-  selected: { borderWidth: 2, borderColor: c.royal },
+  card: { gap: space.md },
+  selected: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lavender },
 });

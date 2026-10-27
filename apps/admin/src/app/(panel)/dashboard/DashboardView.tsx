@@ -1,15 +1,22 @@
 'use client';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import { memo } from 'react';
 import { rupees, type BookingStatus } from '@eventseva/app-shared';
 import { BOOKING_STATUSES } from '@eventseva/core';
-import { BarChart } from '@/components/BarChart';
 import { useShell } from '@/components/ShellContext';
-import { PageHead, QueryView, StatusPill } from '@/components/ui';
-import { useApiQuery } from '@/hooks/useApiQuery';
+import { CardSkeleton, PageHead, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import type { Dashboard } from '@/lib/admin-types';
 import { BOOKING_STATUS } from '@/lib/labels';
 import { canView, type AdminRole, type Section } from '@/lib/roles';
+import { AlertsBanner } from './AlertsBanner';
+import { SmsBudgetCard } from './SmsBudgetCard';
 import styles from './dashboard.module.css';
+
+// The chart is the heaviest part of the page and sits below the numbers: load it in its own chunk.
+const BarChart = dynamic(() => import('@/components/BarChart').then((m) => m.BarChart), {
+  loading: () => <span className="skel" style={{ display: 'block', height: '13.75rem' }} aria-hidden="true" />,
+});
 
 interface StatDef {
   label: string;
@@ -39,16 +46,20 @@ const STATS: StatDef[] = [
 ];
 
 export function DashboardView() {
-  const { session } = useShell();
+  // The shell already loads (and refreshes) GET /v1/admin/dashboard for the nav badges: reuse it.
+  const { session, countsState: state, refreshCounts } = useShell();
   const role = session.admin.role;
-  const state = useApiQuery<Dashboard>('/v1/admin/dashboard');
 
   return (
     <div className="page">
-      <PageHead title="Dashboard" subtitle={state.data ? `Prayagraj · ${monthName(state.data.month)}` : 'Prayagraj'} />
-      <QueryView state={state} loadingLabel="Loading dashboard…">
+      <PageHead title="Dashboard" subtitle={state.data ? `Prayagraj · ${monthName(state.data.month)}` : 'Prayagraj'}>
+        <RefreshingHint show={state.refreshing} />
+      </PageHead>
+      <QueryView state={state} loadingLabel="Loading dashboard…" skeleton={<CardSkeleton count={8} minWidth="12rem" height="7rem" label="Loading dashboard…" />}>
         {(d) => (
           <>
+            <AlertsBanner openCount={d.openAlerts ?? 0} onChanged={refreshCounts} />
+
             <section aria-label="Key numbers" className={styles.stats}>
               {STATS.map((stat) => (
                 <StatCard key={stat.label} stat={stat} data={d} role={role} />
@@ -66,6 +77,7 @@ export function DashboardView() {
 
               <div className={`stack ${styles.side}`}>
                 <NeedsAction data={d} role={role} />
+                {typeof d.smsBudgetPerDay === 'number' ? <SmsBudgetCard used={d.smsLast24h ?? 0} perDay={d.smsBudgetPerDay} /> : null}
                 <ByStatus data={d} role={role} />
                 <TopCategories data={d} />
               </div>
@@ -77,7 +89,7 @@ export function DashboardView() {
   );
 }
 
-function StatCard({ stat, data, role }: { stat: StatDef; data: Dashboard; role: AdminRole }) {
+const StatCard = memo(function StatCard({ stat, data, role }: { stat: StatDef; data: Dashboard; role: AdminRole }) {
   const allowed = Boolean(stat.section && canView(role, stat.section));
   // Highlight only what this role can act on.
   const className = `${styles.stat} ${allowed && stat.attention?.(data) ? styles.attention : ''}`;
@@ -97,7 +109,7 @@ function StatCard({ stat, data, role }: { stat: StatDef; data: Dashboard; role: 
     );
   }
   return <div className={className}>{body}</div>;
-}
+});
 
 function NeedsAction({ data, role }: { data: Dashboard; role: AdminRole }) {
   const items = [
@@ -111,7 +123,9 @@ function NeedsAction({ data, role }: { data: Dashboard; role: AdminRole }) {
     <section className="box stack-sm" aria-labelledby="todo-title">
       <h2 id="todo-title">Needs action</h2>
       {items.length === 0 ? (
-        <p className="muted">All clear. Nothing is waiting for you.</p>
+        <p className="muted">
+          <span aria-hidden="true">✓</span> All clear. Nothing is waiting for you.
+        </p>
       ) : (
         items.map((item) => (
           <Link key={item.href} href={item.href} className={`${styles.todo} ${item.warn ? styles.todoWarn : ''}`}>

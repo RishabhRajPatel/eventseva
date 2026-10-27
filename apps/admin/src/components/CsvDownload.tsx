@@ -1,8 +1,11 @@
 'use client';
 import { useId, useState, type FormEvent } from 'react';
+import { useBusy } from '@/hooks/useBusy';
 import { goToLogin, sessionStore } from '@/lib/api';
 import { checkRange, exportUrl, filenameFromDisposition } from '@/lib/csv';
+import { describeError } from '@/lib/errors';
 import { canExport, type ExportKind } from '@/lib/roles';
+import { Button } from './Button';
 import { useShell } from './ShellContext';
 
 /**
@@ -15,16 +18,19 @@ export function CsvDownload({ kind, hint }: { kind: ExportKind; hint?: string })
   const id = useId();
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useBusy();
   if (!canExport(session.admin.role, kind)) return null;
   const rangeError = checkRange(from, to);
 
-  async function download(event: FormEvent) {
+  function download(event: FormEvent) {
     event.preventDefault();
-    if (busy || rangeError) return;
+    if (rangeError) return;
     const token = sessionStore.read()?.token;
     if (!token) return goToLogin('expired');
-    setBusy(true);
+    void run(() => save(token));
+  }
+
+  async function save(token: string) {
     try {
       const res = await fetch(exportUrl(kind, from, to), { headers: { Authorization: `Bearer ${token}`, Accept: 'text/csv' } });
       if (res.status === 401) {
@@ -33,8 +39,13 @@ export function CsvDownload({ kind, hint }: { kind: ExportKind; hint?: string })
         return;
       }
       if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-        throw new Error(body?.error?.message ?? 'The download failed. Please try again.');
+        const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+        toast.error(
+          body?.error?.code
+            ? describeError({ status: res.status, code: body.error.code, message: body.error.message ?? '' })
+            : describeError({ status: res.status, code: `HTTP_${res.status}`, message: 'The download failed. Please try again.' }),
+        );
+        return;
       }
       const blob = await res.blob();
       const name = filenameFromDisposition(res.headers.get('Content-Disposition'), `eventseva-${kind}.csv`);
@@ -46,11 +57,9 @@ export function CsvDownload({ kind, hint }: { kind: ExportKind; hint?: string })
       link.click();
       link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      toast.success(`Downloaded ${name}.`);
-    } catch (e) {
-      toast.error(e instanceof TypeError ? 'No internet connection. Please check and try again.' : (e as Error).message);
-    } finally {
-      setBusy(false);
+      toast.success(`Downloaded ${name}. It is in your Downloads folder.`);
+    } catch {
+      toast.error(describeError({ status: 0, code: 'NETWORK', message: '' }));
     }
   }
 
@@ -73,9 +82,9 @@ export function CsvDownload({ kind, hint }: { kind: ExportKind; hint?: string })
           aria-describedby={`${id}-hint`}
         />
       </div>
-      <button type="submit" className="btn btn-outline-royal" disabled={busy || Boolean(rangeError)}>
-        {busy ? 'Preparing…' : 'Download CSV'}
-      </button>
+      <Button type="submit" className="btn btn-outline-royal" busy={busy} busyLabel="Preparing…" disabled={Boolean(rangeError)}>
+        ↓ Download CSV
+      </Button>
       <span id={`${id}-hint`} className={rangeError ? 'field-error' : 'hint'} style={{ flexBasis: '100%' }}>
         {rangeError ?? hint ?? 'Dates are optional and inclusive.'}
       </span>

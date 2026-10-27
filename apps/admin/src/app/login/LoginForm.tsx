@@ -1,9 +1,12 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ApiError, errorMessage } from '@eventseva/app-shared';
+import { ApiError } from '@eventseva/app-shared';
+import { Button } from '@/components/Button';
 import { ClientOnly } from '@/components/ClientOnly';
+import { useBusy } from '@/hooks/useBusy';
 import { api, sessionStore } from '@/lib/api';
+import { describeError } from '@/lib/errors';
 import type { AdminLoginResult } from '@/lib/session';
 import { checkLogin, cleanTotp, safeNextPath, type LoginErrors } from '@/lib/validate';
 import styles from './login.module.css';
@@ -26,35 +29,39 @@ function LoginFormInner() {
   const [totp, setTotp] = useState('');
   const [errors, setErrors] = useState<LoginErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useBusy();
 
   // Already logged in in this tab: skip the form.
   useEffect(() => {
     if (sessionStore.read()) window.location.replace(next);
   }, [next]);
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const form = event.currentTarget;
     const found = checkLogin({ email, password, totp });
     setErrors(found);
     setFormError(null);
-    if (Object.keys(found).length) return;
-    setBusy(true);
-    try {
-      const result = await api.post<AdminLoginResult>(
-        '/v1/admin/login',
-        { email: email.trim(), password, totp },
-        { auth: false },
-      );
-      sessionStore.save(result);
-      // Full load, so the panel starts clean for this admin.
-      window.location.replace(next);
-    } catch (e) {
-      // ADMIN_LOGIN_FAILED is one generic message on purpose: it never says which part was wrong.
-      setFormError(errorMessage(e));
-      if (e instanceof ApiError && e.code === 'ADMIN_LOGIN_FAILED') setTotp('');
-      setBusy(false);
+    if (Object.keys(found).length) {
+      requestAnimationFrame(() => form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+      return;
     }
+    void run(async () => {
+      try {
+        const result = await api.post<AdminLoginResult>('/v1/admin/login', { email: email.trim(), password, totp }, { auth: false });
+        sessionStore.save(result);
+        // Full load, so the panel starts clean for this admin. Stays busy until the page changes.
+        window.location.replace(next);
+        await new Promise(() => undefined);
+      } catch (e) {
+        // ADMIN_LOGIN_FAILED is one generic message on purpose: it never says which part was wrong.
+        setFormError(describeError(e));
+        if (e instanceof ApiError && e.code === 'ADMIN_LOGIN_FAILED') {
+          setTotp('');
+          requestAnimationFrame(() => document.getElementById('totp')?.focus());
+        }
+      }
+    });
   }
 
   return (
@@ -62,7 +69,7 @@ function LoginFormInner() {
       <form className="stack" onSubmit={submit} noValidate>
         {expired && !formError ? (
           <p className="note note-warning" role="status">
-            Your session ended. Please log in again.
+            Your session ended (admin logins last 8 hours). Log in again to continue where you were.
           </p>
         ) : null}
         {formError ? (
@@ -116,9 +123,9 @@ function LoginFormInner() {
           />
         </Field>
 
-        <button type="submit" className={`btn btn-primary ${styles.submit}`} disabled={busy}>
-          {busy ? 'Logging in…' : 'Log in'}
-        </button>
+        <Button type="submit" className={`btn btn-primary ${styles.submit}`} busy={busy} busyLabel="Logging in…">
+          Log in
+        </Button>
       </form>
     </LoginShell>
   );

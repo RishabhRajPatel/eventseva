@@ -1,5 +1,6 @@
-// The API sends an English `message` and a stable `code`. Known codes get the app's own
-// (translated) text; anything else falls back to the server's message.
+// The API sends an English `message` and a stable `code`. Every code the customer app can meet
+// (docs/API.md) has its own translated sentence saying what happened and what to do next; unknown
+// codes fall back to a sentence chosen by HTTP status. Raw codes and server text are never shown.
 import { ApiError, formatDateTime, rupees } from '@eventseva/app-shared';
 import type { TFunction } from 'i18next';
 import { PaymentError } from './payments';
@@ -34,7 +35,34 @@ export const KNOWN_ERRORS = [
   'COUPON_ALREADY_USED',
   'COUPON_USED_UP',
   'COUPON_NOT_ALLOWED',
+  'ACCOUNT_HAS_ACTIVE_BOOKINGS',
+  'ACCOUNT_HAS_PENDING_PAYOUT',
+  'OTP_SERVICE_BUSY',
+  'CITY_NOT_FOUND',
+  'VALIDATION',
+  'UNAUTHORIZED',
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'PARTNER_APP_ONLY',
+  'TOO_LATE_TO_BOOK',
+  'TOO_MANY_OPEN_REQUESTS',
+  'QUANTITY_OUT_OF_RANGE',
+  'DATE_TOO_FAR',
+  'TOO_MANY_MESSAGES',
 ] as const;
+
+/** For codes this app does not know: a sentence by HTTP status. */
+function byStatus(status: number) {
+  if (status === 0) return 'errors.NETWORK' as const;
+  if (status === 401) return 'errors.UNAUTHORIZED' as const;
+  if (status === 403) return 'errors.FORBIDDEN' as const;
+  if (status === 404) return 'errors.NOT_FOUND' as const;
+  if (status === 409) return 'errors.CONFLICT' as const;
+  if (status === 429) return 'errors.RATE_LIMITED' as const;
+  if (status >= 500) return 'errors.SERVER' as const;
+  if (status >= 400) return 'errors.VALIDATION' as const;
+  return 'common.errorBody' as const;
+}
 
 /** COUPON_NOT_APPLICABLE says why in `details.reason`; each reason has its own text. */
 const COUPON_REASONS = {
@@ -58,11 +86,19 @@ export function errorText(t: TFunction, e: unknown): string {
     }
     // Rolling 24-hour limit: say exactly when the next code is allowed.
     if (e.code === 'OTP_LIMIT' && typeof d.retryAt === 'string') return t('errors.OTP_LIMIT_UNTIL', { time: formatDateTime(d.retryAt) });
+    if (e.code === 'ACCOUNT_HAS_ACTIVE_BOOKINGS') return t('errors.ACCOUNT_HAS_ACTIVE_BOOKINGS', { count: typeof d.bookings === 'number' ? d.bookings : 1 });
+    if (e.code === 'QUANTITY_OUT_OF_RANGE') {
+      const range = typeof d.max === 'number'
+        ? t('errors.RANGE_BETWEEN', { min: typeof d.min === 'number' ? d.min : 1, max: d.max })
+        : t('errors.RANGE_AT_LEAST', { min: typeof d.min === 'number' ? d.min : 1 });
+      return t('errors.QUANTITY_OUT_OF_RANGE', { range });
+    }
     return t(`errors.${e.code}`, {
+      max: typeof d.max === 'number' ? d.max : 15,
       attemptsLeft: typeof d.attemptsLeft === 'number' ? d.attemptsLeft : 0,
       seconds: typeof d.retryAfterSec === 'number' ? d.retryAfterSec : 30,
       count: typeof d.attemptsLeft === 'number' ? d.attemptsLeft : 0,
     });
   }
-  return e.message || t('common.errorBody');
+  return t(byStatus(e.status));
 }

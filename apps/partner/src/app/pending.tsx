@@ -5,6 +5,8 @@ import { useTranslation } from 'react-i18next';
 import { useVendor } from '../lib/queries';
 import { routeFor } from '../lib/routing';
 import { useSession } from '../lib/session';
+import { errorText } from '../lib/errors';
+import { toast } from '../lib/toast';
 import { c, radius, space } from '../lib/theme';
 import { Button, LinkButton } from '../components/Button';
 import { Card } from '../components/Card';
@@ -40,7 +42,19 @@ export default function Pending() {
       onRefresh={() => void vendor.refetch()}
       footer={
         <>
-          <Button testID="check-again" size="lg" label={t('pending.checkAgain')} loading={vendor.isRefetching} onPress={() => void vendor.refetch()} />
+          <Button
+            testID="check-again"
+            size="lg"
+            label={t('pending.checkAgain')}
+            loadingLabel={t('pending.checking')}
+            loading={vendor.isRefetching}
+            onPress={async () => {
+              const r = await vendor.refetch();
+              // Approved or rejected moves on by itself (above); otherwise say so.
+              if (r.data?.status === 'pending') toast.info(t('pending.stillPending'));
+              else if (r.isError) toast.error(errorText(t, r.error));
+            }}
+          />
           <Button size="lg" kind="secondary" label={t('pending.talkToTeam')} onPress={() => router.push('/help')} />
         </>
       }

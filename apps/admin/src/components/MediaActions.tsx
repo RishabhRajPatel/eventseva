@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { REASON_LIMITS } from '@/lib/validate';
-import { ActionDialog } from './ActionDialog';
+import { ActionDialog } from './dialogs';
 
 export const MEDIA_REJECT_PRESETS = [
   'Blurry or too dark',
@@ -36,7 +36,7 @@ export function MediaActions({
     <>
       <div className="btn-row" style={compact ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' } : undefined}>
         {status !== 'rejected' ? (
-          <button type="button" className={`btn ${size}`} onClick={() => setDialog('reject')} aria-label={`Reject ${name}`}>
+          <button type="button" className={`btn btn-danger-outline ${size}`} onClick={() => setDialog('reject')} aria-label={`Reject ${name}`}>
             Reject
           </button>
         ) : null}
@@ -50,7 +50,8 @@ export function MediaActions({
         <ActionDialog
           title={`Approve this ${type}?`}
           description={<p>It becomes visible to customers on {label}’s profile.</p>}
-          confirmLabel="Approve"
+          confirmLabel={`Approve ${type}`}
+          busyLabel="Approving…"
           onConfirm={() => api.post(`/v1/admin/media/${id}/approve`)}
           successMessage={type === 'video' ? 'Video approved.' : 'Photo approved.'}
           onClose={() => setDialog(null)}
@@ -61,7 +62,8 @@ export function MediaActions({
         <ActionDialog
           title={`Reject this ${type}?`}
           description={<p>{label} gets a notification with the reason.</p>}
-          confirmLabel="Reject"
+          confirmLabel={`Reject ${type}`}
+          busyLabel="Rejecting…"
           tone="danger"
           input={{
             label: 'Reason (shown to the vendor)',

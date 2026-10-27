@@ -1,10 +1,11 @@
 import '../i18n';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { AppState, View } from 'react-native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaInsetsContext, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { useFonts } from 'expo-font';
 // Per-weight imports, so only these six font files go into the app.
 import { Lato_400Regular } from '@expo-google-fonts/lato/400Regular';
@@ -16,13 +17,25 @@ import { NotoSerifDevanagari_700Bold } from '@expo-google-fonts/noto-serif-devan
 import { ApiError } from '@eventseva/app-shared';
 import { SessionProvider, useSession } from '../lib/session';
 import { usePush } from '../lib/push';
+import { offlineStore, reportResult } from '../lib/network';
+import { useStore } from '../lib/store';
 import { c } from '../lib/theme';
+import { ConfirmHost } from '../components/ConfirmDialog';
+import { OfflineBanner } from '../components/OfflineBanner';
 import { Offline } from '../components/States';
+import { ToastHost } from '../components/Toast';
+import { UploadWatcher } from '../components/UploadWatcher';
 
 void SplashScreen.preventAutoHideAsync();
 
+/** While offline, quietly try again this often (there is no netinfo to tell us when the phone is back). */
+const OFFLINE_RETRY_MS = 15_000;
+
 function makeQueryClient() {
   return new QueryClient({
+    // Every request tells the offline banner whether the internet works.
+    queryCache: new QueryCache({ onError: (e) => reportResult(e), onSuccess: () => reportResult(null) }),
+    mutationCache: new MutationCache({ onError: (e) => reportResult(e), onSuccess: () => reportResult(null) }),
     defaultOptions: {
       queries: {
         staleTime: 30_000,
@@ -49,10 +62,45 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           <StatusBar style="dark" />
-          <AppStack />
+          <WithOfflineBanner>
+            <AppStack />
+          </WithOfflineBanner>
+          <UploadWatcher />
+          <ToastHost />
+          <ConfirmHost />
         </SessionProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
+  );
+}
+
+/** "No internet. Showing saved data." on top of every screen while requests fail with NETWORK. */
+function WithOfflineBanner({ children }: { children: ReactNode }) {
+  const offline = useStore(offlineStore);
+  const insets = useSafeAreaInsets();
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    if (!offline) return;
+    const retry = () => void qc.refetchQueries({ type: 'active' });
+    const id = setInterval(retry, OFFLINE_RETRY_MS);
+    // Coming back to the app is a good moment to check again.
+    const sub = AppState.addEventListener('change', (s) => s === 'active' && retry());
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
+  }, [offline, qc]);
+
+  if (!offline) return <>{children}</>;
+  return (
+    <View style={{ flex: 1, backgroundColor: c.peach }}>
+      <OfflineBanner topInset={insets.top} onRetry={() => void qc.refetchQueries({ type: 'active' })} />
+      {/* The banner already covers the status bar, so the screens below start at 0. */}
+      <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
+        <View style={{ flex: 1 }}>{children}</View>
+      </SafeAreaInsetsContext.Provider>
+    </View>
   );
 }
 

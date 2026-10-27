@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import type { OwnVendor } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
+import { toast } from '../../lib/toast';
 import { invalidateVendor, keys, useVendor } from '../../lib/queries';
 import { space } from '../../lib/theme';
 import { BusinessForm, businessPayload, initialBusiness, validateBusiness, type BusinessValues } from '../../components/BusinessForm';
@@ -42,7 +43,7 @@ function BusinessStep({ vendor }: { vendor: OwnVendor | null }) {
 
   async function next() {
     setShowErrors(true);
-    if (Object.keys(validateBusiness(values)).length) return;
+    if (saving || Object.keys(validateBusiness(values)).length) return;
     setSaving(true);
     try {
       const saved = vendor
@@ -52,7 +53,7 @@ function BusinessStep({ vendor }: { vendor: OwnVendor | null }) {
       invalidateVendor(qc);
       router.push('/onboarding/services');
     } catch (e) {
-      Alert.alert(t('errors.title'), errorText(t, e));
+      toast.error(errorText(t, e));
     } finally {
       setSaving(false);
     }

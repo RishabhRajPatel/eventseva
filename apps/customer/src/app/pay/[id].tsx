@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { formatDay, rupees, timeLeft } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
-import { choosePaymentPath, payAdvance, type PayMethod } from '../../lib/payments';
+import { choosePaymentPath, payAdvance, type PayMethod, type PayStage } from '../../lib/payments';
 import { keys } from '../../lib/queryClient';
 import { useMe } from '../../lib/session';
 import { c, radius, space } from '../../lib/theme';
@@ -20,7 +20,9 @@ import { CouponBox, CouponMoneyRows } from '../../components/Coupons';
 import { OptionTile } from '../../components/Form';
 import { Icon } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
-import { ErrorState, Loading } from '../../components/States';
+import { CardsSkeleton } from '../../components/Skeleton';
+import { ErrorState } from '../../components/States';
+import { useToast } from '../../components/Toast';
 
 const METHODS: PayMethod[] = ['upi', 'card', 'netbanking'];
 
@@ -33,23 +35,42 @@ export default function PayScreen() {
   const now = useNow();
   const path = choosePaymentPath();
   const [method, setMethod] = useState<PayMethod>('upi');
-  const [message, setMessage] = useState<string | null>(null);
+  const toast = useToast();
+  const [message, setMessage] = useState<{ text: string; tone: 'info' | 'error' } | null>(null);
+  const [stage, setStage] = useState<PayStage | 'confirmed' | null>(null);
   const booking = useQuery({ queryKey: keys.booking(id), queryFn: () => api.booking(id) });
 
   const pay = useMutation({
-    mutationFn: () => payAdvance(booking.data!, { name: me.name, phone: me.phone, method }, path),
+    mutationFn: () => payAdvance(booking.data!, { name: me.name, phone: me.phone, method }, path, setStage),
     onMutate: () => setMessage(null),
     onSuccess: (result) => {
-      if (result.status === 'cancelled') return setMessage(t('payment.cancelled'));
+      if (result.status === 'cancelled') {
+        setStage(null);
+        return setMessage({ text: t('payment.cancelled'), tone: 'info' });
+      }
+      setStage('confirmed');
       qc.setQueryData(keys.booking(id), result.booking);
       void qc.invalidateQueries({ queryKey: keys.allBookings });
       void qc.invalidateQueries({ queryKey: keys.events });
+      toast.success(t('payment.done'));
       router.replace({ pathname: '/booking/[id]', params: { id } });
     },
-    onError: (e) => setMessage(errorText(t, e)),
+    onError: (e) => {
+      setStage(null);
+      setMessage({ text: errorText(t, e), tone: 'error' });
+    },
   });
+  const payNow = () => pay.mutateAsync().then((r) => (r.status === 'paid' ? undefined : null));
+  const stageLabel = stage === 'starting' ? t('payment.starting') : stage === 'checkout' ? t('payment.inCheckout') : stage === 'verifying' ? t('payment.verifying') : undefined;
 
-  if (booking.isPending) return <Loading />;
+  if (booking.isPending) {
+    return (
+      <Screen>
+        <ScreenHeader title={t('payment.title')} />
+        <CardsSkeleton count={2} height={150} />
+      </Screen>
+    );
+  }
   if (booking.error) {
     return (
       <Screen>
@@ -70,20 +91,20 @@ export default function PayScreen() {
         payable ? (
           <>
             {message ? (
-              <AppText size="sm" color={c.danger} align="center" accessibilityLiveRegion="assertive">
-                {message}
+              <AppText size="sm" color={message.tone === 'error' ? c.danger : c.royal} align="center" accessibilityLiveRegion="assertive">
+                {message.text}
               </AppText>
             ) : null}
             {path === 'dev' ? (
               <>
-                <Button label={t('payment.devButton')} variant="dark" onPress={() => pay.mutate()} loading={pay.isPending} />
+                <Button label={t('payment.devButton')} variant="dark" onPress={payNow} loadingLabel={stageLabel} />
                 <AppText size="xs" align="center">
                   {t('payment.devNote')}
                 </AppText>
               </>
             ) : (
               <>
-                <Button label={t('payment.pay', { amount: rupees(b.payNowPaise) })} onPress={() => pay.mutate()} loading={pay.isPending} />
+                <Button label={t('payment.pay', { amount: rupees(b.payNowPaise) })} onPress={payNow} loadingLabel={stageLabel} />
                 <View style={styles.secure}>
                   <Icon name="lock" size={14} />
                   <AppText size="xs">{t('payment.secure')}</AppText>
@@ -97,7 +118,15 @@ export default function PayScreen() {
       }
     >
       <ScreenHeader title={t('payment.title')} />
-      {b.status === 'accepted' ? (
+      {stage === 'verifying' ? (
+        <Notice icon="clock" tone="lavender">
+          {t('payment.verifyingNote')}
+        </Notice>
+      ) : stage === 'confirmed' ? (
+        <Notice icon="checkCircle" tone="mint">
+          {t('payment.done')}
+        </Notice>
+      ) : b.status === 'accepted' ? (
         <Notice icon="checkCircle" tone="mint">
           <AppText size="md">
             <AppText variant="bold" size="md">
@@ -107,7 +136,7 @@ export default function PayScreen() {
           </AppText>
         </Notice>
       ) : (
-        <Notice icon="alert" tone="peach">
+        <Notice icon={b.status === 'confirmed' ? 'checkCircle' : 'alert'} tone={b.status === 'confirmed' ? 'mint' : 'peach'}>
           {b.status === 'confirmed' ? t('payment.alreadyPaid') : t('payment.notPayable')}
         </Notice>
       )}
@@ -135,7 +164,7 @@ export default function PayScreen() {
 
       {payable && path === 'razorpay' ? (
         <View style={styles.methods} accessibilityRole="radiogroup" accessibilityLabel={t('payment.how')}>
-          <AppText variant="bold" size={14}>
+          <AppText variant="bold" size="sm">
             {t('payment.how')}
           </AppText>
           {METHODS.map((m) => (

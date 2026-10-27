@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { PixelRatio, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import { cardImage, wideImage, zoomImage, type MediaRef } from '@eventseva/app-shared';
@@ -25,7 +26,7 @@ export function imageUrl(media: MediaRef, mode: 'card' | 'wide' | 'zoom', width:
 }
 
 /** A vendor photo, or the category icon on lavender when there is no photo or no Cloudinary set up. */
-export function VendorImage({ media, icon, width, height, mode = 'card', style, label }: VendorImageProps) {
+export const VendorImage = memo(function VendorImage({ media, icon, width, height, mode = 'card', style, label }: VendorImageProps) {
   const box = [styles.box, { width, height }, style];
   if (!media || !CLOUD_NAME || width <= 0) {
     return (
@@ -42,13 +43,16 @@ export function VendorImage({ media, icon, width, height, mode = 'card', style, 
         placeholderContentFit="cover"
         contentFit="contain"
         transition={200}
+        // Photos come back instantly when scrolling back or reopening a vendor; lists recycle views by photo.
+        cachePolicy="memory-disk"
         recyclingKey={media.publicId}
+        priority={mode === 'card' ? 'normal' : 'high'}
         accessibilityLabel={label}
         style={StyleSheet.absoluteFill}
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   box: { backgroundColor: c.lavender, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },

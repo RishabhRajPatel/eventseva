@@ -1,6 +1,6 @@
 // Booking details (BookingForm board): event, slot, quantity, note → send request. No payment now.
-import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import { StyleSheet, View, type LayoutChangeEvent, type ScrollViewInstance, type TextInputInstance } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -8,7 +8,8 @@ import { formatDay, rupees, SLOTS, todayIst, type Slot } from '@eventseva/app-sh
 import { api } from '../../../lib/api';
 import { ADVANCE_PERCENT, estimate, needsQuantity, parseQuantity } from '../../../lib/booking';
 import { errorText } from '../../../lib/errors';
-import { emptyEvent, validateEvent, type EventErrors } from '../../../lib/events';
+import { emptyEvent, firstEventError, revalidate, validateEvent, validateField, type EventErrors } from '../../../lib/events';
+import { vendorQuery } from '../../../lib/queries';
 import { keys } from '../../../lib/queryClient';
 import { c, radius, space } from '../../../lib/theme';
 import { freeSlots, itemKey, vendorItems } from '../../../lib/vendor';
@@ -19,23 +20,26 @@ import { Card, Divider, MoneyRow, Notice } from '../../../components/Bits';
 import { Button } from '../../../components/Button';
 import { monthOf } from '../../../components/DatePicker';
 import { EventForm } from '../../../components/EventForm';
-import { OptionTile, TextField } from '../../../components/Form';
-import { Icon } from '../../../components/Icon';
+import { ChoiceRow, FieldError, OptionTile, TextField } from '../../../components/Form';
 import { usePriceLabel } from '../../../components/ItemOption';
 import { Screen, ScreenHeader } from '../../../components/Screen';
-import { ErrorState, Loading } from '../../../components/States';
+import { CardsSkeleton } from '../../../components/Skeleton';
+import { ErrorState } from '../../../components/States';
+import { useToast } from '../../../components/Toast';
 import { VendorImage } from '../../../components/VendorImage';
 
 const NEW = 'new';
+type Section = 'event' | 'slot' | 'quantity';
 
 export default function BookingFormScreen() {
   const { id, item: itemParam, day } = useLocalSearchParams<{ id: string; item?: string; day?: string }>();
   const { t } = useTranslation();
   const { lang } = useLanguage();
   const qc = useQueryClient();
+  const toast = useToast();
   const price = usePriceLabel();
   const today = todayIst();
-  const vendor = useQuery({ queryKey: keys.vendor(id), queryFn: () => api.vendor(id) });
+  const vendor = useQuery(vendorQuery(id));
   const events = useQuery({ queryKey: keys.events, queryFn: api.events });
   const upcoming = useMemo(() => (events.data?.items ?? []).filter((e) => e.eventDate >= today), [events.data, today]);
 
@@ -45,8 +49,21 @@ export default function BookingFormScreen() {
   const [eventErrors, setEventErrors] = useState<EventErrors>({});
   const [slot, setSlot] = useState<Slot>('full');
   const [quantity, setQuantity] = useState('');
+  const [quantityTouched, setQuantityTouched] = useState(false);
   const [note, setNote] = useState('');
+  const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Scroll to and focus the first wrong field on a failed submit (UX.md §3).
+  const scroll = useRef<ScrollViewInstance>(null);
+  const sectionY = useRef<Partial<Record<Section, number>>>({});
+  const titleRef = useRef<TextInputInstance>(null);
+  const guestsRef = useRef<TextInputInstance>(null);
+  const venueRef = useRef<TextInputInstance>(null);
+  const quantityRef = useRef<TextInputInstance>(null);
+  const onSectionLayout = (s: Section) => (e: LayoutChangeEvent) => {
+    sectionY.current[s] = e.nativeEvent.layout.y;
+  };
 
   // Pick an event once the list arrives: the one on the chosen date, else the next one, else a new one.
   const chosenEvent = eventChoice ?? (events.data ? (upcoming.find((e) => e.eventDate === day) ?? upcoming[0])?.id ?? NEW : null);
@@ -57,11 +74,14 @@ export default function BookingFormScreen() {
   const taken = availability.busy.filter((b) => b.day === eventDate).map((b) => b.slot);
   const free = freeSlots(taken);
 
-  const items = vendor.data ? vendorItems(vendor.data) : [];
+  const items = useMemo(() => (vendor.data ? vendorItems(vendor.data) : []), [vendor.data]);
   const item = items.find((i) => itemKey(i) === itemKeyState) ?? items[0];
-  const counted = item && item.unit !== 'package' && needsQuantity(item.unit);
+  const counted = !!item && item.unit !== 'package' && needsQuantity(item.unit);
   const qty = parseQuantity(quantity);
   const est = item ? estimate(item.pricePaise, item.unit === 'package' ? 'per_event' : item.unit, qty) : null;
+
+  const quantityError = counted && (quantityTouched || submitted) ? (!quantity ? t('book.quantityNeeded') : !qty ? t('book.quantityBad') : null) : null;
+  const slotError = submitted && !free[slot] ? t('book.slotTaken') : null;
 
   const send = useMutation({
     mutationFn: async () => {
@@ -86,24 +106,50 @@ export default function BookingFormScreen() {
       void qc.invalidateQueries({ queryKey: keys.events });
       void qc.invalidateQueries({ queryKey: keys.allBookings });
       void qc.invalidateQueries({ queryKey: ['vendor', id, 'availability'] });
+      toast.success(t('book.sentToast', { name: vendor.data?.businessName ?? '' }));
       router.replace({ pathname: '/booking/[id]', params: { id: booking.id, sent: '1' } });
     },
     onError: (e) => setFormError(errorText(t, e)),
   });
 
-  function submit() {
-    setFormError(null);
-    if (chosenEvent === NEW) {
-      const { errors } = validateEvent(draft, today);
-      setEventErrors(errors);
-      if (Object.keys(errors).length) return setFormError(t('book.fixEvent'));
-    }
-    if (counted && !qty) return setFormError(t('book.quantityNeeded'));
-    if (!free[slot]) return setFormError(t('book.slotTaken'));
-    send.mutate();
+  function goTo(section: Section, input?: TextInputInstance | null) {
+    const y = sectionY.current[section];
+    if (y != null) scroll.current?.scrollTo({ y: Math.max(0, y - space.lg), animated: true });
+    // Focus after the scroll starts, so the keyboard does not fight the animation.
+    if (input) setTimeout(() => input.focus(), 250);
   }
 
-  if (vendor.isPending || events.isPending) return <Loading />;
+  /** Resolves false when the form has errors (the button then gives the error haptic). */
+  async function submit() {
+    setFormError(null);
+    setSubmitted(true);
+    const errors = chosenEvent === NEW ? validateEvent(draft, today).errors : {};
+    setEventErrors(errors);
+    const firstEvent = firstEventError(errors);
+    if (firstEvent) {
+      const input = firstEvent === 'title' ? titleRef.current : firstEvent === 'guests' ? guestsRef.current : firstEvent === 'venue' ? venueRef.current : null;
+      goTo('event', input);
+      return false;
+    }
+    if (!free[slot]) {
+      goTo('slot');
+      return false;
+    }
+    if (counted && !qty) {
+      goTo('quantity', quantityRef.current);
+      return false;
+    }
+    await send.mutateAsync();
+  }
+
+  if (vendor.isPending || events.isPending) {
+    return (
+      <Screen>
+        <ScreenHeader title={t('book.title')} />
+        <CardsSkeleton count={3} height={120} />
+      </Screen>
+    );
+  }
   if (vendor.error || events.error) {
     return (
       <Screen>
@@ -126,17 +172,19 @@ export default function BookingFormScreen() {
     <Screen
       scroll
       keyboard
+      scrollRef={scroll}
       footer={
         <>
           {formError ? (
             <AppText size="sm" color={c.danger} align="center" accessibilityLiveRegion="assertive">
               {formError}
             </AppText>
-          ) : null}
-          <AppText size="sm" align="center">
-            {t('book.noPaymentNow')}
-          </AppText>
-          <Button label={t('book.send')} onPress={submit} loading={send.isPending} />
+          ) : (
+            <AppText size="sm" align="center">
+              {t('book.noPaymentNow')}
+            </AppText>
+          )}
+          <Button label={t('book.send')} loadingLabel={t('book.sending')} onPress={submit} />
         </>
       }
     >
@@ -145,7 +193,7 @@ export default function BookingFormScreen() {
       <Card style={styles.vendorCard}>
         <VendorImage media={v.media.find((m) => m.type === 'photo') ?? null} icon={v.category.icon} width={48} height={48} style={styles.thumb} />
         <View style={styles.flex}>
-          <AppText variant="bold" size={16}>
+          <AppText variant="bold" size="md">
             {v.businessName}
           </AppText>
           <AppText size="sm">{[item.title, item.detail].filter(Boolean).join(' · ')}</AppText>
@@ -153,78 +201,46 @@ export default function BookingFormScreen() {
       </Card>
 
       {items.length > 1 ? (
-        <View style={styles.gap8}>
-          <AppText variant="bold" size={14}>
+        <View style={styles.gap8} accessibilityRole="radiogroup" accessibilityLabel={t('book.what')}>
+          <AppText variant="bold" size="sm">
             {t('book.what')}
           </AppText>
-          {items.map((i) => {
-            const on = itemKey(i) === itemKey(item);
-            return (
-              <Pressable
-                key={itemKey(i)}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: on }}
-                accessibilityLabel={`${i.title}, ${price(i)}`}
-                onPress={() => setItemKey(itemKey(i))}
-                style={[styles.choice, on && styles.choiceOn]}
-              >
-                <AppText variant={on ? 'bold' : 'body'} size="md" style={styles.flex}>
-                  {i.title}
-                </AppText>
-                <AppText variant="bold" size={14} color={c.royal}>
-                  {price(i)}
-                </AppText>
-              </Pressable>
-            );
-          })}
+          {items.map((i) => (
+            <ChoiceRow key={itemKey(i)} label={i.title} right={price(i)} selected={itemKey(i) === itemKey(item)} onPress={() => setItemKey(itemKey(i))} />
+          ))}
         </View>
       ) : null}
 
-      <View style={styles.gap8}>
-        <AppText variant="bold" size={14}>
+      <View style={styles.gap8} onLayout={onSectionLayout('event')} accessibilityRole="radiogroup" accessibilityLabel={t('book.forEvent')}>
+        <AppText variant="bold" size="sm">
           {t('book.forEvent')}
         </AppText>
-        {upcoming.map((e) => {
-          const on = chosenEvent === e.id;
-          return (
-            <Pressable
-              key={e.id}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: on }}
-              onPress={() => setEventChoice(e.id)}
-              style={[styles.choice, on && styles.choiceOn]}
-            >
-              <Icon name="calendar" size={18} color={on ? c.royal : c.ink} />
-              <AppText variant={on ? 'bold' : 'body'} size="md" style={styles.flex}>
-                {`${e.title} · ${formatDay(e.eventDate, lang)}`}
-              </AppText>
-            </Pressable>
-          );
-        })}
-        <Pressable
-          accessibilityRole="radio"
-          accessibilityState={{ checked: chosenEvent === NEW }}
-          onPress={() => setEventChoice(NEW)}
-          style={[styles.choice, chosenEvent === NEW && styles.choiceOn]}
-        >
-          <Icon name="plus" size={18} color={c.royal} />
-          <AppText variant="bold" size="md" color={c.royal}>
-            {t('book.newEvent')}
-          </AppText>
-        </Pressable>
+        {upcoming.map((e) => (
+          <ChoiceRow key={e.id} icon="calendar" label={`${e.title} · ${formatDay(e.eventDate, lang)}`} selected={chosenEvent === e.id} onPress={() => setEventChoice(e.id)} />
+        ))}
+        <ChoiceRow icon="plus" label={t('book.newEvent')} selected={chosenEvent === NEW} onPress={() => setEventChoice(NEW)} />
+        {chosenEvent === NEW ? (
+          <Card style={styles.newEvent}>
+            <EventForm
+              value={draft}
+              onChange={(d) => {
+                setDraft(d);
+                setEventErrors((current) => revalidate(d, current, today));
+              }}
+              onBlurField={(field) => setEventErrors((current) => validateField(draft, field, current, today))}
+              errors={eventErrors}
+              busy={availability.byDay}
+              refs={{ title: titleRef, guests: guestsRef, venue: venueRef }}
+            />
+          </Card>
+        ) : null}
       </View>
 
-      {chosenEvent === NEW ? (
-        <Card style={styles.newEvent}>
-          <EventForm value={draft} onChange={setDraft} errors={eventErrors} busy={availability.byDay} />
-        </Card>
-      ) : null}
-
-      <View style={styles.gap8}>
-        <AppText variant="bold" size={14}>
+      <View style={styles.gap8} onLayout={onSectionLayout('slot')}>
+        <AppText variant="bold" size="sm">
           {t('book.time')}
         </AppText>
-        <View style={styles.slots} accessibilityRole="radiogroup">
+        <View style={styles.slots} accessibilityRole="radiogroup" accessibilityLabel={t('book.time')}>
           {SLOTS.map((s) => (
             <OptionTile
               key={s}
@@ -236,33 +252,31 @@ export default function BookingFormScreen() {
             />
           ))}
         </View>
-        {eventDate && taken.length ? <AppText size="sm">{t('book.someTaken', { date: formatDay(eventDate, lang) })}</AppText> : null}
+        <FieldError>{slotError}</FieldError>
+        {eventDate && taken.length && !slotError ? <AppText size="sm">{t('book.someTaken', { date: formatDay(eventDate, lang) })}</AppText> : null}
       </View>
 
       {counted && item.unit !== 'package' ? (
-        <TextField
-          label={t(`quantity.${item.unit}`)}
-          placeholder={t('book.quantityPlaceholder')}
-          value={quantity}
-          onChangeText={(q) => setQuantity(q.replace(/\D/g, ''))}
-          keyboardType="number-pad"
-          maxLength={6}
-          error={quantity && !qty ? t('book.quantityBad') : null}
-          hint={t('book.quantityHint', { price: price(item) })}
-        />
+        <View onLayout={onSectionLayout('quantity')}>
+          <TextField
+            ref={quantityRef}
+            label={t(`quantity.${item.unit}`)}
+            placeholder={t('book.quantityPlaceholder')}
+            value={quantity}
+            onChangeText={(q) => setQuantity(q.replace(/\D/g, ''))}
+            onBlur={() => setQuantityTouched(true)}
+            keyboardType="number-pad"
+            maxLength={6}
+            error={quantityError}
+            hint={t('book.quantityHint', { price: price(item) })}
+          />
+        </View>
       ) : null}
 
-      <TextField
-        label={t('book.note')}
-        placeholder={t('book.notePlaceholder')}
-        value={note}
-        onChangeText={setNote}
-        multiline
-        maxLength={500}
-      />
+      <TextField label={t('book.note')} placeholder={t('book.notePlaceholder')} value={note} onChangeText={setNote} multiline maxLength={500} />
 
       <Card style={styles.money}>
-        <AppText variant="bold" size={14}>
+        <AppText variant="bold" size="sm">
           {t('book.estimateTitle')}
         </AppText>
         {est ? (
@@ -288,18 +302,6 @@ const styles = StyleSheet.create({
   gap8: { gap: space.sm },
   vendorCard: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   thumb: { borderRadius: radius.md },
-  choice: {
-    minHeight: 52,
-    borderRadius: radius.md,
-    borderWidth: 1.5,
-    borderColor: c.lilac,
-    backgroundColor: c.white,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: space.sm,
-  },
-  choiceOn: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lavender },
   newEvent: { padding: space.lg },
   slots: { flexDirection: 'row', gap: space.sm },
   money: { padding: space.lg, gap: space.sm },

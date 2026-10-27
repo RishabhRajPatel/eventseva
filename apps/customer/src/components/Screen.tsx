@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import type { ReactNode, Ref } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View, type ScrollViewInstance, type StyleProp, type ViewStyle } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -17,8 +17,11 @@ export function Screen({
   background = c.background,
   contentStyle,
   keyboard,
+  scrollRef,
 }: {
   children: ReactNode;
+  /** With `scroll`: lets a form scroll to its first error. */
+  scrollRef?: Ref<ScrollViewInstance>;
   scroll?: boolean;
   /** Pinned action bar at the bottom (white, top border), as on the booking boards. */
   footer?: ReactNode;
@@ -31,7 +34,7 @@ export function Screen({
   const { gutter, isTablet } = useLayout();
   const inner = [{ paddingHorizontal: gutter }, isTablet && styles.tabletWidth, contentStyle];
   const body = scroll ? (
-    <ScrollView contentContainerStyle={[styles.scrollContent, ...inner]} keyboardShouldPersistTaps="handled">
+    <ScrollView ref={scrollRef} contentContainerStyle={[styles.scrollContent, ...inner]} keyboardShouldPersistTaps="handled">
       {children}
     </ScrollView>
   ) : (
@@ -79,7 +82,11 @@ export function ScreenHeader({
         <AppText variant="display" size="xxl" accessibilityRole="header" numberOfLines={2}>
           {title}
         </AppText>
-        {subtitle ? <AppText size="sm">{subtitle}</AppText> : null}
+        {subtitle ? (
+          <AppText size="sm" numberOfLines={2}>
+            {subtitle}
+          </AppText>
+        ) : null}
       </View>
       {right}
     </View>

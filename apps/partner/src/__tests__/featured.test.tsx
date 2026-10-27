@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { ApiError, type FeaturedOverview, type PartnerDashboard } from '@eventseva/app-shared';
 import { api } from '../lib/api';
@@ -68,8 +67,13 @@ describe('Get featured screen', () => {
     expect(screen.getByTestId('purchase-p1')).toBeTruthy();
     expect(screen.getByText('Free from EventSeva')).toBeTruthy();
     expect(screen.getByText('3 days')).toBeTruthy();
-    // Jest has no Razorpay native module: the labelled test button is used.
-    expect(screen.getByTestId('buy-1')).toHaveTextContent('Test payment (development)');
+    // The longest plan is chosen to start with; Jest has no Razorpay native module, so the labelled test button is used.
+    expect(screen.getByTestId('plan-2').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId('buy')).toHaveTextContent('Test payment for 30 days (development)');
+    await fireEvent.press(screen.getByTestId('plan-1'));
+    expect(screen.getByTestId('plan-1').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId('plan-2').props.accessibilityState).toMatchObject({ selected: false });
+    expect(screen.getByTestId('buy')).toHaveTextContent('Test payment for 7 days (development)');
   });
 
   it('shows the current featured end date', async () => {
@@ -91,7 +95,8 @@ describe('Get featured screen', () => {
     });
 
     await renderScreen(<FeaturedScreen />);
-    await fireEvent.press(await screen.findByTestId('buy-2'));
+    await fireEvent.press(await screen.findByTestId('plan-2'));
+    await fireEvent.press(screen.getByTestId('buy'));
 
     expect(await screen.findByTestId('featured-success')).toHaveTextContent('Payment done. You are featured until 21 Nov 2026.');
     expect(post.mock.calls.map((c) => c[0])).toEqual(['/v1/partner/featured/plans/2/order', '/v1/partner/featured/purchases/fp-9/pay/dev']);
@@ -105,19 +110,19 @@ describe('Get featured screen', () => {
     mockGet({ ...notFeatured, canBuy: false });
     await renderScreen(<FeaturedScreen />);
     expect(await screen.findByTestId('featured-locked')).toHaveTextContent(/must be live to get featured/);
-    await fireEvent.press(screen.getByTestId('buy-1'));
-    expect(screen.getByTestId('buy-1')).toBeDisabled();
-    expect(screen.getByTestId('buy-2')).toBeDisabled();
+    await fireEvent.press(screen.getByTestId('buy'));
+    expect(screen.getByTestId('buy')).toBeDisabled();
+    expect(screen.getByTestId('plan-1')).toBeDisabled();
     expect(post).not.toHaveBeenCalled();
   });
 
-  it('explains VENDOR_NOT_ACTIVE from the server', async () => {
-    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  it('explains VENDOR_NOT_ACTIVE from the server next to the plans', async () => {
     mockGet(notFeatured);
     post.mockRejectedValue(new ApiError(409, 'VENDOR_NOT_ACTIVE', 'Your profile must be live to get featured.'));
     await renderScreen(<FeaturedScreen />);
-    await fireEvent.press(await screen.findByTestId('buy-1'));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('Something went wrong', expect.stringMatching(/must be live to get featured/)));
+    await fireEvent.press(await screen.findByTestId('buy'));
+    expect(await screen.findByTestId('featured-failed')).toHaveTextContent(/must be live to get featured/);
+    expect(screen.getByTestId('toast')).toHaveTextContent(/must be live to get featured/);
   });
 });
 

@@ -15,7 +15,8 @@ import { Card, Notice, Pill, SectionTitle } from '../components/Bits';
 import { Button } from '../components/Button';
 import { Chip, TextField } from '../components/Form';
 import { Screen, ScreenHeader } from '../components/Screen';
-import { ErrorState, Loading } from '../components/States';
+import { CardsSkeleton } from '../components/Skeleton';
+import { EmptyState, ErrorState } from '../components/States';
 
 const STATUS_TONE = { open: 'peach', in_progress: 'lavender', resolved: 'mint' } as const;
 
@@ -42,13 +43,15 @@ export default function HelpScreen() {
     },
   });
 
-  function submit() {
-    const e: typeof errors = {};
-    if (subject.trim().length < 3) e.subject = t('help.subjectShort');
-    if (details.trim().length < 10) e.details = t('help.detailsShort');
+  const check = (field: 'subject' | 'details', value: string) =>
+    field === 'subject' ? (value.trim().length < 3 ? t('help.subjectShort') : undefined) : value.trim().length < 10 ? t('help.detailsShort') : undefined;
+
+  async function submit() {
+    const e = { subject: check('subject', subject), details: check('details', details) };
     setErrors(e);
     setSent(false);
-    if (!e.subject && !e.details) create.mutate({ bookingId, subject: subject.trim(), details: details.trim() });
+    if (e.subject || e.details) return false;
+    await create.mutateAsync({ bookingId, subject: subject.trim(), details: details.trim() });
   }
 
   const recent = (bookings.data?.items ?? []).slice(0, 8);
@@ -66,10 +69,10 @@ export default function HelpScreen() {
       <Card style={styles.form}>
         {recent.length ? (
           <View style={styles.gap8}>
-            <AppText variant="bold" size={14}>
+            <AppText variant="bold" size="sm">
               {t('help.about')}
             </AppText>
-            <View style={styles.chips}>
+            <View style={styles.chips} accessibilityRole="radiogroup">
               <Chip label={t('help.general')} selected={!bookingId} onPress={() => setBookingId(undefined)} />
               {recent.map((b) => (
                 <Chip key={b.id} label={`${b.vendor.businessName} · ${formatDay(b.day, lang)}`} selected={bookingId === b.id} onPress={() => setBookingId(b.id)} />
@@ -77,26 +80,41 @@ export default function HelpScreen() {
             </View>
           </View>
         ) : null}
-        <TextField label={t('help.subject')} placeholder={t('help.subjectPlaceholder')} value={subject} onChangeText={setSubject} maxLength={120} error={errors.subject} />
+        <TextField
+          label={t('help.subject')}
+          placeholder={t('help.subjectPlaceholder')}
+          value={subject}
+          onChangeText={(v) => {
+            setSubject(v);
+            if (errors.subject && !check('subject', v)) setErrors((e) => ({ ...e, subject: undefined }));
+          }}
+          onBlur={() => subject && setErrors((e) => ({ ...e, subject: check('subject', subject) }))}
+          maxLength={120}
+          error={errors.subject}
+        />
         <TextField
           label={t('help.details')}
           placeholder={t('help.detailsPlaceholder')}
           value={details}
-          onChangeText={setDetails}
+          onChangeText={(v) => {
+            setDetails(v);
+            if (errors.details && !check('details', v)) setErrors((e) => ({ ...e, details: undefined }));
+          }}
+          onBlur={() => details && setErrors((e) => ({ ...e, details: check('details', details) }))}
           multiline
           maxLength={2000}
           error={errors.details ?? (create.error ? errorText(t, create.error) : null)}
         />
-        <Button label={t('help.send')} onPress={submit} loading={create.isPending} />
+        <Button label={t('help.send')} onPress={submit} loadingLabel={t('help.sending')} />
       </Card>
 
       <SectionTitle title={t('help.yours')} />
       {complaints.isPending ? (
-        <Loading />
+        <CardsSkeleton count={2} height={100} />
       ) : complaints.error ? (
         <ErrorState error={complaints.error} onRetry={() => complaints.refetch()} />
       ) : complaints.data.items.length === 0 ? (
-        <AppText size="md">{t('help.none')}</AppText>
+        <EmptyState compact icon="help" title={t('help.none')} />
       ) : (
         complaints.data.items.map((cp) => <ComplaintCard key={cp.id} complaint={cp} />)
       )}
@@ -109,7 +127,12 @@ function ComplaintCard({ complaint: cp }: { complaint: Complaint }) {
   const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   return (
-    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={styles.complaint}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ expanded: open }}
+      onPress={() => setOpen((o) => !o)}
+      style={({ pressed }) => [styles.complaint, pressed && styles.pressed]}
+    >
       <View style={styles.row}>
         <AppText variant="bold" size="md" style={styles.flex}>
           {cp.subject}
@@ -139,6 +162,7 @@ const styles = StyleSheet.create({
   gap8: { gap: space.sm },
   form: { padding: space.lg, gap: space.lg },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  pressed: { opacity: 0.85 },
   complaint: { backgroundColor: c.white, borderRadius: radius.lg, padding: space.lg, gap: space.xs },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   resolution: { backgroundColor: c.mintLight, borderRadius: radius.sm, padding: space.sm, marginTop: space.xs },

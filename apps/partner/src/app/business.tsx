@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +7,7 @@ import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { invalidateVendor, keys, useVendor } from '../lib/queries';
 import { isCategoryLocked } from '../lib/routing';
+import { toast } from '../lib/toast';
 import { BusinessForm, businessPayload, initialBusiness, validateBusiness, type BusinessValues } from '../components/BusinessForm';
 import { Button } from '../components/Button';
 import { Notice } from '../components/Notice';
@@ -32,21 +32,25 @@ function EditBusiness({ vendor }: { vendor: OwnVendor }) {
     onSuccess: (v) => {
       qc.setQueryData(keys.vendor, v);
       invalidateVendor(qc);
+      toast.success(t('business.saved'));
       router.back();
     },
-    onError: (e) => Alert.alert(t('errors.title'), errorText(t, e)),
+    onError: (e) => toast.error(errorText(t, e)),
   });
 
   function submit() {
     setShowErrors(true);
     if (Object.keys(validateBusiness(values)).length) return;
     const body = businessPayload(values, initial);
-    if (!Object.keys(body).length) return router.back();
-    save.mutate(body);
+    if (!Object.keys(body).length) {
+      toast.info(t('business.noChanges'));
+      return router.back();
+    }
+    if (!save.isPending) save.mutate(body);
   }
 
   return (
-    <Screen back title={t('business.title')} footer={<Button testID="save-business" size="lg" label={t('common.save')} loading={save.isPending} onPress={submit} />}>
+    <Screen back title={t('business.title')} footer={<Button testID="save-business" size="lg" label={t('common.saveChanges')} loadingLabel={t('common.saving')} loading={save.isPending} onPress={submit} />}>
       {vendor.status === 'pending' ? <Notice icon="lock" tone="warning">{t('errors.underReview')}</Notice> : null}
       <BusinessForm values={values} onChange={onChange} showErrors={showErrors} categoryLocked={isCategoryLocked(vendor.status)} />
     </Screen>

@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { todayIst } from '@eventseva/app-shared';
 import { useLanguage } from '../hooks/useLanguage';
 import { c, radius, space } from '../lib/theme';
+import { haptic } from '../lib/haptics';
 import { AppText } from './AppText';
 import { IconButton } from './Button';
+import { SelectedMark } from './Form';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 export const monthOf = (day: string) => day.slice(0, 7);
@@ -71,10 +73,10 @@ export function DatePicker({
         </AppText>
         <IconButton icon="forward" label={t('date.nextMonth')} onPress={() => go(1)} tone="lavender" />
       </View>
-      <View style={styles.grid}>
+      <View style={styles.grid} accessibilityRole="radiogroup">
         {weekdays.map((w, i) => (
           <View key={`w${i}`} style={styles.cell}>
-            <AppText size="xs" color={c.textMuted}>
+            <AppText size="xs" color={c.textMuted} importantForAccessibility="no">
               {w}
             </AppText>
           </View>
@@ -84,30 +86,36 @@ export function DatePicker({
           const past = day < minDay;
           const state = busy?.[day];
           const selected = day === value;
-          const label = `${day}${state === 'full' ? `, ${t('date.booked')}` : state === 'partial' ? `, ${t('date.partly')}` : ''}`;
+          const label = [day, state === 'full' ? t('date.booked') : state === 'partial' ? t('date.partly') : null, past ? t('date.past') : null]
+            .filter(Boolean)
+            .join(', ');
           return (
             <View key={day} style={styles.cell}>
               <Pressable
-                accessibilityRole="button"
+                accessibilityRole="radio"
                 accessibilityLabel={label}
-                accessibilityState={{ selected, disabled: past }}
+                accessibilityState={{ selected, checked: selected, disabled: past }}
                 disabled={past}
-                onPress={() => onChange(day)}
-                style={[
+                onPress={() => {
+                  haptic.select();
+                  onChange(day);
+                }}
+                style={({ pressed }) => [
                   styles.day,
                   !past && !state && styles.free,
                   state === 'partial' && styles.partial,
                   state === 'full' && styles.full,
                   selected && styles.selected,
                   past && styles.past,
+                  pressed && styles.pressed,
                 ]}
               >
-                <AppText
-                  variant="bold"
-                  size="md"
-                  color={selected ? c.white : c.text}
-                  style={state === 'full' && !selected ? styles.strike : undefined}
-                >
+                {selected ? (
+                  <View style={styles.mark}>
+                    <SelectedMark size={14} />
+                  </View>
+                ) : null}
+                <AppText variant="bold" size="md" style={state === 'full' ? styles.strike : undefined}>
                   {String(Number(day.slice(8)))}
                 </AppText>
               </Pressable>
@@ -145,8 +153,10 @@ const styles = StyleSheet.create({
   free: { backgroundColor: c.mintLight },
   partial: { backgroundColor: c.peach },
   full: { backgroundColor: c.white, borderWidth: 1, borderStyle: 'dashed', borderColor: c.ink },
-  selected: { backgroundColor: c.royal, borderWidth: 0 },
-  past: { opacity: 0.35 },
+  selected: { backgroundColor: c.selectedBg, borderWidth: 2, borderStyle: 'solid', borderColor: c.selectedBorder },
+  past: { opacity: 0.4 },
+  pressed: { opacity: 0.85 },
+  mark: { position: 'absolute', top: 1, right: 1 },
   strike: { textDecorationLine: 'line-through' },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: space.lg },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },

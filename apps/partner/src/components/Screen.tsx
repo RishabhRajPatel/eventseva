@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import type { ScrollViewInstance } from 'react-native';
 import { KeyboardAvoidingView, Platform, RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -24,13 +25,16 @@ interface ScreenProps {
   /** Tab screens sit above the tab bar, which already handles the bottom inset. */
   inTabs?: boolean;
   testID?: string;
+  /** To scroll to the first wrong field of a form. */
+  scrollRef?: RefObject<ScrollViewInstance | null>;
 }
 
 /** Cream page with safe areas, a header and a scrolling body; max width keeps tablets readable. */
-export function Screen({ children, title, back, subtitle, right, footer, scroll = true, refreshing, onRefresh, contentStyle, inTabs, testID }: ScreenProps) {
+export function Screen({ children, title, back, subtitle, right, footer, scroll = true, refreshing, onRefresh, contentStyle, inTabs, testID, scrollRef }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const body = scroll ? (
     <ScrollView
+      ref={scrollRef}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={[styles.content, contentStyle]}
       refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} colors={[c.royal]} tintColor={c.royal} /> : undefined}

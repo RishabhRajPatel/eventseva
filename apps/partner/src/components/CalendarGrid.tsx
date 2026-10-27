@@ -1,7 +1,10 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { memo } from 'react';
 import { monthGrid, summarizeDay, type DaySlots, type DaySummary } from '../lib/calendar';
-import { c, radius, space } from '../lib/theme';
+import { haptic } from '../lib/haptics';
+import { c, DISABLED_OPACITY, radius, space } from '../lib/theme';
+import { Icon } from './Icon';
 import { Txt } from './Txt';
 
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
@@ -15,7 +18,7 @@ const CELL: Record<DaySummary, { bg: string; border?: string; dashed?: boolean }
 };
 
 /** Month grid (Mon–Sun) coloured by what is booked or blocked; past days are disabled. */
-export function CalendarGrid({
+export const CalendarGrid = memo(function CalendarGrid({
   month,
   slots,
   today,
@@ -55,22 +58,35 @@ export function CalendarGrid({
               <View key={day} style={styles.cell}>
                 <Pressable
                   testID={`day-${day}`}
-                  accessibilityRole="button"
+                  accessibilityRole="radio"
                   accessibilityLabel={`${Number(day.slice(8))} · ${t(`calendar.summary.${summary}`)}`}
-                  accessibilityState={{ disabled, selected: isSelected }}
+                  accessibilityHint={disabled ? t('calendar.summary.past') : undefined}
+                  accessibilityState={{ disabled, selected: isSelected, checked: isSelected }}
                   disabled={disabled}
-                  onPress={() => onSelect(day)}
-                  style={[
+                  onPress={() => {
+                    if (!isSelected) haptic.select();
+                    onSelect(day);
+                  }}
+                  style={({ pressed }) => [
                     styles.day,
-                    { minHeight: large ? 64 : 40, backgroundColor: isSelected ? c.royal : look.bg },
-                    look.border && !isSelected ? { borderWidth: look.dashed ? 1 : 2, borderColor: look.border, borderStyle: look.dashed ? 'dashed' : 'solid' } : null,
-                    disabled ? { opacity: 0.35 } : null,
+                    { minHeight: large ? 64 : 40, backgroundColor: isSelected ? c.lilac : look.bg },
+                    isSelected
+                      ? styles.selected
+                      : look.border
+                        ? { borderWidth: look.dashed ? 1.5 : 2, borderColor: look.border, borderStyle: look.dashed ? 'dashed' : 'solid' }
+                        : null,
+                    disabled ? { opacity: DISABLED_OPACITY } : pressed ? { opacity: 0.85 } : null,
                   ]}
                 >
-                  <Txt variant="bold" size={large ? 'lg' : 'md'} color={isSelected ? c.white : c.ink}>
+                  {isSelected ? (
+                    <View style={styles.tick}>
+                      <Icon name="check" size={9} strokeWidth={3.5} color={c.white} />
+                    </View>
+                  ) : null}
+                  <Txt variant="bold" size={large ? 'lg' : 'md'} color={c.ink}>
                     {Number(day.slice(8))}
                   </Txt>
-                  {daySlots && !disabled ? <SlotDots slots={daySlots} light={isSelected} /> : null}
+                  {daySlots && !disabled ? <SlotDots slots={daySlots} /> : null}
                 </Pressable>
               </View>
             );
@@ -80,11 +96,11 @@ export function CalendarGrid({
       <Legend />
     </View>
   );
-}
+});
 
 /** Small marks under the date: one per taken half of the day (full day = both). */
-function SlotDots({ slots, light }: { slots: DaySlots; light: boolean }) {
-  const color = (s: DaySlots['day']) => (s.status === 'booked' ? (light ? c.peach : c.royal) : s.status === 'blocked' ? (light ? c.white : c.muted) : 'transparent');
+function SlotDots({ slots }: { slots: DaySlots }) {
+  const color = (s: DaySlots['day']) => (s.status === 'booked' ? c.royal : s.status === 'blocked' ? c.muted : 'transparent');
   const dayState = slots.full.status !== 'free' ? slots.full : slots.day;
   const nightState = slots.full.status !== 'free' ? slots.full : slots.night;
   return (
@@ -101,7 +117,8 @@ function Legend() {
     { key: 'free', style: { backgroundColor: c.mintLight, borderWidth: 1, borderColor: c.mint } },
     { key: 'booked', style: { backgroundColor: c.peach } },
     { key: 'blocked', style: { borderWidth: 1, borderStyle: 'dashed', borderColor: c.ink } },
-    { key: 'selected', style: { backgroundColor: c.royal } },
+    { key: 'selected', style: { backgroundColor: c.lilac, borderWidth: 2, borderColor: c.royal } },
+    { key: 'past', style: { backgroundColor: c.mintLight, opacity: DISABLED_OPACITY } },
   ];
   return (
     <View style={styles.legend}>
@@ -123,5 +140,7 @@ const styles = StyleSheet.create({
   dot: { width: 5, height: 5, borderRadius: 3 },
   legend: { flexDirection: 'row', flexWrap: 'wrap', gap: space.md, paddingTop: space.xs },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  swatch: { width: 12, height: 12, borderRadius: 4 },
+  swatch: { width: 14, height: 14, borderRadius: 4 },
+  selected: { borderWidth: 2, borderColor: c.royal },
+  tick: { position: 'absolute', top: 2, right: 2, width: 14, height: 14, borderRadius: 7, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
 });

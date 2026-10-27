@@ -142,6 +142,16 @@ const ICONS = {
   tent: <Path d="M2 20L12 4l10 16zM12 4v16M8.5 20L12 13l3.5 7" />,
   // Wedding & event planners: a clipboard with a tick.
   planner: <Path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4" />,
+  // Upload states and the photo menu.
+  retry: <Path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />,
+  more: (
+    <>
+      <Circle cx="5" cy="12" r="1.6" fill="currentColor" />
+      <Circle cx="12" cy="12" r="1.6" fill="currentColor" />
+      <Circle cx="19" cy="12" r="1.6" fill="currentColor" />
+    </>
+  ),
+  play: <Path d="M8 5v14l11-7z" />,
   other: (
     <>
       <Circle cx="5" cy="12" r="1.5" />
@@ -155,7 +165,7 @@ export type IconName = keyof typeof ICONS;
 
 export function Icon({ name, size = 20, color = c.text, strokeWidth = 2 }: { name: IconName; size?: number; color?: string; strokeWidth?: number }) {
   return (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" color={color} stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
       {ICONS[name]}
     </Svg>
   );

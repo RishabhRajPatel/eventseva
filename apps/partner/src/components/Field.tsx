@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { forwardRef, useState, type ReactNode } from 'react';
 import type { TextInputInstance } from 'react-native';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { c, radius, space, text } from '../lib/theme';
@@ -10,9 +10,11 @@ export interface FieldProps extends TextInputProps {
   error?: string | null;
   /** Shown inside the box before the input, e.g. "+91" or "₹". */
   prefix?: string;
+  /** Inside the box after the input, e.g. a Show / Hide button. */
+  right?: ReactNode;
 }
 
-export const Field = forwardRef<TextInputInstance, FieldProps>(function Field({ label, hint, error, prefix, multiline, style, onFocus, onBlur, ...rest }, ref) {
+export const Field = forwardRef<TextInputInstance, FieldProps>(function Field({ label, hint, error, prefix, right, multiline, style, onFocus, onBlur, ...rest }, ref) {
   const f = useFonts();
   const [focused, setFocused] = useState(false);
   return (
@@ -53,9 +55,10 @@ export const Field = forwardRef<TextInputInstance, FieldProps>(function Field({ 
           style={[styles.input, { fontFamily: f.body }, multiline ? styles.inputMulti : null, style]}
           {...rest}
         />
+        {right}
       </View>
       {error ? (
-        <Txt size="sm" color={c.danger}>
+        <Txt size="sm" color={c.danger} accessibilityRole="alert">
           {error}
         </Txt>
       ) : hint ? (

@@ -7,7 +7,10 @@
     "loading": "Loading",
     "city": "Prayagraj",
     "errorTitle": "Something went wrong",
-    "errorBody": "Something went wrong. Please try again."
+    "errorBody": "Something went wrong. Please try again.",
+    "goBack": "Go back",
+    "undo": "Undo",
+    "saving": "Saving…"
   },
   "tabs": {
     "home": "Home",
@@ -132,7 +135,8 @@
     "reply": "Vendor's reply",
     "chat": "Chat with vendor",
     "book": "Book now",
-    "bookOn": "Book now · {{date}}"
+    "bookOn": "Book now · {{date}}",
+    "noReviewsBody": "Book this vendor and be the first to share how it went."
   },
   "date": {
     "free": "Free",
@@ -140,7 +144,8 @@
     "booked": "Booked",
     "selected": "Selected",
     "prevMonth": "Previous month",
-    "nextMonth": "Next month"
+    "nextMonth": "Next month",
+    "past": "Past date"
   },
   "units": {
     "per_event": "per event",
@@ -209,7 +214,9 @@
       "datePast": "Choose a date from today onwards.",
       "guestsBad": "Enter a number of guests, or leave it empty.",
       "venueShort": "Enter at least 5 letters, or leave it empty."
-    }
+    },
+    "created": "Event “{{name}}” created. Now book vendors for it.",
+    "creating": "Creating event…"
   },
   "book": {
     "title": "Booking details",
@@ -235,7 +242,9 @@
     "estimateNeedsQty": "Enter how many to see an estimate.",
     "estimateNote": "This is an estimate. The vendor's reply shows the final price.",
     "noPaymentNow": "No payment now. The vendor will reply within 24 hours.",
-    "send": "Send request"
+    "send": "Send request",
+    "sentToast": "Request sent to {{name}}. You will hear back within 24 hours.",
+    "sending": "Sending request…"
   },
   "status": {
     "requested": {
@@ -308,7 +317,7 @@
     "help": "Report a problem"
   },
   "cancel": {
-    "title": "Cancel this booking?",
+    "title": "Cancel your booking with {{name}}?",
     "notPaid": "You have not paid anything yet, so there is nothing to refund.",
     "refund": "You will get about {{amount}} back ({{percent}}% of the advance).",
     "noRefund": "No refund: the event is less than 7 days away.",
@@ -320,7 +329,11 @@
     "reasonPlaceholder": "e.g. Our dates changed",
     "confirm": "Yes, cancel booking",
     "keep": "Keep booking",
-    "refundPaid": "You will get about {{amount}} back ({{percent}}% of the {{paid}} you paid)."
+    "refundPaid": "You will get about {{amount}} back ({{percent}}% of the {{paid}} you paid).",
+    "reasonShort": "Please tell the vendor why, in a few words (at least 3 letters).",
+    "busy": "Cancelling…",
+    "done": "Booking cancelled. The vendor has been told.",
+    "doneRefund": "Booking cancelled. {{amount}} will be refunded to your account."
   },
   "review": {
     "title": "Review {{name}}",
@@ -330,7 +343,9 @@
     "comment": "Your review (optional)",
     "commentPlaceholder": "What went well? What could be better?",
     "submit": "Submit review",
-    "thanks": "Thank you for your review!"
+    "thanks": "Thank you for your review!",
+    "pickStars": "Tap the stars to give a rating from 1 to 5.",
+    "posted": "Review posted. Thank you!"
   },
   "payment": {
     "title": "Pay advance",
@@ -353,7 +368,12 @@
     "devNote": "Development build: no real money is charged.",
     "cancelled": "Payment cancelled. You can try again.",
     "failed": "Payment failed. No money was taken; please try again.",
-    "viewBooking": "View booking"
+    "viewBooking": "View booking",
+    "done": "Payment received. Your booking is confirmed.",
+    "starting": "Starting secure payment…",
+    "inCheckout": "Finish paying in the Razorpay window…",
+    "verifying": "Verifying payment…",
+    "verifyingNote": "Checking your payment with the bank. Please keep the app open; this takes a few seconds."
   },
   "events": {
     "title": "My Events",
@@ -375,7 +395,8 @@
       "pending": "Pending"
     },
     "noBookings": "No vendors booked for this event yet.",
-    "noneInFilter": "Nothing here."
+    "noneInFilter": "No bookings match this filter.",
+    "showAll": "Show all bookings"
   },
   "bookings": {
     "payAdvance": "Pay advance · {{amount}}"
@@ -394,17 +415,22 @@
     "placeholder": "Type a message…",
     "messageLabel": "Message",
     "send": "Send",
-    "seen": "Seen"
+    "seen": "Seen",
+    "sending": "Sending…",
+    "failed": "Not sent. Tap to try again."
   },
   "notifications": {
     "title": "Notifications",
     "emptyTitle": "No notifications",
-    "emptyBody": "Booking updates and messages will show up here."
+    "emptyBody": "Booking updates and messages will show up here.",
+    "new": "New"
   },
   "saved": {
     "title": "Saved vendors",
     "emptyTitle": "No saved vendors",
-    "emptyBody": "Tap the heart on a vendor to save them for later."
+    "emptyBody": "Tap the heart on a vendor to save them for later.",
+    "added": "Saved. Find it in Profile → Saved vendors.",
+    "removed": "Removed from saved vendors"
   },
   "help": {
     "title": "Help & support",
@@ -426,7 +452,8 @@
       "open": "Open",
       "in_progress": "In progress",
       "resolved": "Resolved"
-    }
+    },
+    "sending": "Sending…"
   },
   "profile": {
     "edit": "Edit",
@@ -445,7 +472,12 @@
     "logoutTitle": "Log out of EventSeva?",
     "logoutAll": "Log out of all devices",
     "logoutAllTitle": "Log out of all devices?",
-    "logoutAllBody": "You will need an OTP to log in again on every phone."
+    "logoutAllBody": "Every phone logged in to your account will be logged out, including this one. You will need an OTP to log in again.",
+    "logoutBody": "You will need an OTP sent to your phone to log in again. Your bookings stay safe.",
+    "logoutAllConfirm": "Log out everywhere",
+    "stay": "Stay logged in",
+    "loggingOut": "Logging out…",
+    "nameSaved": "Your name has been updated."
   },
   "language": {
     "title": "Choose language",
@@ -457,13 +489,17 @@
     "note": "The whole app switches to this language — menus, buttons and notifications. Vendor names and reviews stay as written.",
     "noteOther": "पूरा ऐप इसी भाषा में दिखेगा — मेन्यू, बटन और नोटिफ़िकेशन।",
     "later": "You can change this anytime from Profile → Language.",
-    "apply": "Apply"
+    "apply": "Apply",
+    "changed": "Language changed to English."
   },
   "offline": {
     "title": "No internet",
     "body": "Check your connection. You can still view your saved bookings.",
     "retry": "Try again",
-    "bookings": "View my bookings"
+    "bookings": "View my bookings",
+    "banner": "No internet. Showing saved data.",
+    "back": "You are back online. Updating…",
+    "stillOffline": "Still no internet. We will keep trying on our own."
   },
   "errors": {
     "NETWORK": "No internet connection. Please check and try again.",
@@ -474,29 +510,48 @@
     "OTP_INVALID_one": "Wrong code. {{count}} try left.",
     "OTP_INVALID_other": "Wrong code. {{count}} tries left.",
     "OTP_EXPIRED": "This code has expired. Tap Resend OTP to get a new one.",
-    "USER_BLOCKED": "This account is blocked. Please contact support.",
-    "RATE_LIMITED": "Too many requests. Please wait a minute.",
+    "USER_BLOCKED": "This account is blocked. Please contact EventSeva support.",
+    "RATE_LIMITED": "Too many requests. Please wait a minute and try again.",
     "SLOT_TAKEN": "This vendor is already booked at that time. Please choose another time or date.",
-    "BOOKING_EXISTS": "You already have a booking with this vendor for this event.",
-    "OWN_VENDOR": "You cannot book your own business.",
-    "ITEM_NOT_FOUND": "This service or package is no longer offered.",
-    "EVENT_NOT_FOUND": "Event not found.",
+    "BOOKING_EXISTS": "You already have a booking with this vendor for this event. Open My Events to see it.",
+    "OWN_VENDOR": "This is your own business, so you cannot book it. Please choose another vendor.",
+    "ITEM_NOT_FOUND": "This service or package is no longer offered. Go back and pick another one.",
+    "EVENT_NOT_FOUND": "We could not find this event. It may have been removed; pick another event or create a new one.",
     "EVENT_IN_PAST": "Choose a date from today onwards.",
     "QUANTITY_REQUIRED": "Please enter how many you need.",
     "AMOUNT_TOO_HIGH": "This booking is too large. Please split it into smaller bookings.",
-    "VENDOR_NOT_FOUND": "This vendor is not available.",
+    "VENDOR_NOT_FOUND": "This vendor is not taking bookings right now. Please choose another vendor.",
     "BOOKING_BAD_STATUS": "This booking has changed. Please refresh and check again.",
-    "BOOKING_EXPIRED": "This request has expired.",
-    "PAYMENT_TIME_OVER": "The time to pay has run out.",
+    "BOOKING_EXPIRED": "This request has expired. Please send a new request or book another vendor.",
+    "PAYMENT_TIME_OVER": "The time to pay has run out, so the date was released. Send a new request to book again.",
     "PAYMENT_INVALID": "We could not verify this payment. If money was taken, it will be refunded.",
     "REVIEW_NOT_ALLOWED": "You can review after the event is over.",
-    "REVIEW_EXISTS": "You have already reviewed this booking.",
-    "COUPON_INVALID": "This coupon code is not valid or has expired.",
+    "REVIEW_EXISTS": "You have already reviewed this booking. Thank you!",
+    "COUPON_INVALID": "This coupon code is not valid or has expired. Check the code, or tap one of the offers below.",
     "COUPON_NOT_APPLICABLE": "This coupon cannot be used on this booking.",
-    "COUPON_ALREADY_USED": "You have already used this coupon.",
+    "COUPON_ALREADY_USED": "You have already used this coupon. Try another offer.",
     "COUPON_USED_UP": "This coupon has been fully used. Try another offer.",
     "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
-    "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}."
+    "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}.",
+    "ACCOUNT_HAS_ACTIVE_BOOKINGS_one": "You still have {{count}} open booking. Finish or cancel your open bookings first, then delete your account.",
+    "ACCOUNT_HAS_ACTIVE_BOOKINGS_other": "You still have {{count}} open bookings. Finish or cancel your open bookings first, then delete your account.",
+    "ACCOUNT_HAS_PENDING_PAYOUT": "A payment for your business is still on its way. Please try again after it has been paid.",
+    "OTP_SERVICE_BUSY": "We cannot send codes right now. Please try again in a little while.",
+    "CITY_NOT_FOUND": "EventSeva is not available in that city yet. Please choose Prayagraj.",
+    "VALIDATION": "Some details are not right. Please check what you entered and try again.",
+    "UNAUTHORIZED": "Your login has ended. Please log in again.",
+    "FORBIDDEN": "You cannot do this from your account. If you think this is wrong, contact support.",
+    "NOT_FOUND": "We could not find this. It may have been removed; go back and refresh.",
+    "PARTNER_APP_ONLY": "This is only available in the EventSeva Partner app.",
+    "CONFLICT": "This has just changed. Please refresh and check again.",
+    "SERVER": "Our server had a problem. Please try again in a minute.",
+    "TOO_LATE_TO_BOOK": "This event is too soon to book in the app, because the vendor would not have time to reply. Please call or chat with the vendor.",
+    "TOO_MANY_OPEN_REQUESTS": "You already have {{max}} requests waiting for a reply. Wait for some vendors to answer, or cancel a request you no longer need.",
+    "QUANTITY_OUT_OF_RANGE": "This vendor takes {{range}} guests. Change the number of guests and try again.",
+    "DATE_TOO_FAR": "Events can be planned up to 2 years ahead. Please choose an earlier date.",
+    "TOO_MANY_MESSAGES": "You are sending messages too fast. Wait a minute and try again.",
+    "RANGE_BETWEEN": "{{min}} to {{max}}",
+    "RANGE_AT_LEAST": "at least {{min}}"
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -510,7 +565,9 @@
     "typeLabel": "Type DELETE to confirm",
     "button": "Delete my account",
     "doneTitle": "Account deleted",
-    "doneBody": "Your account has been deleted. You can sign up again any time."
+    "doneBody": "Your account has been deleted. You can sign up again any time.",
+    "typeFirst": "Type DELETE in the box below to confirm.",
+    "busy": "Deleting account…"
   },
   "coupon": {
     "have": "Have a coupon?",
@@ -532,7 +589,8 @@
       "category": "This coupon is not for this kind of service.",
       "firstBooking": "This coupon is only for your first booking.",
       "zero": "This coupon gives no discount on this booking."
-    }
+    },
+    "applying": "Applying…"
   },
   "offers": {
     "title": "Offers",

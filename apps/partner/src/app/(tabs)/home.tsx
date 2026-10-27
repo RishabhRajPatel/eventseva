@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { rupees, type PartnerDashboard } from '@eventseva/app-shared';
+import { rupees, type Booking, type PartnerDashboard } from '@eventseva/app-shared';
 import { useBookings, useDashboard, useNotifications, useVendor } from '../../lib/queries';
 import { istDay, slotLabel, vendorStatus } from '../../lib/labels';
 import { c, radius, space } from '../../lib/theme';
@@ -16,8 +16,10 @@ import { IconButton, LinkButton } from '../../components/Button';
 import { Card, Row, Section } from '../../components/Card';
 import { Pill } from '../../components/Chip';
 import { Icon, type IconName } from '../../components/Icon';
-import { QueryView } from '../../components/States';
+import { EmptyInline, QueryView } from '../../components/States';
 import { Txt } from '../../components/Txt';
+
+const openBooking = (b: Booking) => router.push(`/booking/${b.id}`);
 
 /** "Aaj" — today at a glance (VendorDash board). */
 export default function Home() {
@@ -40,7 +42,7 @@ export default function Home() {
   };
 
   return (
-    <QueryView query={dashboard}>
+    <QueryView query={dashboard} skeleton="dashboard" padded>
       {(d) => (
         <ScrollView
           testID="home"
@@ -117,13 +119,17 @@ function HomeBody({ d, featuredUntil }: { d: PartnerDashboard; featuredUntil: st
           <View style={tablet ? styles.twoCol : { gap: space.md }}>
             {open.map((b) => (
               <View key={b.id} style={tablet ? styles.half : null}>
-                <BookingCard booking={b} now={now} onOpen={() => router.push(`/booking/${b.id}`)} />
+                <BookingCard booking={b} now={now} onOpen={openBooking} />
               </View>
             ))}
           </View>
         ) : (
           <Card testID="no-requests">
-            <Txt size="md">{d.newRequests ? t('home.requestsWaiting', { n: d.newRequests }) : t('home.noRequests')}</Txt>
+            {d.newRequests ? (
+              <EmptyInline icon="bookings" text={t('home.requestsWaiting', { n: d.newRequests })} action={{ label: t('common.seeAll'), onPress: () => router.navigate('/bookings') }} />
+            ) : (
+              <EmptyInline icon="bell" text={t('home.noRequests')} action={{ label: t('home.keepCalendar'), onPress: () => router.navigate('/calendar') }} />
+            )}
           </Card>
         )}
       </Section>
@@ -170,9 +176,7 @@ function HomeBody({ d, featuredUntil }: { d: PartnerDashboard; featuredUntil: st
               );
             })
           ) : (
-            <View style={{ paddingVertical: space.md }}>
-              <Txt size="md">{t('home.noUpcoming')}</Txt>
-            </View>
+            <EmptyInline icon="calendar" text={t('home.noUpcoming')} />
           )}
         </Card>
       </Section>

@@ -12,8 +12,17 @@
   --mint-light: #ddfbef;
   --white: #ffffff;
   --muted: #4a4e5c;
+  /* Borders that must be seen (inputs, unselected chips): 3:1 on white and cream (WCAG 1.4.11). */
+  --line: #8a7bb8;
   --danger: #b42318;
   --danger-bg: #fde8e7;
+  /* Status text colours from docs/UX.md §1, always on their own fill. */
+  --success-ink: #0b5c36;
+  --warning-ink: #7a3e00;
+  --warning-bg: #fff6e8;
+  --row-hover: #f7f3ff;
+  --row-selected: #efe7ff;
+  /* Contrast pairs are checked in src/lib/contrast.test.ts against src/lib/palette.ts. */
 
   --radius-sm: 0.625rem;
   --radius: 0.75rem;
@@ -93,7 +102,9 @@ textarea {
 }
 
 :focus-visible {
-  outline: none;
+  /* Transparent outline: still drawn in Windows high-contrast mode, where shadows are not. */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
   box-shadow: var(--focus);
 }
 
@@ -145,11 +156,19 @@ textarea {
   text-decoration: none;
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease,
+    opacity 0.12s ease;
 }
 
 .btn:hover {
   background: var(--cream);
   color: var(--ink);
+}
+
+.btn:active:not(:disabled) {
+  opacity: 0.85;
 }
 
 .btn-primary {
@@ -179,6 +198,18 @@ textarea {
   color: var(--royal);
 }
 
+/* Opens a destructive action (Reject, Block, Hold, Hide): red, but quieter than the confirm button. */
+.btn-danger-outline {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--white);
+}
+
+.btn-danger-outline:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 .btn-small {
   min-height: 2.5rem;
   padding: 0 0.875rem;
@@ -190,6 +221,22 @@ textarea {
 .btn[aria-disabled='true'] {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* Busy: keeps its colour (it is working, not unavailable) and shows its own spinner. */
+.btn[aria-busy='true'] {
+  opacity: 0.9;
+  cursor: progress;
+}
+
+.btn-spinner {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.7s linear infinite;
 }
 
 .btn-link {
@@ -229,7 +276,7 @@ textarea {
 .textarea {
   min-height: 2.75rem;
   border-radius: var(--radius);
-  border: 1.5px solid var(--lilac);
+  border: 1.5px solid var(--line);
   background: var(--white);
   padding: 0 1rem;
   font-size: 0.9375rem;
@@ -259,6 +306,22 @@ textarea {
 .input[aria-invalid='true'],
 .textarea[aria-invalid='true'] {
   border-color: var(--danger);
+  border-width: 2px;
+}
+
+.input:disabled,
+.select:disabled {
+  background: var(--cream);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* A filter that is narrowing the list (not "All"). */
+.select[data-active='true'],
+.input[data-active='true'] {
+  border: 2px solid var(--royal);
+  background-color: var(--row-selected);
+  font-weight: 700;
 }
 
 .field-error {
@@ -286,6 +349,23 @@ textarea {
   width: 1.25rem;
   height: 1.25rem;
   accent-color: var(--royal);
+}
+
+/* A filter checkbox drawn as a toggle chip: lilac with a royal border while on. */
+.toggle {
+  padding: 0 0.875rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: var(--white);
+}
+
+.toggle:hover {
+  border-color: var(--royal);
+}
+
+.toggle:has(input:checked) {
+  background: var(--lilac);
+  border: 2px solid var(--royal);
 }
 
 /* ---------- surfaces ---------- */
@@ -349,8 +429,14 @@ textarea {
 }
 
 .note-warning {
-  border-left-color: #c77a14;
-  background: #fff9ec;
+  border-left-color: var(--warning-ink);
+  background: var(--warning-bg);
+  color: var(--warning-ink);
+}
+
+.note-warning b,
+.note-warning a {
+  color: var(--warning-ink);
 }
 
 .quote {
@@ -397,17 +483,23 @@ textarea {
 
 .tone-warning {
   background: var(--peach);
-  color: var(--ink);
+  color: var(--warning-ink);
 }
 
 .tone-success {
   background: var(--mint);
-  color: var(--ink);
+  color: var(--success-ink);
 }
 
 .tone-successSoft {
   background: var(--mint-light);
-  color: var(--ink);
+  color: var(--success-ink);
+  border-color: var(--mint);
+}
+
+.tone-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .tone-dark {
@@ -424,7 +516,7 @@ textarea {
 .tone-neutral {
   background: var(--white);
   color: var(--ink);
-  border-color: var(--lilac);
+  border-color: var(--line);
 }
 
 .role-badge {
@@ -475,14 +567,41 @@ textarea {
   background: var(--royal);
   color: var(--white);
   font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+  text-decoration-thickness: 2px;
+}
+
+/* ✓ so the current tab is not told by colour alone; hidden from screen readers (aria-current says it). */
+.tab[aria-current='page']::before {
+  content: '✓';
+  content: '✓' / '';
+}
+
+.tab-count {
+  min-width: 1.5rem;
+  padding: 0 0.375rem;
+  border-radius: 999px;
+  background: var(--peach);
+  color: var(--ink);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 /* ---------- tables ---------- */
 
 .table-wrap {
-  overflow-x: auto;
+  /* Scrolls inside itself, so the header row can stay in view (sticky) on long lists. */
+  overflow: auto;
+  max-height: max(24rem, calc(100vh - 14rem));
   border-radius: var(--radius);
   background: var(--white);
+  overscroll-behavior: contain;
+}
+
+.table-wrap.static {
+  max-height: none;
 }
 
 .tbl {
@@ -500,6 +619,13 @@ textarea {
   white-space: nowrap;
 }
 
+.tbl > thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 var(--lilac);
+}
+
 .tbl td {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--lavender);
@@ -510,7 +636,8 @@ textarea {
   border-bottom: none;
 }
 
-.tbl .num {
+.tbl .num,
+.tbl th.num {
   text-align: right;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -526,8 +653,25 @@ textarea {
   color: var(--muted);
 }
 
-.tbl tbody tr:hover td {
-  background: #fbf8ff;
+.tbl > tbody > tr:hover > td,
+.tbl > tbody > tr:focus-within > td {
+  background: var(--row-hover);
+}
+
+/* The row being edited or whose details are open (bank details, audit changes). */
+.tbl > tbody > tr[aria-current='true'] > td,
+.tbl > tbody > tr[data-selected='true'] > td {
+  background: var(--row-selected);
+}
+
+.tbl > tbody > tr[aria-current='true'] > td:first-child,
+.tbl > tbody > tr[data-selected='true'] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--royal);
+}
+
+/* Inactive coupons, hidden categories / cities / plans. */
+.tbl > tbody > tr.row-off > td {
+  color: var(--muted);
 }
 
 /* ---------- key-value lists ---------- */
@@ -597,9 +741,55 @@ textarea {
   border-radius: var(--radius-lg);
 }
 
+.state-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--lavender);
+  color: var(--royal);
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
 .state-error {
   background: var(--danger-bg);
   color: var(--danger);
+}
+
+.state-error .state-icon {
+  background: var(--white);
+  color: var(--danger);
+}
+
+/* ---------- skeletons (loading) ---------- */
+
+.skel {
+  display: block;
+  height: 0.875rem;
+  border-radius: 0.375rem;
+  background: linear-gradient(90deg, var(--lavender) 0%, #f3eeff 50%, var(--lavender) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+.skel-box {
+  border-radius: var(--radius-lg);
+  background: var(--white);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
 }
 
 .state-error p {
@@ -622,8 +812,17 @@ textarea {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
+  .spinner,
+  .btn-spinner {
     animation-duration: 2.4s;
+  }
+
+  .skel {
+    animation: none;
+  }
+
+  .btn {
+    transition: none;
   }
 }
 
@@ -680,6 +879,16 @@ textarea {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+/* "Go back" sits on the left, away from the action button on the right. */
+.dialog-actions > :first-child {
+  margin-right: auto;
+}
+
+.dialog-question {
+  font-size: 1.375rem;
 }
 
 .chips {
@@ -689,20 +898,34 @@ textarea {
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
   min-height: 2.5rem;
   padding: 0 0.875rem;
   border-radius: 999px;
-  border: 1.5px solid var(--lilac);
+  border: 1.5px solid var(--line);
   background: var(--white);
   font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
 }
 
-.chip:hover,
-.chip[aria-pressed='true'] {
-  background: var(--lavender);
+.chip:hover {
   border-color: var(--royal);
+  background: var(--row-hover);
+}
+
+/* Selected (UX.md §2): lilac fill, 2px royal border and a ✓. */
+.chip[aria-pressed='true'] {
+  background: var(--lilac);
+  border: 2px solid var(--royal);
+  padding: 0 calc(0.875rem - 0.5px);
+}
+
+.chip[aria-pressed='true']::before {
+  content: '✓';
+  content: '✓' / '';
 }
 
 /* ---------- toasts ---------- */
@@ -742,6 +965,24 @@ textarea {
   color: var(--white);
 }
 
+.toast-text {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.toast-icon {
+  flex: none;
+}
+
+.toast-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
 .toast button {
   min-width: 2.5rem;
   min-height: 2.5rem;
@@ -751,6 +992,22 @@ textarea {
   font-size: 1.25rem;
   cursor: pointer;
   border-radius: var(--radius-sm);
+}
+
+.toast .toast-action {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  padding: 0 0.625rem;
+}
+
+.toast button:hover {
+  background: rgba(35, 38, 47, 0.12);
+}
+
+.toast-error button:hover {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* ---------- media ---------- */

@@ -26,6 +26,9 @@ export function choosePaymentPath(
 
 export type PayResult = { status: 'paid'; booking: Booking } | { status: 'cancelled' };
 
+/** Where a payment is, for the screen: creating the order, in the checkout, checking with the server. */
+export type PayStage = 'starting' | 'checkout' | 'verifying';
+
 export class PaymentError extends Error {}
 
 /** Razorpay's error code when the customer closes the checkout. */
@@ -35,10 +38,16 @@ export async function payAdvance(
   booking: Pick<Booking, 'id' | 'item'>,
   who: { name?: string | null; phone?: string; method?: PayMethod } = {},
   path: PaymentPath = choosePaymentPath(),
+  onStage: (stage: PayStage) => void = () => undefined,
 ): Promise<PayResult> {
-  if (path === 'dev') return { status: 'paid', booking: await api.devPay(booking.id) };
+  if (path === 'dev') {
+    onStage('verifying');
+    return { status: 'paid', booking: await api.devPay(booking.id) };
+  }
 
+  onStage('starting');
   const order = await api.startPayment(booking.id);
+  onStage('checkout');
   // Loaded only here, so Expo Go and tests never touch the missing native module.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const RazorpayCheckout = (require('react-native-razorpay') as typeof import('react-native-razorpay')).default;
@@ -59,6 +68,7 @@ export async function payAdvance(
     if (err?.code === RAZORPAY_CANCELLED) return { status: 'cancelled' };
     throw new PaymentError(err?.description || 'Payment failed. No money was taken; please try again.');
   }
+  onStage('verifying');
   const paid = await api.verifyPayment(booking.id, {
     razorpayOrderId: result.razorpay_order_id ?? order.orderId,
     razorpayPaymentId: result.razorpay_payment_id,

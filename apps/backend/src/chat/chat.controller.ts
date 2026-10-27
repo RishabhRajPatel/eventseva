@@ -22,13 +22,18 @@ class MessagesQuery {
 }
 
 const PAGE = 50;
-const PHONE = /(?:\+?91[\s-]?)?[6-9](?:[\s-]?\d){9}/g;
+/** Indian mobile numbers, also written in Hindi digits or split with spaces, dots, dashes or brackets. */
+const PHONE = /(?:(?:\+|00)?(?:91|९१)[\s.\-_/()]{0,2})?[6-9६-९](?:[\s.\-_/()]{0,2}[0-9०-९]){9}/g;
+/** Other ways to take the deal outside the app before a booking: e-mail and WhatsApp / Telegram links. */
+const CONTACT = /[\w.+-]+@[\w-]+\.[\w.]+|\b(?:wa\.me|api\.whatsapp\.com|t\.me)\/\S+/gi;
+/** Messages one person can send per minute (stops spam and push floods). */
+const MAX_MESSAGES_PER_MIN = 20;
 
 /**
  * Until a booking between the two is confirmed, phone numbers in messages are hidden, so
  * nobody can take the deal outside the app (and outside its refund protection).
  */
-export const maskPhones = (text: string) => text.replace(PHONE, '••••••••••');
+export const maskPhones = (text: string) => text.replace(PHONE, '••••••••••').replace(CONTACT, '•••••');
 
 interface Conversation {
   id: string;
@@ -125,6 +130,16 @@ export class ChatController {
     if (!text) throw new AppError('VALIDATION', 'Message is empty.');
     return this.db.tx(async (client) => {
       const conv = await this.member(client, auth, id);
+      const recent = await this.db.one<{ n: number }>(
+        client,
+        `SELECT count(*)::int AS n FROM messages WHERE sender_id = $1 AND created_at > now() - interval '1 minute'`,
+        [auth.userId],
+      );
+      if (recent!.n >= MAX_MESSAGES_PER_MIN) {
+        throw new AppError('TOO_MANY_MESSAGES', 'You are sending messages too fast. Wait a minute and try again.', HttpStatus.TOO_MANY_REQUESTS, {
+          retryAfterSec: 60,
+        });
+      }
       const share = await this.hasBooking(conv, client);
       const msg = await this.db.one(
         client,
@@ -134,7 +149,8 @@ export class ChatController {
       );
       await client.query('UPDATE conversations SET last_message_at = now() WHERE id = $1', [id]);
       const to = auth.userId === conv.customer_id ? conv.vendor_user_id : conv.customer_id;
-      const preview = (share ? text : maskPhones(text)).slice(0, 100);
+      // Array.from cuts on whole characters, so an emoji is never split in half.
+      const preview = Array.from(share ? text : maskPhones(text)).slice(0, 100).join('');
       await notify(client, to, 'chat_message', { en: { title: 'New message', body: preview }, hi: { title: 'नया मैसेज', body: preview } }, {
         conversationId: id,
       }, to === conv.vendor_user_id ? 'partner' : 'customer');

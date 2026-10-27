@@ -1,11 +1,12 @@
 // My Events (Bookings board): event summary, progress, and its bookings with status.
 import { useMemo, useState, type ReactNode } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlashList } from '@shopify/flash-list';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatDay, todayIst, type EventSummary } from '@eventseva/app-shared';
+import { formatDay, todayIst, type Booking, type EventSummary } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { daysBetween, isConfirmed, isPending } from '../../lib/booking';
 import { keys } from '../../lib/queryClient';
@@ -16,7 +17,11 @@ import { AppText } from '../../components/AppText';
 import { BookingRow } from '../../components/BookingRow';
 import { Button } from '../../components/Button';
 import { Chip } from '../../components/Form';
-import { EmptyState, ErrorState, Loading } from '../../components/States';
+import { BookingRowsSkeleton } from '../../components/Skeleton';
+import { EmptyState, ErrorState } from '../../components/States';
+
+const renderBooking = ({ item }: { item: Booking }) => <BookingRow booking={item} />;
+const Separator = () => <View style={styles.separator} />;
 
 type Filter = 'all' | 'confirmed' | 'pending';
 
@@ -44,7 +49,13 @@ export default function MyEventsScreen() {
     </SafeAreaView>
   );
 
-  if (events.isPending) return wrap(<Loading />);
+  if (events.isPending) {
+    return wrap(
+      <View style={[styles.content, { paddingHorizontal: gutter }]}>
+        <BookingRowsSkeleton count={4} />
+      </View>,
+    );
+  }
   if (events.error) return wrap(<ErrorState error={events.error} onRetry={refresh} />);
   if (!selected) {
     return wrap(
@@ -63,7 +74,7 @@ export default function MyEventsScreen() {
   }
 
   const bookings = detail.data?.bookings ?? [];
-  const shown = bookings.filter((b) => filter === 'all' || (filter === 'confirmed' ? isConfirmed(b.status) : isPending(b.status)));
+  const shown = filter === 'all' ? bookings : bookings.filter((b) => (filter === 'confirmed' ? isConfirmed(b.status) : isPending(b.status)));
   const active = bookings.filter((b) => isConfirmed(b.status) || isPending(b.status));
   const confirmed = active.filter((b) => isConfirmed(b.status)).length;
   const percent = active.length ? Math.round((confirmed / active.length) * 100) : 0;
@@ -73,78 +84,98 @@ export default function MyEventsScreen() {
     .filter(Boolean)
     .join(' · ');
 
+  const header = (
+    <View style={styles.header}>
+      <View style={styles.titleRow}>
+        <AppText variant="display" size="display" accessibilityRole="header" style={styles.flex}>
+          {t('events.title')}
+        </AppText>
+        <Button label={t('events.new')} icon="plus" size="md" variant="secondary" onPress={() => router.push('/event/new')} />
+      </View>
+
+      {list.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup">
+          {list.map((e) => (
+            <Chip key={e.id} label={e.title} selected={e.id === selected.id} onPress={() => setSelectedId(e.id)} />
+          ))}
+        </ScrollView>
+      ) : null}
+
+      <View style={styles.hero}>
+        <View style={styles.heroTop}>
+          <View style={styles.flex}>
+            <AppText variant="display" size="xl" color={c.white}>
+              {selected.title}
+            </AppText>
+            <AppText size="sm" color={c.white}>
+              {meta}
+            </AppText>
+          </View>
+          <View style={styles.daysPill}>
+            <AppText variant="bold" size="xs" color={c.warningText}>
+              {daysLabel}
+            </AppText>
+          </View>
+        </View>
+        <View style={styles.progressText}>
+          <AppText size="sm" color={c.white}>
+            {t('events.progress', { done: confirmed, total: active.length })}
+          </AppText>
+          <AppText size="sm" color={c.white}>{`${percent}%`}</AppText>
+        </View>
+        <View
+          style={styles.track}
+          accessibilityRole="progressbar"
+          accessibilityValue={{ min: 0, max: 100, now: percent }}
+          accessibilityLabel={t('events.progress', { done: confirmed, total: active.length })}
+        >
+          <View style={[styles.bar, { width: `${percent}%` }]} />
+        </View>
+      </View>
+
+      <View style={styles.chipsRow} accessibilityRole="radiogroup">
+        {(['all', 'confirmed', 'pending'] as const).map((f) => (
+          <Chip key={f} label={t(`events.filter.${f}`)} selected={filter === f} onPress={() => setFilter(f)} />
+        ))}
+      </View>
+    </View>
+  );
+
+  const empty = detail.isPending ? (
+    <BookingRowsSkeleton />
+  ) : detail.error ? (
+    <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
+  ) : bookings.length ? (
+    <EmptyState
+      compact
+      icon="calendar"
+      title={t('events.noneInFilter')}
+      actions={<Button label={t('events.showAll')} variant="outline" size="md" onPress={() => setFilter('all')} />}
+    />
+  ) : (
+    <EmptyState
+      compact
+      icon="searchEmpty"
+      title={t('events.noBookings')}
+      actions={<Button label={t('events.findVendors')} size="md" onPress={() => router.navigate('/search')} />}
+    />
+  );
+
   return (
     <SafeAreaView edges={['top']} style={styles.flex}>
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingHorizontal: gutter }, isTablet && styles.tablet]}
-        refreshControl={<RefreshControl refreshing={events.isRefetching || detail.isRefetching} onRefresh={() => void refresh()} colors={[c.royal]} />}
-      >
-        <View style={styles.titleRow}>
-          <AppText variant="display" size="display" accessibilityRole="header" style={styles.flex}>
-            {t('events.title')}
-          </AppText>
-          <Button label={t('events.new')} icon="plus" size="md" variant="secondary" onPress={() => router.push('/event/new')} />
-        </View>
-
-        {list.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            {list.map((e) => (
-              <Chip key={e.id} label={e.title} selected={e.id === selected.id} onPress={() => setSelectedId(e.id)} />
-            ))}
-          </ScrollView>
-        ) : null}
-
-        <View style={styles.hero}>
-          <View style={styles.heroTop}>
-            <View style={styles.flex}>
-              <AppText variant="display" size={21} color={c.white}>
-                {selected.title}
-              </AppText>
-              <AppText size="sm" color={c.white}>
-                {meta}
-              </AppText>
-            </View>
-            <View style={styles.daysPill}>
-              <AppText variant="bold" size="xs">
-                {daysLabel}
-              </AppText>
-            </View>
-          </View>
-          <View style={styles.progressText}>
-            <AppText size="sm" color={c.white}>
-              {t('events.progress', { done: confirmed, total: active.length })}
-            </AppText>
-            <AppText size="sm" color={c.white}>{`${percent}%`}</AppText>
-          </View>
-          <View
-            style={styles.track}
-            accessibilityRole="progressbar"
-            accessibilityValue={{ min: 0, max: 100, now: percent }}
-            accessibilityLabel={t('events.progress', { done: confirmed, total: active.length })}
-          >
-            <View style={[styles.bar, { width: `${percent}%` }]} />
-          </View>
-        </View>
-
-        <View style={styles.chipsRow}>
-          {(['all', 'confirmed', 'pending'] as const).map((f) => (
-            <Chip key={f} label={t(`events.filter.${f}`)} tone="ink" selected={filter === f} onPress={() => setFilter(f)} />
-          ))}
-        </View>
-
-        {detail.isPending ? (
-          <Loading />
-        ) : detail.error ? (
-          <ErrorState error={detail.error} onRetry={() => detail.refetch()} />
-        ) : shown.length === 0 ? (
-          <View style={styles.empty}>
-            <AppText size="md">{bookings.length ? t('events.noneInFilter') : t('events.noBookings')}</AppText>
-            <Button label={t('events.findVendors')} variant="outline" onPress={() => router.navigate('/search')} />
-          </View>
-        ) : (
-          shown.map((b) => <BookingRow key={b.id} booking={b} />)
-        )}
-      </ScrollView>
+      <View style={[styles.flex, isTablet && styles.tablet]}>
+        <FlashList
+          data={detail.isPending || detail.error ? [] : shown}
+          keyExtractor={(b) => b.id}
+          renderItem={renderBooking}
+          ItemSeparatorComponent={Separator}
+          ListHeaderComponent={header}
+          ListEmptyComponent={empty}
+          contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: space.xxl + space.xs, paddingBottom: space.xxxl }}
+          refreshing={events.isRefetching || detail.isRefetching}
+          onRefresh={() => void refresh()}
+        />
+      </View>
     </SafeAreaView>
   );
 }
@@ -152,6 +183,8 @@ export default function MyEventsScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { paddingTop: space.xxl + space.xs, paddingBottom: space.xxxl, gap: space.md },
+  header: { gap: space.md, paddingBottom: space.md },
+  separator: { height: space.md },
   tablet: { width: '100%', maxWidth: 760, alignSelf: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   chips: { gap: space.sm },
@@ -162,5 +195,4 @@ const styles = StyleSheet.create({
   progressText: { flexDirection: 'row', justifyContent: 'space-between' },
   track: { height: 8, borderRadius: radius.pill, backgroundColor: c.white, overflow: 'hidden' },
   bar: { height: 8, backgroundColor: c.mint },
-  empty: { gap: space.md, paddingVertical: space.lg },
 });

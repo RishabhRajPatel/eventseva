@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
-import { Fragment, useState, type FormEvent } from 'react';
+import { Fragment, memo, useState } from 'react';
 import { formatDateTime } from '@eventseva/app-shared';
-import { EmptyState, PageHead, Pager, QueryView, RefreshingHint } from '@/components/ui';
+import { SearchBox } from '@/components/SearchBox';
+import { ClearFilters, EmptyAction, EmptyState, PageHead, Pager, QueryView, RefreshingHint, TableHead, TableSkeleton, type Col } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import type { AuditEntry, AuditPage } from '@/lib/admin-types';
@@ -12,7 +13,9 @@ import { isAdminRole, ROLE_LABELS } from '@/lib/roles';
 import styles from './audit.module.css';
 
 /** target_type values the API writes (admin_audit_log). */
-const TARGET_TYPES = ['booking', 'category', 'city', 'complaint', 'coupon', 'document', 'export', 'featured_plan', 'media', 'payout', 'review', 'user', 'vendor'];
+const TARGET_TYPES = ['alert', 'booking', 'category', 'city', 'complaint', 'coupon', 'document', 'export', 'featured_plan', 'media', 'payout', 'review', 'user', 'vendor'];
+
+const COLS: Col[] = [{ label: 'Time' }, { label: 'Admin' }, { label: 'Action' }, { label: 'Target' }, { label: 'Changes' }];
 
 const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 
@@ -39,10 +42,17 @@ export function AuditView() {
       </PageHead>
 
       <div className="box filters">
-        <ActionFilter key={action} initial={action} onApply={(value) => set({ action: value || null })} />
+        <SearchBox
+          initial={action}
+          label="Action starts with"
+          placeholder="e.g. coupon or vendor.feature"
+          maxLength={60}
+          mono
+          onSearch={(value, typing) => set({ action: value || null }, { replace: typing })}
+        />
         <div className="field">
           <label htmlFor="audit-target">Target</label>
-          <select id="audit-target" className="select" value={targetType} onChange={(e) => set({ targetType: e.target.value || null })}>
+          <select id="audit-target" className="select" value={targetType} data-active={targetType ? 'true' : undefined} onChange={(e) => set({ targetType: e.target.value || null })}>
             <option value="">All targets</option>
             {[...new Set([...TARGET_TYPES, ...(targetType ? [targetType] : [])])].map((t) => (
               <option key={t} value={t}>
@@ -53,7 +63,7 @@ export function AuditView() {
         </div>
         <div className="field">
           <label htmlFor="audit-admin">Admin</label>
-          <select id="audit-admin" className="select" value={adminId} onChange={(e) => set({ adminId: e.target.value || null })}>
+          <select id="audit-admin" className="select" value={adminId} data-active={adminId ? 'true' : undefined} onChange={(e) => set({ adminId: e.target.value || null })}>
             <option value="">All admins</option>
             {adminId && !admins.some((a) => a.id === adminId) ? <option value={adminId}>Selected admin</option> : null}
             {admins.map((a) => (
@@ -63,18 +73,18 @@ export function AuditView() {
             ))}
           </select>
         </div>
-        {filtered ? (
-          <button type="button" className="btn" onClick={() => set({ action: null, targetType: null, adminId: null })}>
-            Clear filters
-          </button>
-        ) : null}
+        <ClearFilters show={filtered} onClear={() => set({ action: null, targetType: null, adminId: null })} />
       </div>
 
       <QueryView
         state={state}
         isEmpty={(d) => d.items.length === 0}
-        empty={<EmptyState title="No entries">{filtered ? 'Nothing matches these filters.' : 'No admin actions recorded yet.'}</EmptyState>}
-        loadingLabel="Loading audit log…"
+        empty={
+          <EmptyState title="No entries" action={filtered ? <EmptyAction href="/audit">Clear filters</EmptyAction> : null}>
+            {filtered ? 'Nothing matches these filters.' : 'No admin actions recorded yet.'}
+          </EmptyState>
+        }
+        skeleton={<TableSkeleton cols={COLS} rows={10} label="Loading audit log…" />}
       >
         {(data) => (
           <>
@@ -87,26 +97,7 @@ export function AuditView() {
   );
 }
 
-function ActionFilter({ initial, onApply }: { initial: string; onApply: (value: string) => void }) {
-  const [value, setValue] = useState(initial);
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    onApply(value.trim());
-  }
-  return (
-    <form className="field grow" onSubmit={submit} role="search">
-      <label htmlFor="audit-action">Action starts with</label>
-      <div className="btn-row" style={{ flexWrap: 'nowrap' }}>
-        <input id="audit-action" className="input mono" placeholder="e.g. coupon or vendor.feature" maxLength={60} value={value} onChange={(e) => setValue(e.target.value)} />
-        <button type="submit" className="btn btn-primary">
-          Filter
-        </button>
-      </div>
-    </form>
-  );
-}
-
-function AuditTable({ items }: { items: AuditEntry[] }) {
+const AuditTable = memo(function AuditTable({ items }: { items: AuditEntry[] }) {
   const [open, setOpen] = useState<Set<number>>(() => new Set());
   const flip = (id: number) =>
     setOpen((current) => {
@@ -119,15 +110,7 @@ function AuditTable({ items }: { items: AuditEntry[] }) {
   return (
     <div className="table-wrap">
       <table className="tbl">
-        <thead>
-          <tr>
-            <th scope="col">Time</th>
-            <th scope="col">Admin</th>
-            <th scope="col">Action</th>
-            <th scope="col">Target</th>
-            <th scope="col">Changes</th>
-          </tr>
-        </thead>
+        <TableHead cols={COLS} />
         <tbody>
           {items.map((entry) => {
             const rows = auditDiff(entry.before, entry.after);
@@ -137,7 +120,7 @@ function AuditTable({ items }: { items: AuditEntry[] }) {
             const target = entry.targetId ? (isUuid(entry.targetId) ? shortId(entry.targetId) : entry.targetId) : '—';
             return (
               <Fragment key={entry.id}>
-                <tr>
+                <tr data-selected={expanded ? 'true' : undefined}>
                   <td className="nowrap">{formatDateTime(entry.createdAt)}</td>
                   <td>
                     <span className="cell-main">{entry.adminEmail}</span>
@@ -167,7 +150,7 @@ function AuditTable({ items }: { items: AuditEntry[] }) {
                   </td>
                 </tr>
                 {expanded ? (
-                  <tr id={`audit-${entry.id}`} className={styles.detail}>
+                  <tr id={`audit-${entry.id}`} className={styles.detail} data-selected="true">
                     <td colSpan={5}>
                       <table className={styles.diff}>
                         <thead>
@@ -200,4 +183,4 @@ function AuditTable({ items }: { items: AuditEntry[] }) {
       </table>
     </div>
   );
-}
+});

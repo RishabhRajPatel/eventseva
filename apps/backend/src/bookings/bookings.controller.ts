@@ -5,7 +5,7 @@ import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
-import { EVENT_TYPES, SLOTS, type Slot, todayIst } from './booking.rules';
+import { EVENT_TYPES, lastPlannableDay, MAX_DAYS_AHEAD, SLOTS, type Slot, todayIst } from './booking.rules';
 import { loadBookings } from './booking.view';
 import { BookingsService } from './bookings.service';
 
@@ -61,6 +61,9 @@ export class BookingsController {
   @Post('events')
   async createEvent(@Auth() auth: AuthContext, @Body() body: CreateEventDto) {
     if (body.eventDate < todayIst()) throw new AppError('EVENT_IN_PAST', 'Choose a date from today onwards.');
+    if (body.eventDate > lastPlannableDay()) {
+      throw new AppError('DATE_TOO_FAR', `Events can be planned up to ${MAX_DAYS_AHEAD / 365} years ahead.`, HttpStatus.BAD_REQUEST, { lastDay: lastPlannableDay() });
+    }
     const city = await this.db.one(this.db, 'SELECT 1 FROM cities WHERE id = $1 AND is_active', [body.cityId]);
     if (!city) throw new AppError('CITY_NOT_FOUND', 'We are not in this city yet.');
     return this.db.one(

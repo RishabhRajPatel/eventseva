@@ -1,23 +1,27 @@
 import { useMemo, useState } from 'react';
-import { Alert, ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
+import { ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import { formatDay, SLOTS, todayIst, type Slot } from '@eventseva/app-shared';
+import { formatDay, SLOTS, todayIst, type CalendarEntry, type Slot } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { freeDay, monthOf, shiftMonth, slotAction, slotsByDay, type DaySlots } from '../../lib/calendar';
 import { errorText } from '../../lib/errors';
 import { invalidateBookings, keys, useCalendar } from '../../lib/queries';
 import { slotHours, slotLabel } from '../../lib/labels';
-import { c, radius, space } from '../../lib/theme';
+import { toast } from '../../lib/toast';
+import { c, DISABLED_OPACITY, radius, space } from '../../lib/theme';
 import { useIsTablet } from '../../hooks/useIsTablet';
 import { useLang } from '../../hooks/useLang';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
+import { TONES } from '../../components/Chip';
+import { Notice } from '../../components/Notice';
 import { CalendarGrid } from '../../components/CalendarGrid';
 import { MonthSwitcher } from '../../components/MonthSwitcher';
-import { ErrorState, Loading } from '../../components/States';
+import { ErrorState } from '../../components/States';
+import { Skeleton } from '../../components/Skeleton';
 import { Txt } from '../../components/Txt';
 
 /** Month view of bookings and blocked dates (VendorCalendar board). */
@@ -43,7 +47,7 @@ export default function Calendar() {
       {calendar.isError && !calendar.data ? (
         <ErrorState error={calendar.error} onRetry={() => void calendar.refetch()} />
       ) : calendar.isPending ? (
-        <Loading />
+        <Skeleton kind="grid" count={35} columns={7} />
       ) : (
         <CalendarGrid month={month} slots={slots} today={today} selected={selected} onSelect={setSelected} large={tablet} />
       )}
@@ -79,43 +83,74 @@ function DayPanel({ day, slots, today, month }: { day: string; slots: DaySlots; 
   const { t } = useTranslation();
   const lang = useLang();
   const qc = useQueryClient();
+  const past = day < today;
+  const dayLabel = formatDay(day, lang, true);
+
   const toggle = useMutation({
-    mutationFn: ({ slot, block }: { slot: Slot; block: boolean }) =>
+    mutationFn: ({ slot, block }: { slot: Slot; block: boolean; undo?: boolean }) =>
       block ? api.post('/v1/partner/calendar/block', { day, slot }) : api.delete('/v1/partner/calendar/block', { day, slot }),
+    // Show the change at once; the refetch after confirms it.
+    onMutate: ({ slot, block }) => {
+      const key = keys.calendar(month);
+      const before = qc.getQueryData<CalendarEntry[]>(key);
+      qc.setQueryData<CalendarEntry[]>(key, (old = []) =>
+        block ? [...old, { day, slot, status: 'blocked', bookingId: null }] : old.filter((e) => !(e.day === day && e.slot === slot && e.status === 'blocked')),
+      );
+      return { before };
+    },
+    onSuccess: (_r, { slot, block, undo }) => {
+      if (undo) return;
+      const what = `${dayLabel} · ${slotLabel(t, slot)}`;
+      toast.success(t(block ? 'calendar.blocked' : 'calendar.unblocked', { what }), {
+        action: { label: t('common.undo'), onPress: () => toggle.mutate({ slot, block: !block, undo: true }) },
+      });
+    },
+    onError: (e, _v, ctx) => {
+      if (ctx?.before) qc.setQueryData(keys.calendar(month), ctx.before);
+      invalidateBookings(qc);
+      toast.error(errorText(t, e));
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: keys.calendar(month) });
-    },
-    onError: (e) => {
-      invalidateBookings(qc);
-      Alert.alert(t('errors.title'), errorText(t, e));
     },
   });
 
   return (
     <View style={{ gap: space.md }} testID="day-panel">
       <Txt variant="display" size="xl">
-        {formatDay(day, lang, true)}
+        {dayLabel}
       </Txt>
+      {past ? <Notice icon="clock">{t('calendar.pastNote')}</Notice> : null}
       {SLOTS.map((slot) => {
         const state = slots[slot];
         const action = slotAction(slots, slot, day, today);
         const busy = toggle.isPending && toggle.variables?.slot === slot;
+        // Say why a slot can't be blocked, not only that it can't.
         let status: string = t(`calendar.state.${state.status}`);
-        if (state.status === 'free' && action === 'none' && day >= today) status = t('calendar.state.overlap');
+        if (state.status === 'free' && action === 'none') status = past ? t('calendar.summary.past') : t('calendar.state.overlap');
+        const tone = state.status === 'booked' ? TONES.info : state.status === 'blocked' ? TONES.neutral : action === 'none' ? null : TONES.success;
         return (
-          <Card key={slot} style={styles.slotRow} testID={`slot-${slot}`}>
-            <View style={{ flex: 1 }}>
+          <Card key={slot} style={[styles.slotRow, action === 'none' && state.status === 'free' ? { opacity: DISABLED_OPACITY + 0.2 } : null]} testID={`slot-${slot}`}>
+            <View style={{ flex: 1, gap: space.xs }}>
               <Txt variant="bold" size="md">
                 {slotLabel(t, slot)} <Txt size="sm" color={c.textMuted}>· {slotHours(t, slot)}</Txt>
               </Txt>
-              <Txt size="sm" color={state.status === 'booked' ? c.royal : c.ink}>
-                {status}
-              </Txt>
+              {tone ? (
+                <View style={[styles.status, { backgroundColor: tone.bg }]}>
+                  <Txt size="sm" variant="bold" color={tone.fg} testID={`slot-status-${slot}`}>
+                    {status}
+                  </Txt>
+                </View>
+              ) : (
+                <Txt size="sm" testID={`slot-status-${slot}`}>
+                  {status}
+                </Txt>
+              )}
             </View>
             {action === 'block' ? (
-              <Button testID={`block-${slot}`} kind="outline" label={t('calendar.block')} loading={busy} onPress={() => toggle.mutate({ slot, block: true })} />
+              <Button testID={`block-${slot}`} kind="outline" icon="lock" label={t('calendar.block')} loading={busy} disabled={toggle.isPending && !busy} onPress={() => toggle.mutate({ slot, block: true })} />
             ) : action === 'unblock' ? (
-              <Button testID={`unblock-${slot}`} kind="secondary" label={t('calendar.unblock')} loading={busy} onPress={() => toggle.mutate({ slot, block: false })} />
+              <Button testID={`unblock-${slot}`} kind="secondary" label={t('calendar.unblock')} loading={busy} disabled={toggle.isPending && !busy} onPress={() => toggle.mutate({ slot, block: false })} />
             ) : action === 'open' && state.status === 'booked' ? (
               <Button testID={`open-${slot}`} label={t('common.view')} onPress={() => router.push(`/booking/${state.bookingId}`)} />
             ) : null}
@@ -133,4 +168,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'flex-start' },
   gridCard: { borderRadius: radius.lg, padding: space.lg },
   slotRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  status: { alignSelf: 'flex-start', borderRadius: radius.sm, paddingHorizontal: space.sm, paddingVertical: 2 },
 });

@@ -14,12 +14,13 @@ import { useLanguage } from '../../hooks/useLanguage';
 import { useNow } from '../../hooks/useNow';
 import { AppText } from '../../components/AppText';
 import { Card, Divider, MoneyRow, Notice, StatusPill } from '../../components/Bits';
-import { CancelSheet, ReviewSheet } from '../../components/BookingSheets';
+import { CancelDialog, ReviewSheet } from '../../components/BookingSheets';
 import { Button } from '../../components/Button';
 import { CouponBox, CouponMoneyRows, minus } from '../../components/Coupons';
 import { Icon, type IconName } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
-import { ErrorState, Loading } from '../../components/States';
+import { CardsSkeleton } from '../../components/Skeleton';
+import { ErrorState } from '../../components/States';
 
 export default function BookingScreen() {
   const { id, sent } = useLocalSearchParams<{ id: string; sent?: string }>();
@@ -35,7 +36,14 @@ export default function BookingScreen() {
       router.push({ pathname: '/chat/[id]', params: { id: conversationId, name: booking.data?.vendor.businessName ?? '' } }),
   });
 
-  if (booking.isPending) return <Loading />;
+  if (booking.isPending) {
+    return (
+      <Screen>
+        <ScreenHeader title={t('booking.title')} />
+        <CardsSkeleton count={3} height={130} />
+      </Screen>
+    );
+  }
   if (booking.error) {
     return (
       <Screen>
@@ -90,20 +98,14 @@ export default function BookingScreen() {
 
       <View style={styles.actions}>
         {b.status !== 'expired' ? (
-          <Button
-            label={t('booking.chat')}
-            icon="chat"
-            variant="outline"
-            onPress={() => chat.mutate(b)}
-            loading={chat.isPending}
-          />
+          <Button label={t('booking.chat')} icon="chat" variant="outline" onPress={() => chat.mutateAsync(b)} />
         ) : null}
         {chat.error ? (
           <AppText size="sm" color={c.danger}>
             {errorText(t, chat.error)}
           </AppText>
         ) : null}
-        {canCancel(b) ? <Button label={t('booking.cancel')} variant="danger" onPress={() => setSheet('cancel')} /> : null}
+        {canCancel(b) ? <Button label={t('booking.cancel')} variant="dangerOutline" onPress={() => setSheet('cancel')} /> : null}
         <Button
           label={t('booking.help')}
           variant="secondary"
@@ -112,7 +114,7 @@ export default function BookingScreen() {
         />
       </View>
 
-      <CancelSheet booking={b} visible={sheet === 'cancel'} onClose={() => setSheet(null)} />
+      <CancelDialog booking={b} visible={sheet === 'cancel'} onClose={() => setSheet(null)} />
       <ReviewSheet booking={b} visible={sheet === 'review'} onClose={() => setSheet(null)} onDone={() => setReviewed(true)} />
     </Screen>
   );
@@ -141,7 +143,7 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
     case 'requested': {
       const time = left(b.respondBy);
       return (
-        <View style={[styles.status, { backgroundColor: c.lavender }]}>
+        <View style={[styles.status, styles.lavender]}>
           <AppText variant="bold" size="lg">{t('status.requested.title')}</AppText>
           <AppText size="md" accessibilityLiveRegion="polite">
             {time ? t('booking.replyWithin', { time }) : t('booking.replyLate')}
@@ -152,8 +154,10 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
     case 'accepted': {
       const time = left(b.payBy);
       return (
-        <View style={[styles.status, { backgroundColor: c.peach }]}>
-          <AppText variant="bold" size="lg">{t('status.accepted.title', { amount: rupees(b.payNowPaise) })}</AppText>
+        <View style={[styles.status, styles.peach]}>
+          <AppText variant="bold" size="lg" color={c.warningText}>
+            {t('status.accepted.title', { amount: rupees(b.payNowPaise) })}
+          </AppText>
           <AppText size="md" accessibilityLiveRegion="polite">
             {time ? t('booking.payWithin', { time }) : t('booking.payLate')}
           </AppText>
@@ -164,8 +168,10 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
     }
     case 'confirmed':
       return (
-        <View style={[styles.status, { backgroundColor: c.mint }]}>
-          <AppText variant="bold" size="lg">{t('status.confirmed.title')}</AppText>
+        <View style={[styles.status, styles.mint]}>
+          <AppText variant="bold" size="lg" color={c.successText}>
+            {t('status.confirmed.title')}
+          </AppText>
           {b.vendor.phone ? (
             <>
               <AppText size="md">{t('booking.vendorPhone', { phone: formatPhone(b.vendor.phone) })}</AppText>
@@ -177,8 +183,10 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
       );
     case 'completed':
       return (
-        <View style={[styles.status, { backgroundColor: c.mintLight }]}>
-          <AppText variant="bold" size="lg">{t('status.completed.title')}</AppText>
+        <View style={[styles.status, styles.mintLight]}>
+          <AppText variant="bold" size="lg" color={c.successText}>
+            {t('status.completed.title')}
+          </AppText>
           {reviewed ? (
             <AppText size="md">{t('review.thanks')}</AppText>
           ) : (
@@ -191,7 +199,7 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
       );
     case 'rejected':
       return (
-        <View style={[styles.status, { backgroundColor: c.white }]}>
+        <View style={[styles.status, styles.white]}>
           <AppText variant="bold" size="lg">{t('status.rejected.title')}</AppText>
           {b.cancelReason ? <AppText size="md">{t('booking.reason', { reason: b.cancelReason })}</AppText> : null}
           {bookAnother}
@@ -199,7 +207,7 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
       );
     case 'expired':
       return (
-        <View style={[styles.status, { backgroundColor: c.white }]}>
+        <View style={[styles.status, styles.white]}>
           <AppText variant="bold" size="lg">{t('status.expired.title')}</AppText>
           <AppText size="md">{t('booking.expiredBody')}</AppText>
           {bookAnother}
@@ -208,7 +216,7 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
     case 'cancelled_by_customer':
     case 'cancelled_by_vendor':
       return (
-        <View style={[styles.status, { backgroundColor: c.white }]}>
+        <View style={[styles.status, styles.white]}>
           <AppText variant="bold" size="lg">{t(`status.${b.status}.title`)}</AppText>
           {b.cancelReason ? <AppText size="md">{t('booking.reason', { reason: b.cancelReason })}</AppText> : null}
           <AppText size="md">{b.refundPaise > 0 ? t('booking.refunded', { amount: rupees(b.refundPaise) }) : t('booking.noRefund')}</AppText>
@@ -222,5 +230,10 @@ const styles = StyleSheet.create({
   card: { padding: space.lg, gap: space.md },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   status: { borderRadius: radius.lg, padding: space.lg, gap: space.sm },
+  lavender: { backgroundColor: c.lavender },
+  peach: { backgroundColor: c.peach },
+  mint: { backgroundColor: c.mint },
+  mintLight: { backgroundColor: c.mintLight },
+  white: { backgroundColor: c.white },
   actions: { gap: space.sm },
 });

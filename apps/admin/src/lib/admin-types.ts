@@ -27,6 +27,12 @@ export interface Dashboard {
   bookingsByStatus: Partial<Record<BookingStatus, number>>;
   last14Days: Array<{ day: string; bookings: number }>;
   topCategories: Array<{ slug: string; name: string; bookings: number }>;
+  /** OTP SMS sent in the last 24 hours (whole app). */
+  smsLast24h: number;
+  /** OTP_DAILY_SMS_BUDGET on the server. */
+  smsBudgetPerDay: number;
+  /** System alerts not resolved yet (GET /v1/admin/alerts). */
+  openAlerts: number;
 }
 
 export interface AdminVendorRow {

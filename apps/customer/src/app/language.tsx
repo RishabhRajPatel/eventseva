@@ -1,6 +1,8 @@
 // Profile → Language (Language board). Saved to the account with PATCH /v1/me {language}.
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import i18n from '../i18n';
+import { haptic } from '../lib/haptics';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +15,7 @@ import { AppText } from '../components/AppText';
 import { Button } from '../components/Button';
 import { Icon } from '../components/Icon';
 import { Screen, ScreenHeader } from '../components/Screen';
+import { useToast } from '../components/Toast';
 
 export default function LanguageScreen() {
   const { t } = useTranslation();
@@ -20,22 +23,22 @@ export default function LanguageScreen() {
   const session = useSession();
   const qc = useQueryClient();
   const [choice, setChoice] = useState<Language>(me.language);
-  const [busy, setBusy] = useState(false);
+  const toast = useToast();
   const [error, setError] = useState<string | null>(null);
 
   async function apply() {
-    setBusy(true);
     setError(null);
+    if (choice === me.language) return router.back();
     try {
-      const updated = choice === me.language ? me : await api.updateMe({ language: choice });
-      session.setMe(updated);
-      // Category names and notifications come back in the new language.
-      await qc.invalidateQueries();
-      router.back();
+      session.setMe(await api.updateMe({ language: choice }));
     } catch (e) {
       setError(errorText(t, e));
-      setBusy(false);
+      throw e;
     }
+    // Category names and notifications come back in the new language.
+    void qc.invalidateQueries();
+    toast.success(i18n.t('language.changed', { lng: choice }));
+    router.back();
   }
 
   return (
@@ -43,11 +46,11 @@ export default function LanguageScreen() {
       footer={
         <>
           {error ? (
-            <AppText size="sm" color={c.danger} align="center">
+            <AppText size="sm" color={c.danger} align="center" accessibilityLiveRegion="assertive">
               {error}
             </AppText>
           ) : null}
-          <Button label={t('language.apply')} onPress={apply} loading={busy} />
+          <Button label={t('language.apply')} onPress={apply} loadingLabel={t('common.saving')} />
         </>
       }
     >
@@ -58,9 +61,9 @@ export default function LanguageScreen() {
           <Tile big={t('language.hindiNative')} small={t('language.hindiLabel')} lang="hi" selected={choice === 'hi'} onPress={() => setChoice('hi')} />
         </View>
         <View style={styles.note}>
-          <AppText size={14}>{t('language.note')}</AppText>
+          <AppText size="sm">{t('language.note')}</AppText>
           {/* The same note in the other script, so either reader understands the choice. */}
-          <AppText size={14} lang={me.language === 'hi' ? 'en' : 'hi'}>
+          <AppText size="sm" lang={me.language === 'hi' ? 'en' : 'hi'}>
             {t('language.noteOther')}
           </AppText>
         </View>
@@ -74,20 +77,23 @@ function Tile({ big, small, lang, selected, onPress }: { big: string; small: str
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, selected }}
       accessibilityLabel={`${big}, ${small}`}
-      onPress={onPress}
-      style={[styles.tile, selected && styles.tileOn]}
+      onPress={() => {
+        haptic.select();
+        onPress();
+      }}
+      style={({ pressed }) => [styles.tile, selected && styles.tileOn, pressed && styles.pressed]}
     >
       {selected ? (
         <View style={styles.tick}>
           <Icon name="check" size={14} color={c.white} strokeWidth={3} />
         </View>
       ) : null}
-      <AppText variant="bold" size={28} lang={lang}>
+      <AppText variant="bold" size="display" lang={lang}>
         {big}
       </AppText>
-      <AppText size={14}>{small}</AppText>
+      <AppText size="sm">{small}</AppText>
     </Pressable>
   );
 }
@@ -96,7 +102,8 @@ const styles = StyleSheet.create({
   body: { paddingTop: space.lg, gap: space.lg },
   tiles: { flexDirection: 'row', gap: space.md },
   tile: { flex: 1, minHeight: 112, borderRadius: radius.lg, backgroundColor: c.white, borderWidth: 1.5, borderColor: c.lilac, paddingVertical: space.xl, paddingHorizontal: space.lg, gap: 6 },
-  tileOn: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lavender },
+  tileOn: { borderWidth: 2, borderColor: c.selectedBorder, backgroundColor: c.selectedBg },
+  pressed: { opacity: 0.85 },
   tick: { position: 'absolute', top: space.md, right: space.md, width: 24, height: 24, borderRadius: 12, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
   note: { borderRadius: radius.md, backgroundColor: c.white, paddingVertical: 14, paddingHorizontal: space.lg, gap: 6 },
 });

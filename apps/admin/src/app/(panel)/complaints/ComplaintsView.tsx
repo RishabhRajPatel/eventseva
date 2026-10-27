@@ -2,9 +2,9 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { formatDateTime, formatPhone, type Paged } from '@eventseva/app-shared';
-import { ActionDialog } from '@/components/ActionDialog';
+import { ActionDialog } from '@/components/dialogs';
 import { useShell } from '@/components/ShellContext';
-import { EmptyState, Fact, PageHead, Pager, QueryView, RefreshingHint, StatusPill, TabLinks } from '@/components/ui';
+import { EmptyAction, EmptyState, Fact, LoadingState, PageHead, Pager, QueryView, RefreshingHint, StatusPill, TabLinks } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useUrlState } from '@/hooks/useUrlState';
 import { api } from '@/lib/api';
@@ -35,8 +35,17 @@ export function ComplaintsView() {
 
       <QueryView
         state={state}
+        skeleton={<LoadingState label="Loading complaints…" />}
         isEmpty={(d) => d.items.length === 0}
-        empty={<EmptyState title="No complaints here">{status === 'open' ? 'Nothing new to look at.' : 'Nothing in this list.'}</EmptyState>}
+        empty={
+          <EmptyState
+            title="No complaints here"
+            icon={status === 'open' ? '✓' : '∅'}
+            action={<EmptyAction href={status === 'resolved' ? '/complaints' : '/complaints?status=resolved'}>{status === 'resolved' ? 'See open complaints →' : 'See resolved complaints →'}</EmptyAction>}
+          >
+            {status === 'open' ? 'Nothing new to look at.' : 'Nothing in this list.'}
+          </EmptyState>
+        }
       >
         {(data) => {
           // Keep the selection while it is still in the list (it leaves the tab after a status change).
@@ -51,6 +60,7 @@ export function ComplaintsView() {
                         type="button"
                         className={styles.item}
                         aria-current={c.id === selected.id ? 'true' : undefined}
+                        aria-controls="complaint-detail"
                         onClick={() => setSelectedId(c.id)}
                       >
                         <span className={styles.subject}>{c.subject}</span>
@@ -82,7 +92,7 @@ function ComplaintDetail({ complaint: c, onDone }: { complaint: AdminComplaint; 
   const manage = can(role, 'complaint.manage');
 
   return (
-    <section className={`box stack ${styles.detail}`} aria-labelledby="complaint-title">
+    <section id="complaint-detail" className={`box stack ${styles.detail}`} aria-labelledby="complaint-title" aria-live="polite">
       <div className="section-head">
         <h2 id="complaint-title">{c.subject}</h2>
         <StatusPill map={COMPLAINT_STATUS} status={c.status} />
@@ -114,7 +124,7 @@ function ComplaintDetail({ complaint: c, onDone }: { complaint: AdminComplaint; 
       {c.resolution ? (
         <div className="stack-sm">
           <h3>Resolution</h3>
-          <p className="quote" style={{ background: 'var(--mint-light)' }}>
+          <p className="quote" style={{ background: 'var(--mint-light)', color: 'var(--success-ink)' }}>
             {c.resolution}
           </p>
         </div>
@@ -144,7 +154,8 @@ function ComplaintDetail({ complaint: c, onDone }: { complaint: AdminComplaint; 
         <ActionDialog
           title="Resolve this complaint?"
           description={<p>The resolution is sent to {c.raisedByName ?? 'the person who raised it'} as a notification.</p>}
-          confirmLabel="Resolve"
+          confirmLabel="Resolve complaint"
+          busyLabel="Resolving…"
           input={{
             label: 'Resolution',
             what: 'Resolution',
@@ -162,8 +173,18 @@ function ComplaintDetail({ complaint: c, onDone }: { complaint: AdminComplaint; 
           title={change.to === 'in_progress' ? 'Mark as in progress?' : 'Move back to open?'}
           description={<p>“{c.subject}” moves to the {COMPLAINT_STATUS[change.to].label.toLowerCase()} list.</p>}
           confirmLabel={change.to === 'in_progress' ? 'Mark in progress' : 'Move to open'}
+          busyLabel="Moving…"
           onConfirm={() => api.post(`/v1/admin/complaints/${c.id}`, { status: change.to })}
           successMessage={`Complaint moved to ${COMPLAINT_STATUS[change.to].label.toLowerCase()}.`}
+          undo={
+            // Moving between open and in progress is reversible; a reopened complaint would need a new resolution.
+            c.status !== 'resolved'
+              ? {
+                  run: () => api.post(`/v1/admin/complaints/${c.id}`, { status: c.status }),
+                  message: `Complaint moved back to ${COMPLAINT_STATUS[c.status].label.toLowerCase()}.`,
+                }
+              : undefined
+          }
           onClose={() => setChange(null)}
           onDone={onDone}
         />

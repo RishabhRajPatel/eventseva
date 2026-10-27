@@ -1,13 +1,14 @@
 'use client';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import { formatDateTime, formatPhone, rupees, type Paged, type Review } from '@eventseva/app-shared';
-import { ActionDialog } from '@/components/ActionDialog';
+import { formatDateTime, formatPhone, rupees } from '@eventseva/app-shared';
+import { ActionDialog } from '@/components/dialogs';
 import { MediaActions } from '@/components/MediaActions';
 import { MediaThumb } from '@/components/MediaThumb';
 import { useShell } from '@/components/ShellContext';
-import { EmptyState, ErrorState, Fact, LoadingState, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
+import { Fact, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { api } from '@/lib/api';
 import type { AdminVendor } from '@/lib/admin-types';
@@ -15,9 +16,14 @@ import { historyLabel, humanize, MEDIA_STATUS, UNIT_LABELS, VENDOR_STATUS, vendo
 import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
 import { VendorDocuments } from './VendorDocuments';
-import { VendorBank } from './VendorBank';
-import { VendorFeatured } from './VendorFeatured';
 import styles from './vendor.module.css';
+import { closedBookingsMessage } from '@/lib/closed-bookings';
+
+// Role-specific sections (finance: bank account; super: featured) load only for those roles.
+const sectionSkeleton = () => <div className="skel-box" aria-hidden="true" style={{ minHeight: '8rem' }} />;
+const VendorBank = dynamic(() => import('./VendorBank').then((m) => m.VendorBank), { loading: sectionSkeleton });
+const Reviews = dynamic(() => import('./VendorReviews').then((m) => m.Reviews), { loading: sectionSkeleton });
+const VendorFeatured = dynamic(() => import('./VendorFeatured').then((m) => m.VendorFeatured), { loading: sectionSkeleton });
 
 const VENDOR_REJECT_PRESETS = [
   'Documents are not clear',
@@ -228,10 +234,10 @@ function Services({ vendor: v }: { vendor: AdminVendor }) {
   );
 }
 
-const DECISION_COPY: Record<VendorDecision, { button: string; title: string; done: string }> = {
-  approve: { button: 'Approve, make profile live', title: 'Approve this vendor?', done: 'Vendor approved. The profile is live.' },
-  hold: { button: 'Hold', title: 'Put this vendor on hold?', done: 'Vendor put on hold.' },
-  reject: { button: 'Reject', title: 'Reject this vendor?', done: 'Vendor rejected. They can fix and resubmit.' },
+const DECISION_COPY: Record<VendorDecision, { button: string; title: string; confirm: string; busy: string; done: string }> = {
+  approve: { button: 'Approve, make profile live', title: 'Approve this vendor?', confirm: 'Approve vendor', busy: 'Approving…', done: 'Vendor approved. The profile is live.' },
+  hold: { button: 'Put on hold', title: 'Put this vendor on hold?', confirm: 'Put vendor on hold', busy: 'Holding…', done: 'Vendor put on hold.' },
+  reject: { button: 'Reject', title: 'Reject this vendor?', confirm: 'Reject vendor', busy: 'Rejecting…', done: 'Vendor rejected. They can fix and resubmit.' },
 };
 
 function Decision({ vendor: v, onDone }: { vendor: AdminVendor; onDone: () => void }) {
@@ -249,11 +255,23 @@ function Decision({ vendor: v, onDone }: { vendor: AdminVendor; onDone: () => vo
         </p>
       ) : (
         <div className="stack-sm">
-          {decisions.map((d) => (
-            <button key={d} type="button" className={`btn ${d === 'approve' ? 'btn-primary' : ''}`} onClick={() => setOpen(d)}>
-              {DECISION_COPY[d].button}
+          {decisions.includes('approve') ? (
+            <button type="button" className="btn btn-primary" onClick={() => setOpen('approve')}>
+              {DECISION_COPY.approve.button}
             </button>
-          ))}
+          ) : null}
+          {/* Destructive choices sit apart from Approve. */}
+          {decisions.some((d) => d !== 'approve') ? (
+            <div className="btn-row" style={{ marginTop: decisions.includes('approve') ? '0.75rem' : 0 }}>
+              {decisions
+                .filter((d) => d !== 'approve')
+                .map((d) => (
+                  <button key={d} type="button" className="btn btn-danger-outline" onClick={() => setOpen(d)}>
+                    {DECISION_COPY[d].button}
+                  </button>
+                ))}
+            </div>
+          ) : null}
         </div>
       )}
       <DocumentsHint vendor={v} />
@@ -269,7 +287,8 @@ function Decision({ vendor: v, onDone }: { vendor: AdminVendor; onDone: () => vo
               </p>
             ) : open === 'hold' ? (
               <p>
-                <b>{v.businessName}</b> is hidden from customers until approved again.
+                <b>{v.businessName}</b> is hidden from customers until approved again. Requests waiting for a reply or for
+                payment are closed and those customers are told. Confirmed bookings stay.
               </p>
             ) : (
               <p>
@@ -277,7 +296,8 @@ function Decision({ vendor: v, onDone }: { vendor: AdminVendor; onDone: () => vo
               </p>
             )
           }
-          confirmLabel={open === 'approve' ? 'Approve' : open === 'hold' ? 'Put on hold' : 'Reject'}
+          confirmLabel={DECISION_COPY[open].confirm}
+          busyLabel={DECISION_COPY[open].busy}
           tone={open === 'approve' ? 'primary' : 'danger'}
           input={
             open === 'approve'
@@ -285,7 +305,7 @@ function Decision({ vendor: v, onDone }: { vendor: AdminVendor; onDone: () => vo
               : { label: 'Reason (shown to the vendor)', limits: REASON_LIMITS.vendor, presets: VENDOR_REJECT_PRESETS, multiline: true }
           }
           onConfirm={(reason) => api.post(`/v1/admin/vendors/${v.id}/${open}`, open === 'approve' ? {} : { reason })}
-          successMessage={DECISION_COPY[open].done}
+          successMessage={(result) => closedBookingsMessage(DECISION_COPY[open].done, result)}
           onClose={() => setOpen(null)}
           onDone={onDone}
         />
@@ -326,102 +346,6 @@ function History({ vendor: v }: { vendor: AdminVendor }) {
           ))}
         </ol>
       )}
-    </section>
-  );
-}
-
-function Reviews({ vendorId, canHide, onHidden }: { vendorId: string; canHide: boolean; onHidden: () => void }) {
-  const [page, setPage] = useState(1);
-  const [hiding, setHiding] = useState<Review | null>(null);
-  const state = useApiQuery<Paged<Review>>(`/v1/vendors/${vendorId}/reviews`, { page }, false);
-
-  return (
-    <section className="box stack" aria-labelledby="reviews-title">
-      <div className="section-head">
-        <h2 id="reviews-title">Public reviews</h2>
-        <RefreshingHint show={state.refreshing} />
-      </div>
-      {state.error ? (
-        <ErrorState error={state.error} onRetry={state.reload} />
-      ) : state.loading || !state.data ? (
-        <LoadingState label="Loading reviews…" />
-      ) : state.data.items.length === 0 ? (
-        <EmptyState title={page === 1 ? 'No reviews yet' : 'No more reviews'} />
-      ) : (
-        <div>
-          {state.data.items.map((r) => (
-            <article key={r.id} className={styles.review}>
-              <div className={styles.reviewHead}>
-                <span>
-                  <span className={styles.stars} aria-label={`${r.rating} out of 5`}>
-                    {'★'.repeat(r.rating)}
-                    {'☆'.repeat(5 - r.rating)}
-                  </span>{' '}
-                  <b>{r.customerName}</b>
-                  <span className="muted small">
-                    {' '}
-                    · {formatDateTime(r.createdAt)}
-                    {r.eventType ? ` · ${humanize(r.eventType)}` : ''}
-                  </span>
-                </span>
-                {canHide ? (
-                  <button type="button" className="btn btn-small" onClick={() => setHiding(r)}>
-                    Hide review
-                  </button>
-                ) : null}
-              </div>
-              {r.comment ? <p>{r.comment}</p> : <p className="muted small">No comment.</p>}
-              {r.vendorReply ? (
-                <p className="quote small">
-                  <b>Vendor reply:</b> {r.vendorReply}
-                </p>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      )}
-      {state.data && (page > 1 || state.data.hasMore) ? (
-        <div className="btn-row">
-          {page > 1 ? (
-            <button type="button" className="btn btn-small" onClick={() => setPage(page - 1)}>
-              ← Newer
-            </button>
-          ) : null}
-          {state.data.hasMore ? (
-            <button type="button" className="btn btn-small" onClick={() => setPage(page + 1)}>
-              Older →
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {hiding ? (
-        <ActionDialog
-          title="Hide this review?"
-          description={
-            <>
-              <p className="quote">
-                {hiding.rating}★ {hiding.customerName}: {hiding.comment ?? 'No comment.'}
-              </p>
-              <p>It disappears from the vendor page and the rating is recalculated. This cannot be undone here.</p>
-            </>
-          }
-          confirmLabel="Hide review"
-          tone="danger"
-          input={{
-            label: 'Reason (for the audit log)',
-            limits: REASON_LIMITS.standard,
-            presets: ['Fake review', 'Abusive language', 'Not about this vendor'],
-          }}
-          onConfirm={(reason) => api.post(`/v1/admin/reviews/${hiding.id}/hide`, { reason })}
-          successMessage="Review hidden."
-          onClose={() => setHiding(null)}
-          onDone={() => {
-            state.reload();
-            onHidden();
-          }}
-        />
-      ) : null}
     </section>
   );
 }

@@ -77,9 +77,12 @@ test('search: typing a service name picks its category; empty results offer to c
   await user.type(screen.getByLabelText('Search'), 'dj');
   expect(mockedApi.vendors).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'dj' }));
 
-  await user.press(screen.getByRole('button', { name: '★ 4+' }));
+  // Filters are checkboxes and categories are radios, each showing its selected state.
+  await user.press(screen.getByRole('checkbox', { name: '★ 4+' }));
+  expect(screen.getByRole('checkbox', { name: '★ 4+' })).toBeChecked();
   mockedApi.vendors.mockResolvedValue({ items: [{ ...dj, ratingAvg: 3.2 }], page: 1, hasMore: false });
-  await user.press(screen.getByRole('button', { name: 'Marriage hall' }));
+  await user.press(screen.getByRole('radio', { name: 'Marriage hall' }));
+  expect(screen.getByRole('radio', { name: 'Marriage hall' })).toBeSelected();
   expect(await screen.findByText('No vendors found')).toBeOnTheScreen();
   await user.press(screen.getByRole('button', { name: 'Clear all filters' }));
   expect(await screen.findByText('Beat Box DJ')).toBeOnTheScreen();

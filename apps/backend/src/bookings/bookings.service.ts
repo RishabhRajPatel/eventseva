@@ -9,14 +9,17 @@ import { CouponsService } from '../coupons/coupons.service';
 import type { PricingUnit } from '../vendors/vendor.queries';
 import {
   daysUntil,
+  GUEST_UNITS,
+  lastPlannableDay,
   MAX_BOOKING_PAISE,
+  MAX_OPEN_REQUESTS,
   needsQuantity,
   NEW_VENDOR_BOOKINGS,
-  PAY_HOURS,
+  payByFor,
   priceBooking,
   refundPaise,
   refundPercent,
-  RESPOND_HOURS,
+  respondByFor,
   Slot,
   todayIst,
 } from './booking.rules';
@@ -53,6 +56,10 @@ const rupees = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN')}`;
 /** "21 Nov" / "21 नव॰" for notifications; days are plain dates, so no time-zone shift. */
 const niceDay = (day: string, lang: 'en' | 'hi') =>
   new Date(`${day}T00:00:00Z`).toLocaleDateString(lang === 'hi' ? 'hi-IN' : 'en-IN', { timeZone: 'UTC', day: 'numeric', month: 'short' });
+/** Whole hours left until a deadline, at least 1, for notification text. */
+const hoursLeft = (until: Date) => Math.max(1, Math.floor((until.getTime() - Date.now()) / 3600_000));
+/** "Not free that day." for a reason typed as "Not free that day" or "Not free that day." */
+const sentence = (text: string) => text.replace(/[\s.।!]+$/u, '');
 const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
 
 /**
@@ -101,6 +108,19 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       );
       if (!event) throw new AppError('EVENT_NOT_FOUND', 'Event not found.', HttpStatus.NOT_FOUND);
       if (event.event_date < todayIst()) throw new AppError('EVENT_IN_PAST', 'This event date has already passed.');
+      const respondBy = respondByFor(event.event_date);
+      if (!respondBy) {
+        throw new AppError('TOO_LATE_TO_BOOK', 'This event is too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
+      }
+      const waiting = await this.db.one<{ n: number }>(
+        client,
+        `SELECT count(*)::int AS n FROM bookings WHERE customer_id = $1 AND status = 'requested' AND respond_by > now()`,
+        [customerId],
+      );
+      if (waiting!.n >= MAX_OPEN_REQUESTS) {
+        throw new AppError('TOO_MANY_OPEN_REQUESTS', `You already have ${MAX_OPEN_REQUESTS} requests waiting for a reply. Wait for some answers first.`,
+          HttpStatus.TOO_MANY_REQUESTS, { max: MAX_OPEN_REQUESTS });
+      }
 
       // Locking the vendor row puts all bookings for one vendor in a queue, so two customers
       // can never get the same slot.
@@ -113,14 +133,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (vendor.user_id === customerId) throw new AppError('OWN_VENDOR', 'You cannot book your own business.');
 
       const item = body.serviceId
-        ? await this.db.one<{ title: string; price_paise: number; unit: PricingUnit }>(
+        ? await this.db.one<{ title: string; price_paise: number; unit: PricingUnit; min_guests: number | null; max_guests: number | null }>(
             client,
-            'SELECT title, price_paise, unit FROM services WHERE id = $1 AND vendor_id = $2 AND is_active',
+            'SELECT title, price_paise, unit, min_guests, max_guests FROM services WHERE id = $1 AND vendor_id = $2 AND is_active',
             [body.serviceId, body.vendorId],
           )
-        : await this.db.one<{ title: string; price_paise: number; unit: 'package' }>(
+        : await this.db.one<{ title: string; price_paise: number; unit: 'package'; min_guests: null; max_guests: null }>(
             client,
-            `SELECT title, price_paise, 'package' AS unit FROM packages WHERE id = $1 AND vendor_id = $2 AND is_active`,
+            `SELECT title, price_paise, 'package' AS unit, NULL AS min_guests, NULL AS max_guests FROM packages WHERE id = $1 AND vendor_id = $2 AND is_active`,
             [body.packageId, body.vendorId],
           );
       if (!item) throw new AppError('ITEM_NOT_FOUND', 'This service or package is no longer offered.', HttpStatus.NOT_FOUND);
@@ -129,6 +149,13 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (needsQuantity(item.unit)) {
         if (!body.quantity) throw new AppError('QUANTITY_REQUIRED', 'Tell us how many (plates, hours, rooms …).');
         quantity = body.quantity;
+        const { min_guests: min, max_guests: max } = item;
+        if (GUEST_UNITS.includes(item.unit as PricingUnit) && ((min && quantity < min) || (max && quantity > max))) {
+          throw new AppError('QUANTITY_OUT_OF_RANGE', max ? `This vendor takes ${min ?? 1} to ${max} guests.` : `This vendor takes at least ${min} guests.`, HttpStatus.BAD_REQUEST, {
+            min: min ?? null,
+            max: max ?? null,
+          });
+        }
       }
       const money = priceBooking(item.price_paise, quantity, this.config.advancePercent, this.config.commissionPercent);
       if (money.amountPaise > MAX_BOOKING_PAISE) throw new AppError('AMOUNT_TOO_HIGH', 'Please split this into smaller bookings.');
@@ -145,14 +172,14 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         client,
         `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, package_id, day, slot, quantity, details,
                                amount_paise, advance_paise, commission_paise, respond_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now() + make_interval(hours => $13))
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING id`,
         [body.eventId, customerId, body.vendorId, body.serviceId ?? null, body.packageId ?? null, event.event_date, body.slot,
-          quantity, { note: body.note?.trim() || null }, money.amountPaise, money.advancePaise, money.commissionPaise, RESPOND_HOURS],
+          quantity, { note: body.note?.trim() || null }, money.amountPaise, money.advancePaise, money.commissionPaise, respondBy],
       );
       await notify(client, vendor.user_id, 'booking_requested', {
-        en: { title: 'New booking request', body: `${item.title} on ${niceDay(event.event_date, 'en')}. Reply within ${RESPOND_HOURS} hours.` },
-        hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${niceDay(event.event_date, 'hi')}। ${RESPOND_HOURS} घंटे में जवाब दें।` },
+        en: { title: 'New booking request', body: `${item.title} on ${niceDay(event.event_date, 'en')}. Reply within ${hoursLeft(respondBy)} hours.` },
+        hi: { title: 'नई बुकिंग रिक्वेस्ट', body: `${item.title}, ${niceDay(event.event_date, 'hi')}। ${hoursLeft(respondBy)} घंटे में जवाब दें।` },
       }, { bookingId: booking!.id }, 'partner');
       return booking!.id;
     });
@@ -298,13 +325,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         `INSERT INTO availability (vendor_id, day, slot, status, booking_id) VALUES ($1, $2, $3, 'booked', $4)`,
         [b.vendor_id, b.day, b.slot, b.id],
       );
-      await client.query(
-        `UPDATE bookings SET status = 'accepted', pay_by = now() + make_interval(hours => $2), updated_at = now() WHERE id = $1`,
-        [b.id, PAY_HOURS],
-      );
+      const payBy = payByFor(b.day);
+      await client.query(`UPDATE bookings SET status = 'accepted', pay_by = $2, updated_at = now() WHERE id = $1`, [b.id, payBy]);
       await notify(client, b.customer_id, 'booking_accepted', {
-        en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise)} within ${PAY_HOURS} hours to confirm ${niceDay(b.day, 'en')}.` },
-        hi: { title: 'वेंडर ने मंज़ूर किया', body: `${niceDay(b.day, 'hi')} पक्का करने के लिए ${PAY_HOURS} घंटे में ${rupees(b.advance_paise)} एडवांस दें।` },
+        en: { title: 'Vendor accepted', body: `Pay the advance of ${rupees(b.advance_paise - b.discount_paise)} within ${hoursLeft(payBy)} hours to confirm ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर ने मंज़ूर किया', body: `${niceDay(b.day, 'hi')} पक्का करने के लिए ${hoursLeft(payBy)} घंटे में ${rupees(b.advance_paise - b.discount_paise)} एडवांस दें।` },
       }, { bookingId: b.id }, 'customer');
     });
   }
@@ -315,8 +340,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       this.assertRequested(b);
       await this.close(client, b.id, 'rejected', reason);
       await notify(client, b.customer_id, 'booking_rejected', {
-        en: { title: 'Vendor is not available', body: `${reason}. You can book another vendor for ${niceDay(b.day, 'en')}.` },
-        hi: { title: 'वेंडर उपलब्ध नहीं', body: `${reason}। आप ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुन सकते हैं।` },
+        en: { title: 'Vendor is not available', body: `${sentence(reason)}. You can book another vendor for ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर उपलब्ध नहीं', body: `${sentence(reason)}। आप ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुन सकते हैं।` },
       }, { bookingId: b.id }, 'customer');
     });
   }
@@ -344,12 +369,35 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * The vendor was paused, blocked or deleted: customers waiting on a reply or about to pay are
+   * told straight away instead of waiting for the deadline. Confirmed bookings stay; the returned
+   * count tells the admin how many still need a call.
+   */
+  async closeOpenFor(q: Queryable, vendorId: string): Promise<{ closed: number; confirmed: number }> {
+    const open = await q.query<{ id: string; customer_id: string; status: BookingStatus; day: string }>(
+      `SELECT id, customer_id, status, day FROM bookings WHERE vendor_id = $1 AND status IN ('requested', 'accepted') FOR UPDATE`,
+      [vendorId],
+    );
+    for (const b of open.rows) {
+      await this.close(q, b.id, b.status === 'requested' ? 'rejected' : 'cancelled_by_vendor', 'Vendor is not available on EventSeva right now');
+      await notify(q, b.customer_id, 'booking_cancelled', {
+        en: { title: 'Vendor not available', body: `This vendor is not taking bookings right now. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'वेंडर उपलब्ध नहीं', body: `यह वेंडर अभी बुकिंग नहीं ले रहा। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
+      }, { bookingId: b.id }, 'customer');
+    }
+    const confirmed = await this.db.one<{ n: number }>(q, `SELECT count(*)::int AS n FROM bookings WHERE vendor_id = $1 AND status = 'confirmed'`, [vendorId]);
+    return { closed: open.rows.length, confirmed: confirmed!.n };
+  }
+
   // ---------- calendar ----------
 
   async block(vendorUserId: string, day: string, slot: Slot) {
     if (day < todayIst()) throw new AppError('DATE_IN_PAST', 'This date has already passed.');
+    if (day > lastPlannableDay()) throw new AppError('DATE_TOO_FAR', 'This date is too far ahead.', HttpStatus.BAD_REQUEST, { lastDay: lastPlannableDay() });
     await this.db.tx(async (client) => {
       const vendor = await this.db.one<{ id: string }>(client, 'SELECT id FROM vendors WHERE user_id = $1 FOR UPDATE', [vendorUserId]);
+      if (!vendor) throw new AppError('VENDOR_NOT_FOUND', 'Create your business profile first.', HttpStatus.NOT_FOUND);
       await this.assertSlotFree(client, vendor!.id, day, slot);
       await client.query(`INSERT INTO availability (vendor_id, day, slot, status) VALUES ($1, $2, $3, 'blocked')`, [vendor!.id, day, slot]);
     });
@@ -416,7 +464,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
                 ((c.day + CASE WHEN (SELECT count(*) FROM bookings x WHERE x.vendor_id = c.vendor_id AND x.status = 'completed'
                                        AND x.id NOT IN (SELECT id FROM c)) < $1 THEN 3 ELSE 1 END)
                   + time '10:00') AT TIME ZONE 'Asia/Kolkata'
-           FROM c
+           FROM c WHERE c.payout_paise > 0  -- fully refunded from the vendor's share: nothing to pay
          ON CONFLICT (booking_id) DO NOTHING
          RETURNING booking_id, release_after
        )
@@ -521,6 +569,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       const left = paid.amount_paise - b.refund_paise;
       if (amountPaise > left) {
         throw new AppError('REFUND_TOO_HIGH', `At most ${rupees(left)} can still be refunded.`, HttpStatus.BAD_REQUEST, { maxPaise: left });
+      }
+      if (fromVendorPayout && !['confirmed', 'completed'].includes(b.status)) {
+        // A cancelled booking never pays the vendor, so there is no payout to take it from.
+        throw new AppError('NO_VENDOR_PAYOUT', 'This booking has no vendor payout to take the refund from.', HttpStatus.CONFLICT, { status: b.status });
       }
       if (fromVendorPayout) {
         const payout = await this.db.one<{ id: string; status: string; amount_paise: number }>(

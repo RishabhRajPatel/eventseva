@@ -415,6 +415,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Check: `CHECK ((quantity > 0))`
 - Check: `CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text])))`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id, created_at DESC)`
+- Index: `CREATE INDEX ON bookings USING btree (customer_id) WHERE (status = 'requested'::booking_status)`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
 - Index: `CREATE INDEX ON bookings USING btree (status, day) WHERE (status = 'confirmed'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, pay_by) WHERE (status = 'accepted'::booking_status)`
@@ -667,6 +668,7 @@ Chat messages. Phone numbers are masked in the API until a booking between the t
 
 - Check: `CHECK (((length(body) >= 1) AND (length(body) <= 2000)))`
 - Index: `CREATE INDEX ON messages USING btree (conversation_id, id DESC)`
+- Index: `CREATE INDEX ON messages USING btree (sender_id, created_at DESC)`
 
 </details>
 

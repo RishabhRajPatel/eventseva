@@ -23,6 +23,9 @@ import { api } from './api';
 import { isVendorMissing } from './errors';
 import { currentLanguage } from '../i18n';
 
+/** How long data counts as fresh (UX.md §7): catalogue 1 h, lists 30 s, rarely changing data longer. */
+export const STALE = { catalogue: 60 * 60_000, list: 30_000, profile: 60_000, slow: 5 * 60_000 } as const;
+
 export const keys = {
   vendor: ['vendor'] as const,
   categories: (lang: string) => ['categories', lang] as const,
@@ -55,6 +58,7 @@ export function useVendor() {
         throw e;
       }
     },
+    staleTime: STALE.profile,
   });
 }
 
@@ -63,7 +67,7 @@ export function useCategories() {
   return useQuery({
     queryKey: keys.categories(lang),
     queryFn: async () => (await api.get<{ items: Category[] }>('/v1/categories', undefined, { auth: false })).items,
-    staleTime: 60 * 60_000,
+    staleTime: STALE.catalogue,
   });
 }
 
@@ -71,12 +75,12 @@ export function useCities() {
   return useQuery({
     queryKey: keys.cities,
     queryFn: async () => (await api.get<{ items: City[] }>('/v1/cities', undefined, { auth: false })).items,
-    staleTime: 60 * 60_000,
+    staleTime: STALE.catalogue,
   });
 }
 
 export function useDashboard() {
-  return useQuery({ queryKey: keys.dashboard, queryFn: () => api.get<PartnerDashboard>('/v1/partner/dashboard') });
+  return useQuery({ queryKey: keys.dashboard, queryFn: () => api.get<PartnerDashboard>('/v1/partner/dashboard'), staleTime: STALE.list });
 }
 
 export function useBookings(status?: BookingStatus) {
@@ -102,7 +106,7 @@ export function useCalendar(month: string) {
 }
 
 export function useEarnings(month: string) {
-  return useQuery({ queryKey: keys.earnings(month), queryFn: () => api.get<Earnings>('/v1/partner/earnings', { month }) });
+  return useQuery({ queryKey: keys.earnings(month), queryFn: () => api.get<Earnings>('/v1/partner/earnings', { month }), staleTime: STALE.profile });
 }
 
 export function useConversations(poll = false) {
@@ -132,6 +136,7 @@ export function useReviews() {
   return useQuery({
     queryKey: keys.reviews,
     queryFn: async () => (await api.get<{ items: Review[] }>('/v1/partner/reviews')).items,
+    staleTime: STALE.slow,
   });
 }
 
@@ -163,6 +168,7 @@ export function useBankAccount() {
   return useQuery({
     queryKey: keys.bank,
     queryFn: async () => (await api.get<{ account: BankAccount | null }>('/v1/partner/bank-account')).account,
+    staleTime: STALE.slow,
   });
 }
 
@@ -170,6 +176,7 @@ export function useDocuments() {
   return useQuery({
     queryKey: keys.documents,
     queryFn: async () => (await api.get<{ items: VendorDocument[] }>('/v1/partner/documents')).items,
+    staleTime: STALE.slow,
   });
 }
 
@@ -181,13 +188,14 @@ export function invalidateMedia(qc: QueryClient) {
 
 /** "Get featured": current end date, plans and past purchases. */
 export function useFeatured() {
-  return useQuery({ queryKey: keys.featured, queryFn: () => api.get<FeaturedOverview>('/v1/partner/featured') });
+  return useQuery({ queryKey: keys.featured, queryFn: () => api.get<FeaturedOverview>('/v1/partner/featured'), staleTime: STALE.profile });
 }
 
 export function useComplaints() {
   return useQuery({
     queryKey: keys.complaints,
     queryFn: async () => (await api.get<{ items: Complaint[] }>('/v1/complaints')).items,
+    staleTime: STALE.profile,
   });
 }
 

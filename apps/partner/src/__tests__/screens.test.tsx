@@ -119,14 +119,29 @@ describe('Bookings tab', () => {
     expect(screen.queryByText('Event r1')).toBeNull();
   });
 
-  it('accepts a request and explains SLOT_TAKEN', async () => {
-    const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => undefined);
+  it('accepts a request and explains SLOT_TAKEN in a toast', async () => {
     post.mockRejectedValueOnce(new ApiError(409, 'SLOT_TAKEN', 'The vendor is not free at this time.'));
     await renderScreen(<Bookings />);
     const card = await screen.findByTestId('booking-r1');
     await fireEvent.press(within(card).getByTestId('accept'));
     await waitFor(() => expect(post).toHaveBeenCalledWith('/v1/partner/bookings/r1/accept'));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith('Something went wrong', expect.stringMatching(/already booked or blocked/)));
+    expect(await screen.findByTestId('toast')).toHaveTextContent(/already booked or blocked/);
+  });
+
+  it('accepting shows the busy button, then the success toast; a double tap sends once', async () => {
+    let resolve!: (b: unknown) => void;
+    post.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    await renderScreen(<Bookings />);
+    const card = await screen.findByTestId('booking-r1');
+    const accept = within(card).getByTestId('accept');
+    await fireEvent.press(accept);
+    await fireEvent.press(accept);
+    expect(post).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(within(card).getByTestId('accept').props.accessibilityState).toMatchObject({ busy: true, disabled: true }));
+    expect(within(card).getByText('Accepting…')).toBeTruthy();
+    expect(within(card).getByTestId('decline').props.accessibilityState).toMatchObject({ disabled: true });
+    resolve(booking('r1', 'accepted'));
+    expect(await screen.findByTestId('toast')).toHaveTextContent('Request accepted, the customer has 24 h to pay.');
   });
 
   it('declining needs a reason; a quick pick is sent to the API', async () => {
@@ -137,8 +152,12 @@ describe('Bookings tab', () => {
     await fireEvent.press(screen.getByTestId('reason-confirm'));
     expect(screen.getByText('Pick a reason or write one (at least 3 letters).')).toBeTruthy();
     expect(post).not.toHaveBeenCalled();
+    // The picked reason shows as selected (✓, lilac, royal border).
     await fireEvent.press(screen.getByText('Already booked that day'));
+    expect(screen.getByTestId('reason-0').props.accessibilityState).toMatchObject({ selected: true });
+    expect(screen.getByTestId('reason-1').props.accessibilityState).toMatchObject({ selected: false });
     await fireEvent.press(screen.getByTestId('reason-confirm'));
     await waitFor(() => expect(post).toHaveBeenCalledWith('/v1/partner/bookings/r1/reject', { reason: 'Already booked that day' }));
+    expect(await screen.findByTestId('toast')).toHaveTextContent(/Request declined/);
   });
 });

@@ -1,9 +1,12 @@
+import { memo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { rupees } from '@eventseva/app-shared';
+import { haptic } from '../lib/haptics';
 import type { Item } from '../lib/vendor';
 import { c, space } from '../lib/theme';
 import { AppText } from './AppText';
+import { SelectedMark } from './Form';
 
 /** "₹500 / plate", or just "₹45,000" for packages and fixed-price services. */
 export function usePriceLabel() {
@@ -12,17 +15,21 @@ export function usePriceLabel() {
     item.unit === 'package' ? rupees(item.pricePaise) : `${rupees(item.pricePaise)} ${t(`units.${item.unit}`)}`;
 }
 
-/** Package / service card on the vendor page (selected: royal border on lavender). */
-export function ItemOption({ item, selected, onPress }: { item: Item; selected: boolean; onPress: () => void }) {
+/** Package / service card on the vendor page (selected: lilac fill, royal border, ✓). */
+export const ItemOption = memo(function ItemOption({ item, selected, onPress }: { item: Item; selected: boolean; onPress: () => void }) {
   const price = usePriceLabel();
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
+      accessibilityState={{ checked: selected, selected }}
       accessibilityLabel={`${item.title}, ${price(item)}`}
-      onPress={onPress}
-      style={[styles.box, selected && styles.on]}
+      onPress={() => {
+        haptic.select();
+        onPress();
+      }}
+      style={({ pressed }) => [styles.box, selected && styles.on, pressed && styles.pressed]}
     >
+      {selected ? <SelectedMark /> : <View style={styles.radio} />}
       <View style={styles.text}>
         <AppText variant="bold" size="md">
           {item.title}
@@ -33,18 +40,18 @@ export function ItemOption({ item, selected, onPress }: { item: Item; selected: 
           </AppText>
         ) : null}
       </View>
-      <AppText variant="bold" size={16} color={c.royal}>
+      <AppText variant="bold" size="md" color={c.royal}>
         {price(item)}
       </AppText>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   box: {
     minHeight: 56,
-    borderWidth: 1,
-    borderColor: c.lilac,
+    borderWidth: 1.5,
+    borderColor: c.outline,
     borderRadius: 14,
     padding: 14,
     flexDirection: 'row',
@@ -52,7 +59,8 @@ const styles = StyleSheet.create({
     gap: space.md,
     backgroundColor: c.white,
   },
-  on: { borderWidth: 2, borderColor: c.royal, backgroundColor: c.lavender },
+  on: { borderWidth: 2, borderColor: c.selectedBorder, backgroundColor: c.selectedBg },
+  pressed: { opacity: 0.85 },
+  radio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: c.outline },
   text: { flex: 1, gap: 2 },
 });
-

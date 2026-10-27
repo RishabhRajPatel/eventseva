@@ -2,7 +2,13 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import dynamic from 'next/dynamic';
 import { api, goToLogin, logout, sessionStore } from '@/lib/api';
+import { msUntilWarning } from '@/lib/session-expiry';
+import { ActionDialog } from './dialogs';
+
+// Shown rarely (after a click, or 5 minutes before the 8-hour login ends): kept out of the shell's first load.
+const SessionExpiryBar = dynamic(() => import('./SessionExpiry').then((m) => m.SessionExpiryBar));
 import type { Dashboard } from '@/lib/admin-types';
 import { canVisit, navFor, ROLE_LABELS, type NavItem } from '@/lib/roles';
 import { useApiQuery } from '@/hooks/useApiQuery';
@@ -39,8 +45,23 @@ function Frame({ children }: { children: ReactNode }) {
   const toast = useToast();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   const counts = useApiQuery<Dashboard>('/v1/admin/dashboard');
   const { role, email } = session.admin;
+  const { reload } = counts;
+
+  // Badges and system alerts stay fresh while the tab is open: every 2 minutes, and on return to the tab.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible') reload();
+    };
+    const timer = window.setInterval(refresh, 120_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [reload]);
 
   // Pick up a role change made by another admin; a 401 here ends the session.
   useEffect(() => {
@@ -56,12 +77,12 @@ function Frame({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [session.expiresAt]);
 
-  const { reload } = counts;
   const refreshCounts = useCallback(() => reload(), [reload]);
   const value = useMemo<ShellValue>(
-    () => ({ session, toast, counts: counts.data, refreshCounts }),
-    [session, toast, counts.data, refreshCounts],
+    () => ({ session, toast, counts: counts.data, countsState: counts, refreshCounts }),
+    [session, toast, counts, refreshCounts],
   );
+  const alerts = counts.data?.openAlerts ?? 0;
 
   const nav = navFor(role);
   const closeMenu = () => setMenuOpen(false);
@@ -102,16 +123,40 @@ function Frame({ children }: { children: ReactNode }) {
               </span>
               <span className="role-badge">{ROLE_LABELS[role]}</span>
             </div>
-            <button type="button" className="btn btn-small" onClick={() => void logout()}>
+            {alerts > 0 ? (
+              <Link href="/dashboard#alerts" className={styles.alertLink}>
+                <span aria-hidden="true">⚠</span> {alerts} system {alerts === 1 ? 'alert' : 'alerts'}
+              </Link>
+            ) : null}
+            <button type="button" className="btn btn-small" onClick={() => setConfirmLogout(true)}>
               Log out
             </button>
           </header>
+          <SessionExpiry expiresAt={session.expiresAt} />
 
           <main id="content" className={styles.content} tabIndex={-1}>
             {canVisit(role, pathname) ? children : <NoAccess />}
           </main>
         </div>
       </div>
+      {confirmLogout ? (
+        <ActionDialog
+          title="Log out of the admin panel?"
+          description={
+            <p>
+              This ends every login of <b>{email}</b>, in all tabs and on other computers. You need your password and a 2FA code to log in again.
+            </p>
+          }
+          confirmLabel="Log out everywhere"
+          busyLabel="Logging out…"
+          cancelLabel="Stay logged in"
+          tone="danger"
+          onConfirm={logout}
+          successMessage="Logged out."
+          onClose={() => setConfirmLogout(false)}
+          onDone={() => undefined}
+        />
+      ) : null}
     </ShellContext.Provider>
   );
 }
@@ -130,11 +175,13 @@ function NavLink({
   onNavigate: () => void;
 }) {
   const count = item.badge && counts ? counts[item.badge] : 0;
+  const isAlert = item.badge === 'openAlerts';
   return (
     <Link href={item.href} className={styles.link} aria-current={active ? 'page' : undefined} onNavigate={onNavigate}>
       {item.label}
       {count ? (
-        <span className={styles.badge} aria-label={`${count} waiting`}>
+        <span className={`${styles.badge} ${isAlert ? styles.badgeAlert : ''}`} aria-label={isAlert ? `${count} open system ${count === 1 ? 'alert' : 'alerts'}` : `${count} waiting`}>
+          {isAlert ? '⚠ ' : ''}
           {count}
         </span>
       ) : null}
@@ -142,11 +189,24 @@ function NavLink({
   );
 }
 
+/** Waits quietly until 5 minutes before the token ends, then shows the countdown bar. */
+function SessionExpiry({ expiresAt }: { expiresAt: number }) {
+  const [warn, setWarn] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setWarn(true), msUntilWarning(expiresAt, Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [expiresAt]);
+  return warn ? <SessionExpiryBar expiresAt={expiresAt} /> : null;
+}
+
 function NoAccess() {
   return (
     <div className="state">
+      <span className="state-icon" aria-hidden="true">
+        ⛔
+      </span>
       <h1>No access</h1>
-      <p className="muted">Your admin role cannot open this page.</p>
+      <p className="muted">Your admin role cannot open this page. Ask a super admin if you need it.</p>
       <Link className="btn btn-primary" href="/dashboard">
         Go to dashboard
       </Link>
@@ -163,8 +223,14 @@ export function ShellFallback() {
           EventSeva <span>ADMIN</span>
         </span>
       </div>
-      <div className={styles.fallbackMain}>
-        <div className="spinner" role="status" aria-label="Loading" />
+      <div className={styles.fallbackMain} role="status">
+        <span className="sr-only">Loading the admin panel…</span>
+        <div className={styles.fallbackHeader} aria-hidden="true" />
+        <div className={styles.fallbackBody} aria-hidden="true">
+          <span className="skel" style={{ width: '12rem', height: '2rem' }} />
+          <span className="skel" style={{ width: '100%', height: '6rem' }} />
+          <span className="skel" style={{ width: '100%', height: '14rem' }} />
+        </div>
       </div>
     </div>
   );

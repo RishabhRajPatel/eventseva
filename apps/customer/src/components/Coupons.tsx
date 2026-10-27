@@ -1,11 +1,12 @@
 // Coupons on a booking before paying (Payment board), and the offer details shared by Home and Offers.
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatDay, rupees, todayIst, type Booking, type Offer } from '@eventseva/app-shared';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
+import { haptic } from '../lib/haptics';
 import { c, radius, space, TOUCH } from '../lib/theme';
 import { useOffers } from '../hooks/useCatalog';
 import { useLanguage } from '../hooks/useLanguage';
@@ -51,12 +52,15 @@ export function CouponBox({ booking: b }: { booking: Booking }) {
   const apply = useMutation({
     mutationFn: (value: string) => api.applyCoupon(b.id, value),
     onSuccess: (next) => {
+      haptic.success();
       updated(next);
       setCode('');
       setOpen(false);
     },
+    onError: () => haptic.error(),
   });
   const remove = useMutation({ mutationFn: () => api.removeCoupon(b.id), onSuccess: updated });
+  const applying = apply.isPending ? apply.variables : null;
   const busy = apply.isPending || remove.isPending;
   const error = apply.error ?? remove.error;
   const errorLine = error ? (
@@ -79,9 +83,8 @@ export function CouponBox({ booking: b }: { booking: Booking }) {
             size="md"
             onPress={() => {
               apply.reset();
-              remove.mutate();
+              return remove.mutateAsync();
             }}
-            loading={remove.isPending}
             style={styles.small}
           />
         </View>
@@ -130,37 +133,51 @@ export function CouponBox({ booking: b }: { booking: Booking }) {
               onSubmitEditing={() => valid && apply.mutate(code)}
             />
           </View>
-          <Button label={t('coupon.apply')} size="md" onPress={() => apply.mutate(code)} disabled={!valid || busy} loading={apply.isPending} style={styles.applyButton} />
+          <Button
+            label={t('coupon.apply')}
+            size="md"
+            onPress={() => apply.mutate(code)}
+            disabled={!valid || remove.isPending}
+            loading={applying === code}
+            style={styles.applyButton}
+          />
         </View>
       ) : null}
 
       {items.length > 0 ? (
         <View style={styles.offers}>
-          <AppText variant="bold" size={14}>
+          <AppText variant="bold" size="sm">
             {t('coupon.available')}
           </AppText>
           <View style={styles.chips}>
-            {items.map((o) => (
-              <Pressable
-                key={o.code}
-                accessibilityRole="button"
-                accessibilityLabel={t('coupon.applyOffer', { code: o.code, summary: o.summary })}
-                accessibilityState={{ disabled: busy }}
-                disabled={busy}
-                onPress={() => {
-                  remove.reset();
-                  apply.mutate(o.code);
-                }}
-                style={({ pressed }) => [styles.chip, pressed && { backgroundColor: c.lavender }]}
-              >
-                <AppText variant="bold" size="sm" color={c.royal}>
-                  {o.code}
-                </AppText>
-                <AppText size="xs" numberOfLines={1}>
-                  {o.summary}
-                </AppText>
-              </Pressable>
-            ))}
+            {items.map((o) => {
+              const on = applying === o.code;
+              return (
+                <Pressable
+                  key={o.code}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('coupon.applyOffer', { code: o.code, summary: o.summary })}
+                  accessibilityState={{ disabled: busy, busy: on, selected: on }}
+                  disabled={busy}
+                  onPress={() => {
+                    haptic.select();
+                    remove.reset();
+                    apply.mutate(o.code);
+                  }}
+                  style={({ pressed }) => [styles.chip, on && styles.chipOn, pressed && styles.chipPressed, busy && !on && styles.chipWaiting]}
+                >
+                  <View style={styles.chipHead}>
+                    {on ? <ActivityIndicator size="small" color={c.royal} /> : <Icon name="star" size={14} color={c.royal} />}
+                    <AppText variant="bold" size="sm" color={c.royal}>
+                      {o.code}
+                    </AppText>
+                  </View>
+                  <AppText size="xs" numberOfLines={1}>
+                    {on ? t('coupon.applying') : o.summary}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
         </View>
       ) : null}
@@ -192,4 +209,8 @@ const styles = StyleSheet.create({
     borderColor: c.royal,
     backgroundColor: c.white,
   },
+  chipHead: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
+  chipOn: { borderStyle: 'solid', borderWidth: 2, borderColor: c.selectedBorder, backgroundColor: c.selectedBg },
+  chipPressed: { backgroundColor: c.lavender },
+  chipWaiting: { opacity: 0.4 },
 });

@@ -25,7 +25,7 @@
   min-height: 2.75rem;
   padding: 0.875rem 1rem;
   border-radius: var(--radius);
-  border: 1.5px solid var(--lavender);
+  border: 1.5px solid var(--line);
   background: var(--white);
   text-align: left;
   font-size: 0.875rem;
@@ -33,12 +33,22 @@
 }
 
 .item:hover {
-  border-color: var(--lilac);
+  border-color: var(--royal);
+  background: var(--row-hover);
 }
 
+/* Selected: royal border, lilac tint, a left bar and a ✓ (not colour alone). */
 .item[aria-current='true'] {
-  border-color: var(--royal);
-  background: #f6f2ff;
+  border: 2px solid var(--royal);
+  background: var(--row-selected);
+  box-shadow: inset 4px 0 0 var(--royal);
+  padding: calc(0.875rem - 0.5px) calc(1rem - 0.5px);
+}
+
+.item[aria-current='true'] .subject::before {
+  content: '✓ ';
+  content: '✓ ' / '';
+  color: var(--royal);
 }
 
 .subject {

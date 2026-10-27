@@ -114,8 +114,8 @@ describe('payment screen coupons', () => {
     [new ApiError(400, 'COUPON_NOT_APPLICABLE', 'x', { reason: 'category' }), 'This coupon is not for this kind of service.'],
     [new ApiError(400, 'COUPON_NOT_APPLICABLE', 'x', { reason: 'first_booking' }), 'This coupon is only for your first booking.'],
     [new ApiError(400, 'COUPON_NOT_APPLICABLE', 'x', { reason: 'zero' }), 'This coupon gives no discount on this booking.'],
-    [new ApiError(400, 'COUPON_INVALID', 'x'), 'This coupon code is not valid or has expired.'],
-    [new ApiError(409, 'COUPON_ALREADY_USED', 'x'), 'You have already used this coupon.'],
+    [new ApiError(400, 'COUPON_INVALID', 'x'), 'This coupon code is not valid or has expired. Check the code, or tap one of the offers below.'],
+    [new ApiError(409, 'COUPON_ALREADY_USED', 'x'), 'You have already used this coupon. Try another offer.'],
     [new ApiError(409, 'COUPON_USED_UP', 'x'), 'This coupon has been fully used. Try another offer.'],
     [new ApiError(409, 'COUPON_NOT_ALLOWED', 'x', { status: 'confirmed' }), 'Coupons can only be changed before you pay.'],
   ])('error %#: clear message', async (error, text) => {

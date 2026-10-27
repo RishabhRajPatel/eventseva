@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/lib/api';
 
 type Query = Record<string, string | number | boolean | undefined | null>;
@@ -48,12 +48,16 @@ export function useApiQuery<T>(path: string | null, query: Query = {}, auth = tr
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   const current = result !== null && result.key === key ? result : null;
-  return {
-    data: current?.data as T | undefined,
-    error: current?.error,
-    loading: key !== null && current === null,
-    refreshing: current !== null && current.nonce !== nonce,
-    receivedAt: current?.receivedAt,
-    reload,
-  };
+  // Same object while nothing changed, so memoised children and context consumers skip re-renders.
+  return useMemo(
+    () => ({
+      data: current?.data as T | undefined,
+      error: current?.error,
+      loading: key !== null && current === null,
+      refreshing: current !== null && current.nonce !== nonce,
+      receivedAt: current?.receivedAt,
+      reload,
+    }),
+    [current, key, nonce, reload],
+  );
 }

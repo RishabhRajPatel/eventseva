@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { useSession } from '../lib/session';
+import { toast } from '../lib/toast';
 import { c, space } from '../lib/theme';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
@@ -22,10 +23,10 @@ export default function DeleteAccountScreen() {
   const remove = useMutation({
     mutationFn: () => api.delete('/v1/me', { confirm: 'DELETE' }),
     onSuccess: async () => {
-      Alert.alert(t('deleteAccount.doneTitle'), t('deleteAccount.doneBody'));
+      toast.success(t('deleteAccount.doneBody'));
       await signOut();
     },
-    onError: (e) => Alert.alert(t('errors.title'), errorText(t, e)),
+    onError: () => undefined,
   });
 
   return (
@@ -56,9 +57,14 @@ export default function DeleteAccountScreen() {
           disabled={!confirmed}
           loading={remove.isPending}
           onPress={() => {
-            if (confirmed) remove.mutate();
+            if (confirmed && !remove.isPending) remove.mutate();
           }}
         />
+        {remove.isError ? (
+          <Notice icon="alert" tone="danger" testID="delete-error">
+            {errorText(t, remove.error)}
+          </Notice>
+        ) : null}
       </View>
     </Screen>
   );

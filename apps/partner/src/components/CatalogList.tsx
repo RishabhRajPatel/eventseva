@@ -6,6 +6,7 @@ import { unitLabel } from '../lib/labels';
 import { c, space } from '../lib/theme';
 import { LinkButton } from './Button';
 import { Card, CardHeader, Row } from './Card';
+import { EmptyInline } from './States';
 import { Txt } from './Txt';
 
 /** Services and packages with prices; each row opens its editor. */
@@ -15,11 +16,7 @@ export function CatalogList({ vendor, editable }: { vendor: OwnVendor; editable:
   return (
     <Card testID="catalog">
       <CardHeader title={t('catalog.title')} />
-      {empty ? (
-        <Txt size="sm" color={c.textMuted}>
-          {t('catalog.empty')}
-        </Txt>
-      ) : null}
+      {empty ? <EmptyInline icon="rupee" text={t('catalog.empty')} /> : null}
       {vendor.services.map((s) => (
         <Row key={s.id} testID={`service-${s.id}`} onPress={editable ? () => router.push(`/service/${s.id}`) : undefined} chevron={editable}>
           <View style={{ flex: 1 }}>

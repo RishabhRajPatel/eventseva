@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { memo, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +11,8 @@ import { errorText } from '../../lib/errors';
 import { keys, useConversations, useMessages, type MessagePage } from '../../lib/queries';
 import { shortTime } from '../../lib/time';
 import { c, radius, space, text, TOUCH } from '../../lib/theme';
+import { toast } from '../../lib/toast';
+import { haptic } from '../../lib/haptics';
 import { useLang } from '../../hooks/useLang';
 import { Avatar } from '../../components/Avatar';
 import { IconButton } from '../../components/Button';
@@ -35,10 +38,12 @@ export default function ChatThread() {
     mutationFn: (body: string) => api.post<Message>(`/v1/conversations/${id}/messages`, { body }),
     onSuccess: (msg) => {
       setDraft('');
+      haptic.tap();
       qc.setQueryData<MessagePage>(keys.messages(id), (old) => (old ? { ...old, items: [msg, ...old.items.filter((m) => m.id !== msg.id)] } : old));
       void qc.invalidateQueries({ queryKey: keys.conversations });
     },
-    onError: (e) => Alert.alert(t('errors.title'), errorText(t, e)),
+    // The draft stays in the box, so nothing typed is lost.
+    onError: (e) => toast.error(errorText(t, e)),
   });
 
   const submit = () => {
@@ -57,7 +62,7 @@ export default function ChatThread() {
           </Txt>
         </View>
       </View>
-      <QueryView query={messages}>
+      <QueryView query={messages} skeleton="rows" padded>
         {(page) => (
           <>
             {!page.phoneShared ? (
@@ -68,30 +73,17 @@ export default function ChatThread() {
                 </Txt>
               </View>
             ) : null}
-            <FlatList
-              inverted
-              data={page.items}
-              keyExtractor={(m) => String(m.id)}
-              contentContainerStyle={styles.list}
-              renderItem={({ item }) => (
-                <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
-                  <Txt size="md" color={item.mine ? c.white : c.ink} style={{ lineHeight: 21 }}>
-                    {item.body}
-                  </Txt>
-                  <Txt size="xs" color={item.mine ? c.lavender : c.textMuted} align="right">
-                    {shortTime(item.createdAt, lang)}
-                    {item.mine && item.readAt ? ` · ${t('chat.seen')}` : ''}
-                  </Txt>
-                </View>
-              )}
-              ListEmptyComponent={
-                <View style={{ transform: [{ scaleY: -1 }], padding: space.xl }}>
-                  <Txt align="center" color={c.textMuted}>
-                    {t('chat.startHint')}
-                  </Txt>
-                </View>
-              }
-            />
+            {page.items.length ? (
+              <FlashList inverted data={page.items} keyExtractor={keyOf} contentContainerStyle={styles.list} ItemSeparatorComponent={Gap} renderItem={({ item }) => <Bubble item={item} lang={lang} />} />
+            ) : (
+              // Outside the inverted list, so it is not drawn upside down.
+              <View style={styles.empty} testID="chat-empty">
+                <Icon name="chat" size={28} color={c.royal} />
+                <Txt align="center" color={c.textMuted}>
+                  {t('chat.startHint')}
+                </Txt>
+              </View>
+            )}
           </>
         )}
       </QueryView>
@@ -109,19 +101,46 @@ export default function ChatThread() {
             style={[styles.input, { fontFamily: f.body }]}
           />
         </View>
-        <Pressable testID="send" accessibilityRole="button" accessibilityLabel={t('chat.send')} onPress={submit} style={[styles.send, { opacity: draft.trim() ? 1 : 0.5 }]}>
-          <Icon name="send" size={20} color={c.white} />
+        <Pressable
+          testID="send"
+          accessibilityRole="button"
+          accessibilityLabel={t('chat.send')}
+          accessibilityState={{ disabled: !draft.trim(), busy: send.isPending }}
+          onPress={submit}
+          style={({ pressed }) => [styles.send, { opacity: !draft.trim() ? 0.5 : pressed ? 0.85 : 1 }]}
+        >
+          {send.isPending ? <ActivityIndicator color={c.white} /> : <Icon name="send" size={20} color={c.white} />}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
+const keyOf = (m: Message) => String(m.id);
+const Gap = () => <View style={styles.gap} />;
+
+const Bubble = memo(function Bubble({ item, lang }: { item: Message; lang: 'en' | 'hi' }) {
+  const { t } = useTranslation();
+  return (
+    <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
+      <Txt size="md" color={item.mine ? c.white : c.ink} style={{ lineHeight: 21 }}>
+        {item.body}
+      </Txt>
+      <Txt size="xs" color={item.mine ? c.lavender : c.textMuted} align="right">
+        {shortTime(item.createdAt, lang)}
+        {item.mine && item.readAt ? ` · ${t('chat.seen')}` : ''}
+      </Txt>
+    </View>
+  );
+});
+
 const styles = StyleSheet.create({
+  gap: { height: 10 },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.sm, padding: space.xl },
   page: { flex: 1, backgroundColor: c.cream },
   header: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.xl, paddingBottom: space.md, backgroundColor: c.white, borderBottomWidth: 1, borderBottomColor: c.lavender },
   hint: { margin: space.md, marginHorizontal: space.xl, marginBottom: 0, borderRadius: radius.md, backgroundColor: c.lavender, padding: 10, paddingHorizontal: 14, flexDirection: 'row', gap: space.sm, alignItems: 'center' },
-  list: { padding: space.xl, gap: 10, flexGrow: 1 },
+  list: { padding: space.xl },
   bubble: { maxWidth: '78%', paddingVertical: 10, paddingHorizontal: 14, gap: 2 },
   mine: { alignSelf: 'flex-end', backgroundColor: c.royal, borderRadius: radius.lg, borderBottomRightRadius: 4 },
   theirs: { alignSelf: 'flex-start', backgroundColor: c.white, borderRadius: radius.lg, borderBottomLeftRadius: 4 },

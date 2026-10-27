@@ -55,10 +55,15 @@ export function ReasonSheet({
             {title}
           </Txt>
           {message ? <Notice icon="alert" tone="warning">{message}</Notice> : null}
-          <View style={styles.chips}>
-            {quickReasons.map((r) => (
-              <ChoiceChip key={r} label={r} selected={picked === r} onPress={() => setPicked(picked === r ? null : r)} />
-            ))}
+          <View style={{ gap: space.xs }}>
+            <Txt variant="bold" size="sm">
+              {t('reason.pick')}
+            </Txt>
+            <View style={styles.chips} accessibilityRole="radiogroup">
+              {quickReasons.map((r, i) => (
+                <ChoiceChip key={r} testID={`reason-${i}`} label={r} selected={picked === r} onPress={() => setPicked(picked === r ? null : r)} />
+              ))}
+            </View>
           </View>
           <Field
             testID="reason-input"
@@ -71,7 +76,7 @@ export function ReasonSheet({
             error={tried && !valid ? t('reason.required') : null}
           />
           <View style={styles.buttons}>
-            <Button kind="outline" label={t('common.back')} onPress={onClose} style={{ flex: 1 }} />
+            <Button kind="secondary" label={t('common.goBack')} onPress={onClose} style={{ flex: 1 }} disabled={loading} />
             <Button
               testID="reason-confirm"
               kind="danger"
@@ -91,7 +96,7 @@ export function ReasonSheet({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(35,38,47,0.45)' },
+  backdrop: { flex: 1, backgroundColor: c.scrim },
   sheet: { backgroundColor: c.cream, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: space.xl, maxHeight: '85%', width: '100%', maxWidth: 640, alignSelf: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   buttons: { flexDirection: 'row', gap: space.sm },

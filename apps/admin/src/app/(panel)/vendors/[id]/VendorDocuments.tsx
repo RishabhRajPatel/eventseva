@@ -1,10 +1,11 @@
 'use client';
 import { useState } from 'react';
-import { errorMessage, formatDateTime, type VendorDocument } from '@eventseva/app-shared';
-import { ActionDialog } from '@/components/ActionDialog';
+import { formatDateTime, type VendorDocument } from '@eventseva/app-shared';
+import { ActionDialog } from '@/components/dialogs';
 import { useShell } from '@/components/ShellContext';
 import { StatusPill } from '@/components/ui';
 import { api } from '@/lib/api';
+import { describeError } from '@/lib/errors';
 import type { AdminVendor } from '@/lib/admin-types';
 import { DOC_LABELS, docNumber, humanize, isLinkStale, MEDIA_STATUS } from '@/lib/labels';
 import { can } from '@/lib/roles';
@@ -57,7 +58,7 @@ export function VendorDocuments({
       onDone(); // show the fresh links on the page too
     } catch (e) {
       tab?.close();
-      toast.error(e instanceof Error && e.message === 'No link' ? 'This document has no view link.' : errorMessage(e));
+      toast.error(e instanceof Error && e.message === 'No link' ? 'This document has no view link. Ask the vendor to upload it again.' : describeError(e));
     }
   }
 
@@ -91,7 +92,7 @@ export function VendorDocuments({
                     <span className="small muted">{canReview ? 'No view link (file storage not configured)' : 'Only verifiers can open documents'}</span>
                   )}
                   {canReview && doc.status !== 'rejected' ? (
-                    <button type="button" className="btn btn-small" onClick={() => setDialog({ kind: 'reject', doc })} aria-label={`Reject ${label}`}>
+                    <button type="button" className="btn btn-small btn-danger-outline" onClick={() => setDialog({ kind: 'reject', doc })} aria-label={`Reject ${label}`}>
                       Reject
                     </button>
                   ) : null}
@@ -113,6 +114,7 @@ export function VendorDocuments({
           title={`Approve ${DOC_LABELS[dialog.doc.docType] ?? 'document'}?`}
           description={<p>Approve only after checking that the name and number match {vendor.businessName}’s owner.</p>}
           confirmLabel="Approve document"
+          busyLabel="Approving…"
           onConfirm={() => api.post(`/v1/admin/documents/${dialog.doc.id}/approve`)}
           successMessage="Document approved."
           onClose={() => setDialog(null)}
@@ -124,6 +126,7 @@ export function VendorDocuments({
           title={`Reject ${DOC_LABELS[dialog.doc.docType] ?? 'document'}?`}
           description={<p>The vendor sees the reason in the Partner app and can upload it again.</p>}
           confirmLabel="Reject document"
+          busyLabel="Rejecting…"
           tone="danger"
           input={{ label: 'Reason (shown to the vendor)', limits: REASON_LIMITS.vendor, presets: DOC_REJECT_PRESETS }}
           onConfirm={(reason) => api.post(`/v1/admin/documents/${dialog.doc.id}/reject`, { reason })}
