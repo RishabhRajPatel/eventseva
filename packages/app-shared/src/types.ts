@@ -316,6 +316,12 @@ export interface Booking {
   /** Refundable security deposit (rentals, self-drive), paid apart from the price. */
   depositPaise: number;
   depositSettledAt: string | null;
+  /** Engine bookings: the customer's answers (menu, occasion, requirements …). */
+  answers?: Record<string, unknown> | null;
+  /** Extras asked for; ones needing approval wait for the vendor's answer when accepting. */
+  addons?: { addonId: string; name: string; pricePaise: number; status: 'included' | 'pending_approval' | 'approved' | 'declined'; note: string | null }[];
+  /** Car bookings, once the vendor may see the venue. */
+  route?: { pickup: { address: string }; destination: { address: string } } | null;
   /** Coupon discount (paid by EventSeva): lowers what is paid in the app. */
   discountPaise: number;
   /** Customer app only: the applied coupon code, or null. */
@@ -739,4 +745,224 @@ export interface RentalView {
   balancePaidPaise: number;
   /** Agreed charges the online deposit did not cover: settled directly with the vendor. */
   dueToVendorPaise: number;
+}
+
+// ---- booking engine: vendor services, resources, extras, trips, changes, checkout ----
+
+export type Bilingual = { en: string; hi: string };
+export type PricingModel = 'fixed' | 'hourly' | 'daily' | 'per_unit' | 'per_person' | 'per_trip' | 'quote';
+
+/** A field a vendor fills (attributes) or a customer answers (questions). */
+export interface FieldDef {
+  key: string;
+  label: Bilingual;
+  type: 'text' | 'number' | 'boolean' | 'select' | 'multiselect';
+  required?: boolean;
+  options?: { value: string; label: Bilingual; pricePaise?: number; perPerson?: boolean }[];
+  min?: number;
+  max?: number;
+  unit?: string;
+  maxLength?: number;
+}
+
+export interface EnginePricing {
+  model: PricingModel;
+  ratePaise: number;
+  minChargePaise?: number;
+  includedHours?: number;
+  includedKm?: number;
+  overtimeHourPaise?: number;
+  extraKmPaise?: number;
+  driverDayPaise?: number;
+  dayRatePaise?: number;
+  travelFreeKm?: number;
+  travelPerKmPaise?: number;
+  earlyMorningPaise?: number;
+  taxPercent?: 0 | 5 | 12 | 18 | 28;
+}
+
+/** Rules a vendor may set on a service (the category sets the rest). */
+export interface EngineRules {
+  minDurationMin?: number;
+  maxDurationMin?: number;
+  minQty?: number;
+  maxQty?: number;
+  workingHours?: { from: string; to: string };
+  leadTimeHours?: number;
+  setupMin?: number;
+  dismantleMin?: number;
+  bufferAfterMin?: number;
+  approval?: 'vendor' | 'auto';
+  capacity?: number;
+  perPersonMin?: number;
+  minAge?: number;
+  instructions?: string;
+  deposit?: { fixedPaise?: number; percent?: number };
+}
+
+export type ResourceKind = 'vehicle' | 'driver' | 'staff' | 'artist' | 'venue' | 'equipment';
+
+/** GET /v1/partner/service-setup */
+export interface ServiceSetup {
+  bookingType: BookingType;
+  pricingModels: PricingModel[];
+  attributes: FieldDef[];
+  questions: FieldDef[];
+  resourceKind: ResourceKind | 'crew' | null;
+  staffKind: string | null;
+  defaultRules: EngineRules;
+  vendorRuleKeys: (keyof EngineRules)[];
+  resourceFields: Record<ResourceKind, FieldDef[]>;
+}
+
+/** A vendor's own service booked by time / quantity (GET /v1/partner/engine-services). */
+export interface EngineService {
+  id: string;
+  title: string;
+  description: string | null;
+  bookingType: BookingType;
+  pricing: EnginePricing;
+  rules: EngineRules;
+  attributes: Record<string, unknown>;
+  resourceId: string | null;
+  minGuests: number | null;
+  maxGuests: number | null;
+  isActive: boolean;
+}
+
+export interface VendorResource {
+  id: string;
+  kind: ResourceKind;
+  name: string;
+  attributes: Record<string, unknown>;
+  status: 'active' | 'maintenance' | 'inactive';
+  verification: 'not_required' | 'pending' | 'approved' | 'rejected' | 'suspended';
+  rejectReason: string | null;
+  documents: { id: string; docType: string; status: string; rejectReason: string | null }[];
+}
+
+export interface ServiceAddon {
+  id: string;
+  serviceId: string | null;
+  name: string;
+  kind: string;
+  inclusions: string[];
+  exclusions: string[];
+  pricePaise: number;
+  setupMinutes: number;
+  requiresApproval: boolean;
+  isActive: boolean;
+}
+
+export interface ServiceBundle {
+  id: string;
+  name: string;
+  description: string | null;
+  discountPercent: number;
+  items: { serviceId: string; mandatory: boolean }[];
+  isActive: boolean;
+}
+
+/** GET /v1/vendors/:id/engine-services: what a customer books from. */
+export interface PublicEngineService {
+  id: string;
+  title: string;
+  description: string | null;
+  bookingType: BookingType;
+  pricing: EnginePricing;
+  attributes: Record<string, unknown>;
+  minGuests: number | null;
+  maxGuests: number | null;
+  rules: {
+    minDurationMin: number | null;
+    maxDurationMin: number | null;
+    minQty: number | null;
+    maxQty: number | null;
+    workingHours: { from: string; to: string } | null;
+    leadTimeHours: number | null;
+    perPersonMin: number | null;
+    minAge: number | null;
+    approval: 'vendor' | 'auto';
+    requiredDocuments: string[];
+    instructions: string | null;
+  };
+  questions: FieldDef[];
+  resource: { id: string; kind: string; name: string; bookable: boolean; attributes: Record<string, unknown> & { registrationMasked?: string | null }; photos: MediaRef[] } | null;
+  addons: ServiceAddon[];
+}
+
+export interface Place {
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+/** POST /v1/quotes and /v1/engine-bookings for every engine type. */
+export interface EngineBookingRequest {
+  eventId: string;
+  serviceId: string;
+  startsAt: string;
+  endsAt?: string;
+  quantity?: number;
+  guestCount?: number;
+  people?: number;
+  lines?: { itemId: string; qty: number }[];
+  addons?: { addonId: string; note?: string }[];
+  answers?: Record<string, unknown>;
+  route?: { pickup: Place; destination: Place; stops?: Place[] };
+  mode?: 'with_driver' | 'self_drive';
+  note?: string;
+}
+
+export interface TripInspection {
+  phase: 'handover' | 'return';
+  readings: { odometerKm: number; fuelEighths: number; km?: number };
+  notes: string | null;
+  photoIds: string[];
+  recordedAt: string;
+  customerAck: 'agreed' | 'disputed' | null;
+  customerNote: string | null;
+}
+
+/** GET /v1/bookings/:id/trip and /v1/partner/bookings/:id/trip */
+export interface TripView {
+  fulfilment: 'scheduled' | 'assigned' | 'in_progress' | 'closed';
+  mode: 'with_driver' | 'self_drive';
+  startsAt: string;
+  endsAt: string;
+  vehicle: { name: string; registration: string | null } | null;
+  driver: { id: string; name: string } | null;
+  route: { pickup: Place; destination: Place } | null;
+  inspections: TripInspection[];
+  charges: RentalCharge[];
+  deposit: { requiredPaise: number; paidPaise: number; keptPaise: number; settledAt: string | null };
+  balancePaidPaise: number;
+}
+
+export interface BookingChange {
+  id: string;
+  kind: 'reschedule' | 'extension';
+  startsAt: string;
+  endsAt: string;
+  priceDiffPaise: number;
+  status: 'requested' | 'approved' | 'rejected' | 'cancelled';
+  reason: string | null;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface DriverLicence {
+  last4: string;
+  dateOfBirth: string;
+  expiresOn: string;
+  status: 'pending' | 'verified' | 'rejected';
+  rejectReason: string | null;
+}
+
+/** POST /v1/checkouts */
+export interface CheckoutResult {
+  id: string;
+  eventId: string;
+  createdAt: string;
+  bookings: { id: string; status: BookingStatus; vendorId: string; businessName: string; title: string | null; amountPaise: number; advancePaise: number; depositPaise: number; startsAt: string; endsAt: string }[];
 }
