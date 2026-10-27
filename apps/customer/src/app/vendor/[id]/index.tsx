@@ -7,7 +7,7 @@ import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context'
 import { FlashList } from '@shopify/flash-list';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { addDays, formatDay, todayIst, type Language, type Media, type Review } from '@eventseva/app-shared';
+import { addDays, formatDay, formatDistance, todayIst, type Language, type Media, type Review } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { STALE, vendorQuery } from '../../../lib/queries';
@@ -153,6 +153,11 @@ export default function VendorScreen() {
               {v.businessName}
             </AppText>
             <AppText size="sm">{place + ratingText}</AppText>
+            {v.serviceRadiusKm ? (
+              <AppText size="sm" color={c.royal}>
+                {t('trip.radius', { km: formatDistance(v.serviceRadiusKm, lang) })}
+              </AppText>
+            ) : null}
           </View>
 
           {v.about ? (

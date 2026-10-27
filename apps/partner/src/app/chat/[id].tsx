@@ -1,15 +1,16 @@
-import { memo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { memo, useRef, useState } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, type TextInputInstance } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { router, useIsFocused, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import type { Message } from '@eventseva/app-shared';
+import { isUuid, type Message } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { errorText } from '../../lib/errors';
 import { keys, useConversations, useMessages, type MessagePage } from '../../lib/queries';
 import { shortTime } from '../../lib/time';
+import { bookingEventText } from '../../lib/bookingEvents';
 import { c, radius, space, text, TOUCH } from '../../lib/theme';
 import { toast } from '../../lib/toast';
 import { haptic } from '../../lib/haptics';
@@ -33,6 +34,7 @@ export default function ChatThread() {
   const conversations = useConversations();
   const customerName = name || conversations.data?.find((x) => x.id === id)?.customerName || t('booking.customerFallback');
   const [draft, setDraft] = useState('');
+  const input = useRef<TextInputInstance>(null);
 
   const send = useMutation({
     mutationFn: (body: string) => api.post<Message>(`/v1/conversations/${id}/messages`, { body }),
@@ -87,9 +89,32 @@ export default function ChatThread() {
           </>
         )}
       </QueryView>
+      {!draft ? (
+        <ScrollView horizontal keyboardShouldPersistTaps="handled" showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quick} style={styles.quickBar}>
+          {QUICK.map((k) => (
+            <Pressable
+              key={k}
+              testID={`quick-${k}`}
+              accessibilityRole="button"
+              // Fills the box; the vendor still decides to send.
+              onPress={() => {
+                haptic.select();
+                setDraft(t(`quick.replies.${k}`));
+                input.current?.focus();
+              }}
+              style={({ pressed }) => [styles.quickChip, pressed && { opacity: 0.85 }]}
+            >
+              <Txt size="sm" color={c.royal}>
+                {t(`quick.replies.${k}`)}
+              </Txt>
+            </Pressable>
+          ))}
+        </ScrollView>
+      ) : null}
       <View style={[styles.composer, { paddingBottom: insets.bottom + space.md }]}>
         <View style={styles.inputWrap}>
           <TextInput
+            ref={input}
             testID="message-input"
             value={draft}
             onChangeText={setDraft}
@@ -116,11 +141,34 @@ export default function ChatThread() {
   );
 }
 
+const QUICK = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6'] as const;
 const keyOf = (m: Message) => String(m.id);
 const Gap = () => <View style={styles.gap} />;
 
 const Bubble = memo(function Bubble({ item, lang }: { item: Message; lang: 'en' | 'hi' }) {
   const { t } = useTranslation();
+  if (item.kind === 'booking') {
+    const text = bookingEventText(t, item.data, lang);
+    return (
+      <View style={styles.eventWrap} testID={`booking-line-${item.data?.event}`}>
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`${text}. ${t('chatEvents.open')}`}
+          disabled={!isUuid(item.data?.bookingId)}
+          onPress={() => item.data && router.push(`/booking/${item.data.bookingId}`)}
+          style={({ pressed }) => [styles.event, pressed && { opacity: 0.85 }]}
+        >
+          <Icon name="calendar" size={14} color={c.royal} />
+          <Txt size="sm" variant="bold" color={c.royal} style={{ flexShrink: 1 }}>
+            {text}
+          </Txt>
+        </Pressable>
+        <Txt size="xs" color={c.textMuted}>
+          {`${shortTime(item.createdAt, lang)} · ${t('chatEvents.open')}`}
+        </Txt>
+      </View>
+    );
+  }
   return (
     <View style={[styles.bubble, item.mine ? styles.mine : styles.theirs]}>
       <Txt size="md" color={item.mine ? c.white : c.ink} style={{ lineHeight: 21 }}>
@@ -147,5 +195,10 @@ const styles = StyleSheet.create({
   composer: { flexDirection: 'row', alignItems: 'flex-end', gap: space.sm, paddingHorizontal: space.xl, paddingTop: space.md, backgroundColor: c.white, borderTopWidth: 1, borderTopColor: c.lavender },
   inputWrap: { flex: 1, minHeight: TOUCH, borderRadius: radius.xl, backgroundColor: c.cream, justifyContent: 'center', paddingHorizontal: space.lg },
   input: { fontSize: text.md + 1, color: c.ink, maxHeight: 120, paddingVertical: space.sm },
+  eventWrap: { alignItems: 'center', gap: 2 },
+  event: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.lavender, borderRadius: 999, paddingHorizontal: space.md, paddingVertical: 6, maxWidth: '90%' },
+  quickBar: { backgroundColor: c.white, flexGrow: 0 },
+  quick: { gap: space.sm, paddingHorizontal: space.xl, paddingTop: space.sm },
+  quickChip: { borderWidth: 1.5, borderColor: c.outline, borderRadius: 999, paddingHorizontal: space.md, paddingVertical: 8, backgroundColor: c.white },
   send: { width: TOUCH, height: TOUCH, borderRadius: TOUCH / 2, backgroundColor: c.royal, alignItems: 'center', justifyContent: 'center' },
 });

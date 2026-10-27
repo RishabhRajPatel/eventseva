@@ -17,6 +17,7 @@ import { MoneyBreakdown } from './MoneyBreakdown';
 import { Notice } from './Notice';
 import { ReasonSheet } from './ReasonSheet';
 import { RequestActions } from './RequestActions';
+import { TripCard } from './TripCard';
 import { Txt } from './Txt';
 import { openLink } from '../lib/links';
 
@@ -66,6 +67,8 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
         </View>
         {booking.note ? <Notice tone="plain">{`“${booking.note}”`}</Notice> : null}
       </Card>
+
+      <TripCard booking={booking} />
 
       <Card>
         <CardHeader title={t('money.title')} />

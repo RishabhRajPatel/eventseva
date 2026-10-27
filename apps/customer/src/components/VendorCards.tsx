@@ -3,9 +3,10 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { rupees, type VendorCard as Vendor } from '@eventseva/app-shared';
+import { formatDistance, rupees, type VendorCard as Vendor } from '@eventseva/app-shared';
 import { prefetchVendor } from '../lib/queries';
 import { c, radius, space } from '../lib/theme';
+import { useLanguage } from '../hooks/useLanguage';
 import { useShortlist } from '../hooks/useShortlist';
 import { AppText } from './AppText';
 import { Pill } from './Bits';
@@ -38,6 +39,7 @@ function useOpenVendor(id: string) {
 /** Grid card (Search board): photo, name, rating · area, "From ₹…", heart. */
 export const VendorCard = memo(function VendorCard({ vendor, width }: { vendor: CardVendor; width: number }) {
   const { t } = useTranslation();
+  const { lang } = useLanguage();
   const shortlist = useShortlist();
   const open = useOpenVendor(vendor.id);
   const saved = shortlist.isSaved(vendor.id);
@@ -78,6 +80,12 @@ export const VendorCard = memo(function VendorCard({ vendor, width }: { vendor: 
             {t('vendor.from', { price: rupees(vendor.startingPricePaise) })}
           </AppText>
         ) : null}
+        {vendor.distanceKm != null ? (
+          <View style={styles.distance}>
+            <Icon name="pin" size={12} color={c.royal} />
+            <AppText size="xs">{t('trip.away', { km: formatDistance(vendor.distanceKm, lang) })}</AppText>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -117,6 +125,7 @@ export const VendorRow = memo(function VendorRow({ vendor, city }: { vendor: Car
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
+  distance: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   card: { backgroundColor: c.white, borderRadius: radius.lg, overflow: 'hidden' },
   heart: { position: 'absolute', top: 0, right: 0, width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   heartBg: { width: 34, height: 34, borderRadius: 17, backgroundColor: c.white, alignItems: 'center', justifyContent: 'center' },

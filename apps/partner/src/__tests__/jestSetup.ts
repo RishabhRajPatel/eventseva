@@ -23,3 +23,11 @@ jest.mock('expo-video', () => {
     VideoView: (props: object) => require('react').createElement(View, props),
   };
 });
+
+// expo-location is native-only: a phone standing in Civil Lines, Prayagraj.
+jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  hasServicesEnabledAsync: jest.fn(async () => true),
+  getCurrentPositionAsync: jest.fn(async () => ({ coords: { latitude: 25.4484123, longitude: 81.8406456 } })),
+}));

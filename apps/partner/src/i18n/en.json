@@ -196,7 +196,8 @@
     "guests": "Guests",
     "venue": "Venue",
     "chat": "Chat with customer",
-    "cancelled": "Booking cancelled. The customer gets the full advance back."
+    "cancelled": "Booking cancelled. The customer gets the full advance back.",
+    "arrive": "Arrive by"
   },
   "money": {
     "title": "Payment",
@@ -444,7 +445,22 @@
     "aboutCount": "{{n}} / 1500",
     "reviewNote": "Changes to your business info are checked by the EventSeva team.",
     "saved": "Business info saved.",
-    "noChanges": "Nothing was changed."
+    "noChanges": "Nothing was changed.",
+    "base": "Where you start from",
+    "baseHint": "Customers see only how far you are from their venue, never this location. Tap the button at your shop or home.",
+    "basePinned": "Location set. Customers will see distances.",
+    "baseCheck": "Check",
+    "baseHere": "Use my current location",
+    "baseUpdate": "Update to my current location",
+    "locating": "Locating…",
+    "locationProblems": {
+      "denied": "Location permission is off. Allow it in Settings and try again.",
+      "off": "Your phone's location is turned off. Turn it on and try again.",
+      "failed": "Could not get the location. Check your internet and try again."
+    },
+    "radius": "How far you usually travel",
+    "radiusAny": "Anywhere",
+    "radiusHint": "Requests from further away are still allowed; the customer is told you may charge for travel."
   },
   "photos": {
     "title": "Photos & videos",
@@ -777,5 +793,54 @@
     "allFailed_one": "The file was not added. The reason is shown under the photos.",
     "allFailed_other": "{{count}} files were not added. The reasons are shown under the photos.",
     "someFailed": "{{done}} added, {{failed}} not added. The reasons are shown under the photos."
+  },
+  "trip": {
+    "title": "Distance and arrival",
+    "fromYou": "About {{km}} from you · about {{time}} drive",
+    "outsideRange": "Beyond your usual range",
+    "unknown": "Distance shows once you set your location (Profile → Business) and the customer pins the venue.",
+    "arriveBy": "Arrive by {{time}}",
+    "landmark": "Landmark: {{landmark}}",
+    "directions": "Directions in Google Maps",
+    "venueAfterPayment": "The exact venue and directions appear once the customer pays the advance.",
+    "eventDay": "Event day",
+    "onTheWay": "I'm on the way",
+    "updateEta": "Update arrival time",
+    "reached": "I've reached",
+    "onTheWayUntil": "Customer told: reaching by {{time}}",
+    "onTheWayShared": "Customer told you are on the way",
+    "reachedAt": "Customer told you reached at {{time}}",
+    "etaTitle": "When will you reach?",
+    "etaBody": "The customer sees a live countdown.",
+    "etaEstimate": "{{time}} (estimate)",
+    "onTheWaySent": "Customer told you are on the way",
+    "reachedSent": "Customer told you have reached",
+    "away": "{{km}} away"
+  },
+  "chatEvents": {
+    "requested": "New request: {{item}}, {{day}}",
+    "requestedShort": "New booking request",
+    "accepted": "You accepted. Waiting for the customer's advance.",
+    "confirmed": "Booking confirmed. Phone numbers are now shared.",
+    "rejected": "Request declined",
+    "cancelled_by_customer": "The customer cancelled the booking",
+    "cancelled_by_vendor": "You cancelled the booking",
+    "expired_no_reply": "The request expired without a reply",
+    "expired_not_paid": "The customer did not pay in time",
+    "on_the_way": "You told the customer you are on the way",
+    "on_the_way_eta": "On the way: about {{min}} min",
+    "reached": "You told the customer you reached",
+    "venue_updated": "The customer updated the venue details",
+    "open": "View booking"
+  },
+  "quick": {
+    "replies": {
+      "r1": "Yes, I am free on that date.",
+      "r2": "Please share the exact venue location.",
+      "r3": "What time should I reach?",
+      "r4": "Travel charge for this distance is extra.",
+      "r5": "I will reach on time.",
+      "r6": "Please call me once."
+    }
   }
 }

@@ -25,5 +25,11 @@ export function useBookingActions(id: string) {
   const accept = useMutation({ mutationFn: () => api.post<Booking>(`/v1/partner/bookings/${id}/accept`), onSuccess: done(t('requests.accepted')), onError });
   const reject = useMutation({ mutationFn: (reason: string) => api.post<Booking>(`/v1/partner/bookings/${id}/reject`, { reason }), onSuccess: done(t('requests.declined')), onError });
   const cancel = useMutation({ mutationFn: (reason: string) => api.post<Booking>(`/v1/partner/bookings/${id}/cancel`, { reason }), onSuccess: done(t('booking.cancelled')), onError });
-  return { accept, reject, cancel };
+  // Event day: tell the customer you are on the way (with minutes) or have reached.
+  const progress = useMutation({
+    mutationFn: (p: { status: 'on_the_way' | 'reached'; etaMinutes?: number }) => api.post<Booking>(`/v1/partner/bookings/${id}/progress`, p),
+    onSuccess: (b, p) => done(p.status === 'reached' ? t('trip.reachedSent') : t('trip.onTheWaySent'))(b),
+    onError,
+  });
+  return { accept, reject, cancel, progress };
 }

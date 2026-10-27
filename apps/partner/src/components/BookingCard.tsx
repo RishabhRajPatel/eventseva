@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { formatDay, type Booking } from '@eventseva/app-shared';
+import { type Booking, formatClock, formatDay, formatDistance } from '@eventseva/app-shared';
 import { remaining } from '../lib/bookings';
 import { bookingStatus, slotLabel, timeLeftLabel } from '../lib/labels';
 import { c, radius, space } from '../lib/theme';
@@ -56,6 +56,13 @@ export const BookingCard = memo(function BookingCard({ booking, now, onOpen, sel
         <Detail label={t('booking.item')} value={booking.quantity > 1 ? `${booking.item.title} × ${booking.quantity}` : booking.item.title} />
         {booking.customer?.name ? <Detail label={t('booking.customer')} value={booking.customer.name} /> : null}
         <Detail label={t('booking.event')} value={t(`eventType.${booking.event.eventType}`)} />
+        {booking.travel ? (
+          <Detail
+            label={t('trip.title')}
+            value={`${t('trip.away', { km: formatDistance(booking.travel.roadKm, lang) })}${booking.travel.outsideServiceArea ? ` · ${t('trip.outsideRange')}` : ''}`}
+          />
+        ) : null}
+        {booking.arriveBy ? <Detail label={t('booking.arrive')} value={formatClock(booking.arriveBy)} /> : null}
       </View>
       {booking.note ? (
         <View style={styles.note}>

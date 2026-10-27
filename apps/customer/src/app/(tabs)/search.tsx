@@ -4,9 +4,9 @@ import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { rupees, type VendorCard as Vendor } from '@eventseva/app-shared';
+import { rupees, todayIst, type VendorCard as Vendor } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { keys } from '../../lib/queryClient';
 import { applyFilters, BUDGETS, matchCategory, type SortOrder } from '../../lib/search';
@@ -39,6 +39,14 @@ export default function SearchScreen() {
   const [maxPrice, setMaxPrice] = useState<number | null>(null);
   const [sort, setSort] = useState<SortOrder>('popular');
   const [sheet, setSheet] = useState<'budget' | 'sort' | null>(null);
+  // "Near my venue": the next event with a pinned venue sorts vendors by distance from it.
+  const events = useQuery({ queryKey: keys.events, queryFn: api.events, staleTime: 60_000 });
+  const venueEvent = useMemo(
+    () => (events.data?.items ?? []).filter((e) => e.venueLocation && e.eventDate >= todayIst()).sort((a, b) => a.eventDate.localeCompare(b.eventDate))[0] ?? null,
+    [events.data],
+  );
+  const [nearby, setNearby] = useState(false);
+  const near = nearby && venueEvent?.venueLocation ? venueEvent.venueLocation : null;
 
   // Opening a category from Home while this tab is already mounted.
   useEffect(() => {
@@ -47,8 +55,9 @@ export default function SearchScreen() {
   }, [params.category]);
 
   const vendors = useInfiniteQuery({
-    queryKey: [...keys.vendors(category), 'search'],
-    queryFn: ({ pageParam }) => api.vendors({ category, page: pageParam, limit: 20 }),
+    queryKey: [...keys.vendors(category), 'search', near?.lat ?? null, near?.lng ?? null],
+    queryFn: ({ pageParam }) =>
+      api.vendors({ category, page: pageParam, limit: 20, ...(near ? { lat: near.lat, lng: near.lng, sort: 'nearest' as const } : {}) }),
     initialPageParam: 1,
     getNextPageParam: (last) => (last.hasMore ? last.page + 1 : undefined),
     staleTime: 5 * 60_000,
@@ -175,6 +184,9 @@ export default function SearchScreen() {
             selected={maxPrice != null}
             onPress={() => setSheet('budget')}
           />
+          {venueEvent ? (
+            <Chip role="checkbox" label={t('nearby.chip', { event: venueEvent.title })} selected={nearby} onPress={() => setNearby((v) => !v)} />
+          ) : null}
           <Chip role="checkbox" label={t('search.rating4')} selected={minRating} onPress={() => setMinRating((v) => !v)} />
           <Chip role="button" label={sort === 'popular' ? t('search.sort') : t(`search.sortBy.${sort}`)} selected={sort !== 'popular'} onPress={() => setSheet('sort')} />
         </ScrollView>

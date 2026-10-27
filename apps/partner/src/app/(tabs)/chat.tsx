@@ -13,6 +13,7 @@ import { Avatar } from '../../components/Avatar';
 import { Card } from '../../components/Card';
 import { Empty, QueryView } from '../../components/States';
 import { Txt } from '../../components/Txt';
+import { bookingEventText } from '../../lib/bookingEvents';
 
 /** Customer chats, newest first. */
 export default function ChatList() {
@@ -70,7 +71,7 @@ const ConversationRow = memo(function ConversationRow({ item, lang }: { item: Co
         </View>
         <View style={styles.top}>
           <Txt size="sm" numberOfLines={1} style={{ flex: 1 }} color={item.unreadCount ? c.ink : c.textMuted} variant={item.unreadCount ? 'bold' : 'body'}>
-            {item.lastMessage ?? t('chat.noMessages')}
+            {item.lastKind === 'booking' ? bookingEventText(t, item.lastData, lang) : (item.lastMessage ?? t('chat.noMessages'))}
           </Txt>
           {item.unreadCount ? (
             <View style={styles.badge}>

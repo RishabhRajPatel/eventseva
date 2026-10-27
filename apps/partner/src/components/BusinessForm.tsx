@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import type { OwnVendor } from '@eventseva/app-shared';
+import { formatDistance, pinUrl, type LatLng, type OwnVendor } from '@eventseva/app-shared';
 import { useCategories, useCities } from '../lib/queries';
 import { c, space } from '../lib/theme';
+import { currentPin, LocationError } from '../lib/location';
+import { openLink } from '../lib/links';
+import { Button, LinkButton } from './Button';
 import { ChoiceChip } from './Chip';
+import { Icon } from './Icon';
 import { Field } from './Field';
 import { Notice } from './Notice';
 import { Txt } from './Txt';
@@ -16,7 +20,14 @@ export interface BusinessValues {
   area: string;
   address: string;
   about: string;
+  /** Where the vendor starts from (never shown to customers; they see distances). */
+  pin: LatLng | null;
+  /** How far they usually travel, km; null = not set. */
+  radiusKm: number | null;
 }
+
+/** Travel ranges offered as chips. */
+export const RADIUS_CHOICES = [5, 10, 20, 30, 50, 100] as const;
 
 export const ABOUT_MIN = 20;
 
@@ -28,6 +39,8 @@ export function initialBusiness(v: OwnVendor | null | undefined): BusinessValues
     area: v?.area ?? '',
     address: v?.address ?? '',
     about: v?.about ?? '',
+    pin: v?.location ?? null,
+    radiusKm: v?.serviceRadiusKm ?? null,
   };
 }
 
@@ -61,13 +74,28 @@ export function BusinessForm({
   showErrors: boolean;
   categoryLocked?: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const categories = useCategories();
   const cities = useCities();
   const [allCategories, setAllCategories] = useState(false);
   const errors = showErrors ? validateBusiness(values) : {};
   const err = (k: keyof BusinessValues) => (errors[k] ? t(`form.${errors[k]}`) : null);
   const set = <K extends keyof BusinessValues>(k: K, val: BusinessValues[K]) => onChange({ ...values, [k]: val });
+  const lang = i18n.language === 'hi' ? 'hi' : 'en';
+  const [locError, setLocError] = useState<string | null>(null);
+
+  /** false = not done (error haptic on the button). */
+  async function locate(): Promise<boolean> {
+    setLocError(null);
+    try {
+      const pin = await currentPin();
+      onChange({ ...values, pin });
+      return true;
+    } catch (e) {
+      setLocError(t(`business.locationProblems.${e instanceof LocationError ? e.problem : 'failed'}`));
+      return false;
+    }
+  }
 
   // Only one city for now: pick it for the vendor.
   useEffect(() => {
@@ -147,6 +175,58 @@ export function BusinessForm({
         hint={t('business.addressHint')}
         error={err('address')}
       />
+      <View style={{ gap: space.sm }} testID="base-location">
+        <Txt variant="bold" size="sm">
+          {t('business.base')}
+        </Txt>
+        <Txt size="sm" color={c.textMuted} style={{ lineHeight: 19 }}>
+          {t('business.baseHint')}
+        </Txt>
+        {values.pin ? (
+          <View style={styles.pinned} testID="base-pinned">
+            <Icon name="check" size={18} color={c.onSuccess} />
+            <Txt size="sm" color={c.onSuccess} style={{ flex: 1 }}>
+              {t('business.basePinned')}
+            </Txt>
+            <LinkButton label={t('business.baseCheck')} onPress={() => void openLink(pinUrl(values.pin!))} />
+          </View>
+        ) : null}
+        <Button
+          testID="base-here"
+          kind="secondary"
+          icon="locate"
+          label={values.pin ? t('business.baseUpdate') : t('business.baseHere')}
+          loadingLabel={t('business.locating')}
+          onPress={locate}
+        />
+        {locError ? (
+          <Txt size="sm" color={c.danger} accessibilityRole="alert">
+            {locError}
+          </Txt>
+        ) : null}
+      </View>
+
+      <View style={{ gap: space.sm }} accessibilityRole="radiogroup" accessibilityLabel={t('business.radius')}>
+        <Txt variant="bold" size="sm">
+          {t('business.radius')}
+        </Txt>
+        <View style={styles.chips}>
+          {RADIUS_CHOICES.map((km) => (
+            <ChoiceChip
+              key={km}
+              testID={`radius-${km}`}
+              label={formatDistance(km, lang)}
+              selected={values.radiusKm === km}
+              onPress={() => set('radiusKm', km)}
+            />
+          ))}
+          <ChoiceChip testID="radius-none" label={t('business.radiusAny')} selected={values.radiusKm === null} onPress={() => set('radiusKm', null)} />
+        </View>
+        <Txt size="xs" color={c.textMuted}>
+          {t('business.radiusHint')}
+        </Txt>
+      </View>
+
       <Field
         testID="business-about"
         label={t('business.about')}
@@ -164,7 +244,7 @@ export function BusinessForm({
 
 /** Only changed fields are sent; empty optional fields are left out (the API cannot clear them). */
 export function businessPayload(v: BusinessValues, initial?: BusinessValues) {
-  const out: Record<string, string | number> = {};
+  const out: Record<string, string | number | null> = {};
   const put = (k: keyof BusinessValues, val: string | number | null) => {
     if (val === null || val === '') return;
     if (initial && initial[k] === val) return;
@@ -176,9 +256,16 @@ export function businessPayload(v: BusinessValues, initial?: BusinessValues) {
   put('area', v.area.trim());
   put('address', v.address.trim());
   put('about', v.about.trim());
+  if (v.pin && (!initial?.pin || initial.pin.lat !== v.pin.lat || initial.pin.lng !== v.pin.lng)) {
+    out.lat = v.pin.lat;
+    out.lng = v.pin.lng;
+  }
+  // null is sent on purpose: it clears the range.
+  if (!initial ? v.radiusKm !== null : initial.radiusKm !== v.radiusKm) out.serviceRadiusKm = v.radiusKm;
   return out;
 }
 
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', columnGap: space.sm },
+  pinned: { flexDirection: 'row', alignItems: 'center', gap: space.sm, backgroundColor: c.mintLight, borderRadius: 12, padding: space.md },
 });

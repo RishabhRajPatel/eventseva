@@ -113,6 +113,26 @@ test('chat thread: phone hint until confirmed, polls every 4 s, sends messages',
   expect(await screen.findByText('Can you come by 7?')).toBeOnTheScreen();
 }, 15_000);
 
+test('chat thread: booking updates show as lines, quick replies fill the box without sending', async () => {
+  mockedApi.conversations.mockResolvedValue({ items: [] });
+  mockedApi.messages.mockResolvedValue({
+    items: [
+      { id: 2, senderId: null, kind: 'booking', data: { event: 'on_the_way', bookingId: 'b1', minutes: 25 }, body: 'Vendor is on the way', readAt: null, createdAt: '2026-10-20T10:05:00Z', mine: false },
+      { id: 1, senderId: 'u1', kind: 'booking', data: { event: 'requested', bookingId: 'b1' }, body: 'Booking requested', readAt: null, createdAt: '2026-10-20T10:00:00Z', mine: true },
+    ],
+    hasMore: false,
+    phoneShared: true,
+  });
+  const user = userEvent.setup();
+  await renderApp({ 'chat/[id]': ChatThreadScreen }, '/chat/c1?name=Beat%20Box%20DJ');
+  expect(await screen.findByText('Vendor is on the way: about 25 min')).toBeOnTheScreen();
+  expect(screen.getByTestId('booking-line-requested')).toBeOnTheScreen();
+
+  await user.press(screen.getByTestId('quick-r4'));
+  expect(screen.getByLabelText('Message')).toHaveDisplayValue('Is there a travel charge?');
+  expect(mockedApi.sendMessage).not.toHaveBeenCalled();
+});
+
 test('tablet home uses the card grid (TabletHome board)', async () => {
   setWindowSize(1194, 834);
   try {
