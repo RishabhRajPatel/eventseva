@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { IsDateString, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, Min, ValidateNested } from 'class-validator';
 import { BOOKING_STATUSES, type BookingStatus } from '@eventseva/core';
 import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
@@ -12,6 +13,17 @@ import { BookingsService } from './bookings.service';
 
 class StatusQuery {
   @IsOptional() @IsIn(BOOKING_STATUSES) status?: BookingStatus;
+}
+
+class AddonDecisionDto {
+  @IsUUID() addonId: string;
+  @IsBoolean() approve: boolean;
+}
+
+/** Engine bookings: the vendor's price (custom quotation) and a decision on each extra needing approval. */
+class AcceptDto {
+  @IsOptional() @IsInt() @Min(100) @Max(100_000_000) pricePaise?: number;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => AddonDecisionDto) addons?: AddonDecisionDto[];
 }
 
 class ReasonDto {
@@ -54,8 +66,8 @@ export class PartnerBookingsController {
 
   @Post('bookings/:id/accept')
   @HttpCode(HttpStatus.OK)
-  async accept(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
-    await this.bookings.accept(auth.userId, id);
+  async accept(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: AcceptDto = {}) {
+    await this.bookings.accept(auth.userId, id, body ?? {});
     return this.one(auth.userId, id);
   }
 

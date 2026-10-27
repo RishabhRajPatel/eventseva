@@ -203,7 +203,7 @@ export class AdminController {
     const { rows } = await this.db.query(
       `SELECT v.id, v.business_name AS "businessName", v.status, v.area, v.created_at AS "createdAt",
               u.phone, c.slug AS category, c.name_en AS "categoryName", ci.name AS city,
-              (SELECT count(*)::int FROM services s WHERE s.vendor_id = v.id AND s.is_active) AS "serviceCount",
+              (SELECT count(*)::int FROM services s WHERE s.vendor_id = v.id AND s.is_active AND s.booking_type = 'slot') AS "serviceCount",
               (SELECT count(*)::int FROM packages p WHERE p.vendor_id = v.id AND p.is_active) AS "packageCount"
          FROM vendors v
          JOIN users u ON u.id = v.user_id

@@ -11,7 +11,11 @@ export type BookingEvent =
   | 'expired'
   | 'on_the_way'
   | 'reached'
-  | 'venue_updated';
+  | 'venue_updated'
+  | 'dispatched'
+  | 'delivered'
+  | 'returned'
+  | 'return_verified';
 
 /** English fallback; the apps show their own translated line from `data.event`. */
 const FALLBACK: Record<BookingEvent, string> = {
@@ -25,6 +29,10 @@ const FALLBACK: Record<BookingEvent, string> = {
   on_the_way: 'Vendor is on the way',
   reached: 'Vendor has reached the venue',
   venue_updated: 'Venue details updated',
+  dispatched: 'Items are on the way',
+  delivered: 'Items delivered at the venue',
+  returned: 'Items picked up; return counted',
+  return_verified: 'Return checked. Deposit being settled.',
 };
 
 /**

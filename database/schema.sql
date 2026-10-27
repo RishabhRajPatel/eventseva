@@ -6,6 +6,18 @@
 --
 
 --
+-- Name: btree_gist; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA public;
+
+--
+-- Name: EXTENSION btree_gist; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION btree_gist IS 'support for indexing common datatypes in GiST';
+
+--
 -- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -82,7 +94,8 @@ CREATE TYPE public.payment_status AS ENUM (
 CREATE TYPE public.payment_type AS ENUM (
     'advance',
     'final',
-    'refund'
+    'refund',
+    'deposit'
 );
 
 --
@@ -272,6 +285,193 @@ CREATE TABLE public.availability (
 COMMENT ON TABLE public.availability IS 'Busy slots on a vendor''s calendar: booked (held by an accepted booking) or blocked by the vendor. Free days have no row.';
 
 --
+-- Name: booking_addons; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_addons (
+    booking_id uuid NOT NULL,
+    addon_id uuid NOT NULL,
+    price_paise integer NOT NULL,
+    request_note text,
+    status text NOT NULL,
+    decided_at timestamp with time zone,
+    CONSTRAINT booking_addons_status_check CHECK ((status = ANY (ARRAY['included'::text, 'pending_approval'::text, 'approved'::text, 'declined'::text])))
+);
+
+--
+-- Name: TABLE booking_addons; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_addons IS 'Extras chosen with a booking, at the price agreed; ones needing approval are approved or declined when the vendor accepts';
+
+--
+-- Name: booking_changes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_changes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    kind text NOT NULL,
+    requested_by uuid NOT NULL,
+    new_starts_at timestamp with time zone,
+    new_ends_at timestamp with time zone,
+    new_qty integer,
+    price_diff_paise integer DEFAULT 0 NOT NULL,
+    status text DEFAULT 'requested'::text NOT NULL,
+    reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    decided_at timestamp with time zone,
+    CONSTRAINT booking_changes_kind_check CHECK ((kind = ANY (ARRAY['extension'::text, 'reschedule'::text, 'quantity'::text]))),
+    CONSTRAINT booking_changes_status_check CHECK ((status = ANY (ARRAY['requested'::text, 'approved'::text, 'rejected'::text, 'cancelled'::text])))
+);
+
+--
+-- Name: TABLE booking_changes; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_changes IS 'Requests to extend, reschedule or change the quantity of a booking; one open at a time';
+
+--
+-- Name: booking_charges; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_charges (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    kind text NOT NULL,
+    description text NOT NULL,
+    qty numeric DEFAULT 1 NOT NULL,
+    amount_paise integer NOT NULL,
+    status text DEFAULT 'proposed'::text NOT NULL,
+    from_deposit boolean DEFAULT false NOT NULL,
+    evidence_ids text[] DEFAULT '{}'::text[] NOT NULL,
+    created_by uuid NOT NULL,
+    decided_by uuid,
+    decision_note text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    decided_at timestamp with time zone,
+    CONSTRAINT booking_charges_amount_paise_check CHECK ((amount_paise > 0)),
+    CONSTRAINT booking_charges_kind_check CHECK ((kind = ANY (ARRAY['extra_km'::text, 'extra_hours'::text, 'late_return'::text, 'waiting'::text, 'toll'::text, 'parking'::text, 'fuel'::text, 'damage'::text, 'missing'::text, 'cleaning'::text, 'extension'::text, 'guest_change'::text, 'other'::text]))),
+    CONSTRAINT booking_charges_status_check CHECK ((status = ANY (ARRAY['proposed'::text, 'accepted'::text, 'disputed'::text, 'waived'::text, 'resolved'::text])))
+);
+
+--
+-- Name: TABLE booking_charges; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_charges IS 'Extra charges after the service (km, hours, late return, damage …): proposed by the vendor, accepted or disputed by the customer, decided by an admin in a dispute';
+
+--
+-- Name: booking_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_events (
+    id bigint NOT NULL,
+    booking_id uuid NOT NULL,
+    event text NOT NULL,
+    actor_id uuid,
+    data jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: TABLE booking_events; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_events IS 'Audit trail of every state change on a booking (who, when, what)';
+
+--
+-- Name: booking_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.booking_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: booking_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.booking_events_id_seq OWNED BY public.booking_events.id;
+
+--
+-- Name: booking_inspections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_inspections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    phase text NOT NULL,
+    readings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    notes text,
+    photo_ids text[] DEFAULT '{}'::text[] NOT NULL,
+    recorded_by uuid NOT NULL,
+    recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+    customer_ack text,
+    customer_note text,
+    acked_at timestamp with time zone,
+    CONSTRAINT booking_inspections_customer_ack_check CHECK ((customer_ack = ANY (ARRAY['agreed'::text, 'disputed'::text]))),
+    CONSTRAINT booking_inspections_phase_check CHECK ((phase = ANY (ARRAY['handover'::text, 'return'::text, 'dispatch'::text, 'delivery'::text])))
+);
+
+--
+-- Name: TABLE booking_inspections; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_inspections IS 'Condition at handover and return (odometer, fuel, damage, counts, photos) and the customer''s agreement or dispute';
+
+--
+-- Name: booking_lines; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_lines (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    inventory_item_id uuid NOT NULL,
+    qty integer NOT NULL,
+    unit_paise integer NOT NULL,
+    deposit_paise integer DEFAULT 0 NOT NULL,
+    dispatched_qty integer DEFAULT 0 NOT NULL,
+    returned_qty integer DEFAULT 0 NOT NULL,
+    damaged_qty integer DEFAULT 0 NOT NULL,
+    missing_qty integer DEFAULT 0 NOT NULL,
+    item_snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
+    damage_paise integer DEFAULT 0 NOT NULL,
+    missing_paise integer DEFAULT 0 NOT NULL,
+    loaded_qty integer DEFAULT 0 NOT NULL,
+    delivered_qty integer DEFAULT 0 NOT NULL,
+    note text,
+    verified_at timestamp with time zone,
+    CONSTRAINT booking_lines_check CHECK ((((returned_qty + damaged_qty) + missing_qty) <= dispatched_qty)),
+    CONSTRAINT booking_lines_damage_paise_check CHECK ((damage_paise >= 0)),
+    CONSTRAINT booking_lines_damaged_qty_check CHECK ((damaged_qty >= 0)),
+    CONSTRAINT booking_lines_delivered_qty_check CHECK ((delivered_qty >= 0)),
+    CONSTRAINT booking_lines_dispatched_qty_check CHECK ((dispatched_qty >= 0)),
+    CONSTRAINT booking_lines_flow_check CHECK (((loaded_qty <= qty) AND (dispatched_qty <= loaded_qty) AND (delivered_qty <= dispatched_qty))),
+    CONSTRAINT booking_lines_loaded_qty_check CHECK ((loaded_qty >= 0)),
+    CONSTRAINT booking_lines_missing_paise_check CHECK ((missing_paise >= 0)),
+    CONSTRAINT booking_lines_missing_qty_check CHECK ((missing_qty >= 0)),
+    CONSTRAINT booking_lines_note_check CHECK ((length(note) <= 500)),
+    CONSTRAINT booking_lines_qty_check CHECK ((qty > 0)),
+    CONSTRAINT booking_lines_returned_qty_check CHECK ((returned_qty >= 0))
+);
+
+--
+-- Name: TABLE booking_lines; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_lines IS 'Items a rental booking takes from stock and their trip: loaded → dispatched → delivered → returned / damaged / missing, then verified';
+
+--
+-- Name: COLUMN booking_lines.item_snapshot; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.booking_lines.item_snapshot IS 'Item name, unit, quality, condition and charges as booked; later listing edits never change it';
+
+--
 -- Name: bookings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -302,12 +502,32 @@ CREATE TABLE public.bookings (
     progress_at timestamp with time zone,
     eta_at timestamp with time zone,
     reminder_sent_at timestamp with time zone,
+    booking_type text DEFAULT 'slot'::text NOT NULL,
+    starts_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    occupy_from timestamp with time zone,
+    occupy_until timestamp with time zone,
+    return_due_at timestamp with time zone,
+    snapshot jsonb DEFAULT '{}'::jsonb NOT NULL,
+    cancellation_policy jsonb,
+    tax_paise integer DEFAULT 0 NOT NULL,
+    deposit_paise integer DEFAULT 0 NOT NULL,
+    charges_paise integer DEFAULT 0 NOT NULL,
+    fulfilment text DEFAULT 'scheduled'::text NOT NULL,
+    actual_start_at timestamp with time zone,
+    actual_end_at timestamp with time zone,
+    idempotency_key text,
+    deposit_settled_at timestamp with time zone,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
+    CONSTRAINT bookings_deposit_paise_check CHECK ((deposit_paise >= 0)),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
+    CONSTRAINT bookings_fulfilment_check CHECK ((fulfilment = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'assigned'::text, 'ready'::text, 'dispatched'::text, 'delivered'::text, 'in_progress'::text, 'return_pending'::text, 'closed'::text]))),
     CONSTRAINT bookings_payout_deduction_paise_check CHECK ((payout_deduction_paise >= 0)),
     CONSTRAINT bookings_progress_check CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text]))),
     CONSTRAINT bookings_quantity_check CHECK ((quantity > 0)),
-    CONSTRAINT bookings_slot_check CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text])))
+    CONSTRAINT bookings_slot_check CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text]))),
+    CONSTRAINT bookings_tax_paise_check CHECK ((tax_paise >= 0)),
+    CONSTRAINT bookings_time_order CHECK (((ends_at IS NULL) OR (ends_at > starts_at)))
 );
 
 --
@@ -329,6 +549,94 @@ COMMENT ON COLUMN public.bookings.progress IS 'Event day: on_the_way (with eta_a
 COMMENT ON COLUMN public.bookings.reminder_sent_at IS 'When the day-before reminder went to both sides';
 
 --
+-- Name: COLUMN bookings.starts_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.starts_at IS 'When the service starts (pickup, dispatch, appointment); ends_at when it ends or is due back';
+
+--
+-- Name: COLUMN bookings.occupy_from; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.occupy_from IS 'Resources are held from occupy_from to occupy_until: the service time plus setup, dismantling, cleaning and turnaround buffers';
+
+--
+-- Name: COLUMN bookings.snapshot; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.snapshot IS 'Immutable copy of what was agreed: rules, pricing, the itemised quote, answers, add-ons and attributes';
+
+--
+-- Name: COLUMN bookings.cancellation_policy; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.cancellation_policy IS 'Refund tiers agreed at booking time; later policy changes never apply to this booking';
+
+--
+-- Name: COLUMN bookings.deposit_paise; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.deposit_paise IS 'Refundable security deposit; kept apart from booking revenue';
+
+--
+-- Name: COLUMN bookings.charges_paise; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.charges_paise IS 'Accepted extra charges (overtime, extra km, damage …) on top of amount_paise';
+
+--
+-- Name: COLUMN bookings.fulfilment; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.fulfilment IS 'Progress after confirmation. Rentals: scheduled → preparing → dispatched → delivered → return_pending → closed (returned and verified). Others: scheduled → assigned → ready → in_progress → return_pending → closed';
+
+--
+-- Name: COLUMN bookings.deposit_settled_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.deposit_settled_at IS 'When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this';
+
+--
+-- Name: capacity_holds; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.capacity_holds (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    pool_key text NOT NULL,
+    vendor_id uuid NOT NULL,
+    booking_id uuid,
+    qty integer NOT NULL,
+    period tstzrange NOT NULL,
+    status text NOT NULL,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    until_returned boolean DEFAULT false NOT NULL,
+    note text,
+    CONSTRAINT capacity_holds_note_check CHECK ((length(note) <= 200)),
+    CONSTRAINT capacity_holds_owner_check CHECK (((booking_id IS NOT NULL) OR (note IS NOT NULL))),
+    CONSTRAINT capacity_holds_qty_check CHECK ((qty > 0)),
+    CONSTRAINT capacity_holds_status_check CHECK ((status = ANY (ARRAY['hold'::text, 'active'::text, 'released'::text, 'expired'::text])))
+);
+
+--
+-- Name: TABLE capacity_holds; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.capacity_holds IS 'Quantities taken from a pool for a time (item:<id> stock, staff:<kind> head-count, guests:<service> per day); checked under an advisory lock';
+
+--
+-- Name: COLUMN capacity_holds.until_returned; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.capacity_holds.until_returned IS 'Stock dispatched and not yet checked back in: blocks the pool past the end of its period';
+
+--
+-- Name: COLUMN capacity_holds.note; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.capacity_holds.note IS 'A vendor''s own block (no booking): why the stock is unavailable';
+
+--
 -- Name: categories; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -340,7 +648,12 @@ CREATE TABLE public.categories (
     icon text NOT NULL,
     default_unit public.pricing_unit NOT NULL,
     sort_order integer DEFAULT 0 NOT NULL,
-    is_active boolean DEFAULT true NOT NULL
+    is_active boolean DEFAULT true NOT NULL,
+    booking_type text DEFAULT 'slot'::text NOT NULL,
+    group_key text DEFAULT 'other'::text NOT NULL,
+    template jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT categories_booking_type_check CHECK ((booking_type = ANY (ARRAY['slot'::text, 'time_window'::text, 'rental'::text, 'per_person'::text, 'staffing'::text, 'appointment'::text, 'transport'::text, 'quote'::text]))),
+    CONSTRAINT categories_group_key_check CHECK ((group_key = ANY (ARRAY['wedding'::text, 'entertainment'::text, 'catering'::text, 'transport'::text, 'wedding_services'::text, 'other'::text])))
 );
 
 --
@@ -348,6 +661,18 @@ CREATE TABLE public.categories (
 --
 
 COMMENT ON TABLE public.categories IS 'Service types (DJ & Sound, Cook & Catering …), managed by super admins. Hidden instead of deleted.';
+
+--
+-- Name: COLUMN categories.booking_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.categories.booking_type IS 'How bookings in this category work (see the booking type registry in apps/backend/src/engine)';
+
+--
+-- Name: COLUMN categories.template; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.categories.template IS 'Admin template: attributes, customer questions, rule defaults and allowed pricing models (validated in code)';
 
 --
 -- Name: categories_id_seq; Type: SEQUENCE; Schema: public; Owner: -
@@ -540,6 +865,30 @@ CREATE SEQUENCE public.coupons_id_seq
 ALTER SEQUENCE public.coupons_id_seq OWNED BY public.coupons.id;
 
 --
+-- Name: customer_licences; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.customer_licences (
+    user_id uuid NOT NULL,
+    number_enc text NOT NULL,
+    number_last4 text NOT NULL,
+    date_of_birth date NOT NULL,
+    expires_on date NOT NULL,
+    storage_key text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    reject_reason text,
+    verified_by uuid,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT customer_licences_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text])))
+);
+
+--
+-- Name: TABLE customer_licences; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.customer_licences IS 'Driving licence for self-drive cars: number encrypted (BANK_DETAILS_KEY), verified by an admin or by the vendor at handover';
+
+--
 -- Name: device_tokens; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -670,6 +1019,159 @@ CREATE TABLE public.featured_purchases (
 COMMENT ON TABLE public.featured_purchases IS 'Each featured purchase or free grant, with its Razorpay payment and the period it covers.';
 
 --
+-- Name: inventory_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor_id uuid NOT NULL,
+    name text NOT NULL,
+    unit text DEFAULT 'piece'::text NOT NULL,
+    total_qty integer NOT NULL,
+    repair_qty integer DEFAULT 0 NOT NULL,
+    rent_paise integer DEFAULT 0 NOT NULL,
+    rent_per text DEFAULT 'booking'::text NOT NULL,
+    deposit_paise integer DEFAULT 0 NOT NULL,
+    damage_paise integer DEFAULT 0 NOT NULL,
+    min_qty integer DEFAULT 1 NOT NULL,
+    attributes jsonb DEFAULT '{}'::jsonb NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    category_id uuid,
+    description text,
+    quality text DEFAULT 'standard'::text NOT NULL,
+    quality_label text,
+    condition text DEFAULT 'good'::text NOT NULL,
+    missing_paise integer DEFAULT 0 NOT NULL,
+    max_qty integer,
+    min_days integer DEFAULT 1 NOT NULL,
+    max_days integer,
+    deleted_at timestamp with time zone,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT inventory_items_check CHECK ((repair_qty <= total_qty)),
+    CONSTRAINT inventory_items_condition_check CHECK ((condition = ANY (ARRAY['new'::text, 'good'::text, 'used'::text, 'needs_repair'::text]))),
+    CONSTRAINT inventory_items_damage_paise_check CHECK ((damage_paise >= 0)),
+    CONSTRAINT inventory_items_days_check CHECK (((max_days IS NULL) OR (max_days >= min_days))),
+    CONSTRAINT inventory_items_deleted_inactive CHECK (((deleted_at IS NULL) OR (NOT is_active))),
+    CONSTRAINT inventory_items_deposit_paise_check CHECK ((deposit_paise >= 0)),
+    CONSTRAINT inventory_items_description_check CHECK ((length(description) <= 1000)),
+    CONSTRAINT inventory_items_max_days_check CHECK (((max_days IS NULL) OR ((max_days >= 1) AND (max_days <= 60)))),
+    CONSTRAINT inventory_items_max_qty_check CHECK (((max_qty IS NULL) OR (max_qty >= 1))),
+    CONSTRAINT inventory_items_min_days_check CHECK (((min_days >= 1) AND (min_days <= 60))),
+    CONSTRAINT inventory_items_min_qty_check CHECK ((min_qty >= 1)),
+    CONSTRAINT inventory_items_missing_paise_check CHECK ((missing_paise >= 0)),
+    CONSTRAINT inventory_items_quality_check CHECK ((quality = ANY (ARRAY['basic'::text, 'standard'::text, 'premium'::text, 'custom'::text]))),
+    CONSTRAINT inventory_items_quality_label_check CHECK ((length(quality_label) <= 30)),
+    CONSTRAINT inventory_items_rent_paise_check CHECK ((rent_paise >= 0)),
+    CONSTRAINT inventory_items_rent_per_check CHECK ((rent_per = ANY (ARRAY['booking'::text, 'day'::text]))),
+    CONSTRAINT inventory_items_repair_qty_check CHECK ((repair_qty >= 0)),
+    CONSTRAINT inventory_items_total_qty_check CHECK ((total_qty >= 0)),
+    CONSTRAINT inventory_items_unit_check CHECK (((length(unit) >= 1) AND (length(unit) <= 20)))
+);
+
+--
+-- Name: TABLE inventory_items; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.inventory_items IS 'Rental stock (plates, chairs, speakers, coolers …): how many exist, how many are in repair, price, deposit and damage charge per unit';
+
+--
+-- Name: COLUMN inventory_items.repair_qty; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.inventory_items.repair_qty IS 'Units out of use (damaged, being repaired or cleaned); not bookable';
+
+--
+-- Name: COLUMN inventory_items.quality; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.inventory_items.quality IS 'basic / standard / premium, or custom with quality_label';
+
+--
+-- Name: COLUMN inventory_items.condition; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.inventory_items.condition IS 'Listing condition; needs_repair stops new bookings';
+
+--
+-- Name: COLUMN inventory_items.missing_paise; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.inventory_items.missing_paise IS 'Charge per unit not returned (0: use damage_paise)';
+
+--
+-- Name: COLUMN inventory_items.deleted_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.inventory_items.deleted_at IS 'Removed by the vendor but kept because bookings or stock records point to it';
+
+--
+-- Name: inventory_movements; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory_movements (
+    id bigint NOT NULL,
+    inventory_item_id uuid NOT NULL,
+    booking_id uuid,
+    kind text NOT NULL,
+    qty integer NOT NULL,
+    note text,
+    actor_id uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT inventory_movements_kind_check CHECK ((kind = ANY (ARRAY['dispatch'::text, 'return'::text, 'damaged'::text, 'missing'::text, 'repaired'::text, 'written_off'::text, 'added'::text, 'removed'::text]))),
+    CONSTRAINT inventory_movements_qty_check CHECK ((qty > 0))
+);
+
+--
+-- Name: TABLE inventory_movements; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.inventory_movements IS 'Every change to rental stock: dispatch, return, damage, missing, repair, write-off';
+
+--
+-- Name: inventory_movements_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.inventory_movements_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: inventory_movements_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.inventory_movements_id_seq OWNED BY public.inventory_movements.id;
+
+--
+-- Name: item_categories; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.item_categories (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor_id uuid,
+    key text,
+    name_en text NOT NULL,
+    name_hi text NOT NULL,
+    examples_en text,
+    examples_hi text,
+    sort_order integer DEFAULT 100 NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT item_categories_check CHECK (((vendor_id IS NULL) = (key IS NOT NULL))),
+    CONSTRAINT item_categories_name_en_check CHECK (((length(name_en) >= 2) AND (length(name_en) <= 40))),
+    CONSTRAINT item_categories_name_hi_check CHECK (((length(name_hi) >= 1) AND (length(name_hi) <= 40)))
+);
+
+--
+-- Name: TABLE item_categories; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.item_categories IS 'Groups for rental items: the defaults (tent, furniture, cooking, dining, serving, equipment) and categories vendors add themselves';
+
+--
 -- Name: media; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -689,7 +1191,10 @@ CREATE TABLE public.media (
     sort_order integer DEFAULT 0 NOT NULL,
     status public.review_status DEFAULT 'uploading'::public.review_status NOT NULL,
     reject_reason text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    resource_id uuid,
+    addon_id uuid,
+    inventory_item_id uuid
 );
 
 --
@@ -697,6 +1202,12 @@ CREATE TABLE public.media (
 --
 
 COMMENT ON TABLE public.media IS 'Vendor photos and videos on Cloudinary. Customers see them only after admin approval.';
+
+--
+-- Name: COLUMN media.inventory_item_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.media.inventory_item_id IS 'Photo of a rental item (not shown in the vendor gallery)';
 
 --
 -- Name: messages; Type: TABLE; Schema: public; Owner: -
@@ -920,6 +1431,56 @@ COMMENT ON COLUMN public.refunds.reason IS 'cancellation, late_payment, replaced
 COMMENT ON COLUMN public.refunds.status IS 'pending → sending → sent; failed after too many attempts (raises a system alert)';
 
 --
+-- Name: reservations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reservations (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    resource_id uuid NOT NULL,
+    booking_id uuid,
+    period tstzrange NOT NULL,
+    status text NOT NULL,
+    reason text,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT reservations_check CHECK (((status <> 'hold'::text) OR (expires_at IS NOT NULL))),
+    CONSTRAINT reservations_period_check CHECK ((NOT isempty(period))),
+    CONSTRAINT reservations_status_check CHECK ((status = ANY (ARRAY['hold'::text, 'active'::text, 'released'::text, 'expired'::text])))
+);
+
+--
+-- Name: TABLE reservations; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.reservations IS 'Time a resource is taken: a hold (expires), active (booked or blocked by the vendor), then released';
+
+--
+-- Name: resources; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.resources (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor_id uuid NOT NULL,
+    kind text NOT NULL,
+    name text NOT NULL,
+    attributes jsonb DEFAULT '{}'::jsonb NOT NULL,
+    status text DEFAULT 'active'::text NOT NULL,
+    verification text DEFAULT 'not_required'::text NOT NULL,
+    reject_reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT resources_kind_check CHECK ((kind = ANY (ARRAY['vehicle'::text, 'driver'::text, 'staff'::text, 'artist'::text, 'venue'::text, 'equipment'::text, 'crew'::text]))),
+    CONSTRAINT resources_status_check CHECK ((status = ANY (ARRAY['active'::text, 'maintenance'::text, 'inactive'::text]))),
+    CONSTRAINT resources_verification_check CHECK ((verification = ANY (ARRAY['not_required'::text, 'pending'::text, 'approved'::text, 'rejected'::text, 'suspended'::text])))
+);
+
+--
+-- Name: TABLE resources; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.resources IS 'Vehicles, drivers, staff, artists, halls and equipment sets that one booking at a time can use; attributes validated per kind in code';
+
+--
 -- Name: reviews; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -943,6 +1504,33 @@ CREATE TABLE public.reviews (
 COMMENT ON TABLE public.reviews IS 'One rating and comment per completed booking, with an optional vendor reply. Hidden reviews do not count in the rating.';
 
 --
+-- Name: service_addons; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.service_addons (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    vendor_id uuid NOT NULL,
+    service_id uuid,
+    name text NOT NULL,
+    kind text DEFAULT 'extra'::text NOT NULL,
+    inclusions text[] DEFAULT '{}'::text[] NOT NULL,
+    exclusions text[] DEFAULT '{}'::text[] NOT NULL,
+    price_paise integer NOT NULL,
+    setup_minutes integer DEFAULT 0 NOT NULL,
+    requires_approval boolean DEFAULT false NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT service_addons_price_paise_check CHECK ((price_paise >= 0)),
+    CONSTRAINT service_addons_setup_minutes_check CHECK ((setup_minutes >= 0))
+);
+
+--
+-- Name: TABLE service_addons; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.service_addons IS 'Optional extras a vendor offers (car decoration packages, drone, album, makeup trial); custom ones need vendor approval';
+
+--
 -- Name: services; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -957,6 +1545,11 @@ CREATE TABLE public.services (
     max_guests integer,
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    booking_type text DEFAULT 'slot'::text NOT NULL,
+    pricing jsonb DEFAULT '{}'::jsonb NOT NULL,
+    rules jsonb DEFAULT '{}'::jsonb NOT NULL,
+    attributes jsonb DEFAULT '{}'::jsonb NOT NULL,
+    resource_id uuid,
     CONSTRAINT services_price_paise_check CHECK ((price_paise > 0))
 );
 
@@ -965,6 +1558,30 @@ CREATE TABLE public.services (
 --
 
 COMMENT ON TABLE public.services IS 'What a vendor sells, priced per unit (per event, per plate, per day …). Soft-deleted with is_active.';
+
+--
+-- Name: COLUMN services.booking_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.booking_type IS 'Copied from the category when the service is created; old services stay slot';
+
+--
+-- Name: COLUMN services.pricing; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.pricing IS 'Pricing model and rates for the engine (fixed, hourly, daily, per_unit, per_person, per_trip, quote)';
+
+--
+-- Name: COLUMN services.rules; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.rules IS 'Vendor overrides of the category rule defaults (durations, buffers, quantities, advance, deposit, approval)';
+
+--
+-- Name: COLUMN services.resource_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.resource_id IS 'For a service that is one specific resource (a car, a hall): that resource';
 
 --
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -
@@ -1104,7 +1721,8 @@ CREATE TABLE public.vendor_documents (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     format text DEFAULT 'jpg'::text NOT NULL,
     reject_reason text,
-    CONSTRAINT vendor_documents_doc_type_check CHECK ((doc_type = ANY (ARRAY['aadhaar'::text, 'pan'::text, 'gst'::text, 'shop_photo'::text]))),
+    resource_id uuid,
+    CONSTRAINT vendor_documents_doc_type_check CHECK ((doc_type = ANY (ARRAY['aadhaar'::text, 'pan'::text, 'gst'::text, 'shop_photo'::text, 'vehicle_rc'::text, 'vehicle_insurance'::text, 'vehicle_permit'::text, 'vehicle_puc'::text, 'driver_licence'::text, 'police_verification'::text]))),
     CONSTRAINT vendor_documents_last4_check CHECK (((last4 IS NULL) OR (last4 ~ '^\d{4}$'::text)))
 );
 
@@ -1160,6 +1778,12 @@ COMMENT ON COLUMN public.vendors.service_radius_km IS 'Usual travel range from t
 ALTER TABLE ONLY public.admin_audit_log ALTER COLUMN id SET DEFAULT nextval('public.admin_audit_log_id_seq'::regclass);
 
 --
+-- Name: booking_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_events ALTER COLUMN id SET DEFAULT nextval('public.booking_events_id_seq'::regclass);
+
+--
 -- Name: categories id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1188,6 +1812,12 @@ ALTER TABLE ONLY public.coupons ALTER COLUMN id SET DEFAULT nextval('public.coup
 --
 
 ALTER TABLE ONLY public.featured_plans ALTER COLUMN id SET DEFAULT nextval('public.featured_plans_id_seq'::regclass);
+
+--
+-- Name: inventory_movements id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements ALTER COLUMN id SET DEFAULT nextval('public.inventory_movements_id_seq'::regclass);
 
 --
 -- Name: messages id; Type: DEFAULT; Schema: public; Owner: -
@@ -1236,11 +1866,74 @@ ALTER TABLE ONLY public.availability
     ADD CONSTRAINT availability_pkey PRIMARY KEY (vendor_id, day, slot);
 
 --
+-- Name: booking_addons booking_addons_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_addons
+    ADD CONSTRAINT booking_addons_pkey PRIMARY KEY (booking_id, addon_id);
+
+--
+-- Name: booking_changes booking_changes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_changes
+    ADD CONSTRAINT booking_changes_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_charges booking_charges_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_charges
+    ADD CONSTRAINT booking_charges_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_events booking_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_events
+    ADD CONSTRAINT booking_events_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_inspections booking_inspections_booking_id_phase_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_inspections
+    ADD CONSTRAINT booking_inspections_booking_id_phase_key UNIQUE (booking_id, phase);
+
+--
+-- Name: booking_inspections booking_inspections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_inspections
+    ADD CONSTRAINT booking_inspections_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_lines booking_lines_booking_id_inventory_item_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_lines
+    ADD CONSTRAINT booking_lines_booking_id_inventory_item_id_key UNIQUE (booking_id, inventory_item_id);
+
+--
+-- Name: booking_lines booking_lines_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_lines
+    ADD CONSTRAINT booking_lines_pkey PRIMARY KEY (id);
+
+--
 -- Name: bookings bookings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_pkey PRIMARY KEY (id);
+
+--
+-- Name: capacity_holds capacity_holds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.capacity_holds
+    ADD CONSTRAINT capacity_holds_pkey PRIMARY KEY (id);
 
 --
 -- Name: categories categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1313,6 +2006,13 @@ ALTER TABLE ONLY public.coupons
     ADD CONSTRAINT coupons_pkey PRIMARY KEY (id);
 
 --
+-- Name: customer_licences customer_licences_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customer_licences
+    ADD CONSTRAINT customer_licences_pkey PRIMARY KEY (user_id);
+
+--
 -- Name: device_tokens device_tokens_fcm_token_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1360,6 +2060,27 @@ ALTER TABLE ONLY public.featured_purchases
 
 ALTER TABLE ONLY public.featured_purchases
     ADD CONSTRAINT featured_purchases_razorpay_payment_id_key UNIQUE (razorpay_payment_id);
+
+--
+-- Name: inventory_items inventory_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_pkey PRIMARY KEY (id);
+
+--
+-- Name: inventory_movements inventory_movements_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_pkey PRIMARY KEY (id);
+
+--
+-- Name: item_categories item_categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.item_categories
+    ADD CONSTRAINT item_categories_pkey PRIMARY KEY (id);
 
 --
 -- Name: media media_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1467,6 +2188,27 @@ ALTER TABLE ONLY public.refunds
     ADD CONSTRAINT refunds_razorpay_refund_id_key UNIQUE (razorpay_refund_id);
 
 --
+-- Name: reservations reservations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_pkey PRIMARY KEY (id);
+
+--
+-- Name: reservations reservations_resource_id_period_excl; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_resource_id_period_excl EXCLUDE USING gist (resource_id WITH =, period WITH &&) WHERE ((status = ANY (ARRAY['hold'::text, 'active'::text])));
+
+--
+-- Name: resources resources_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.resources
+    ADD CONSTRAINT resources_pkey PRIMARY KEY (id);
+
+--
 -- Name: reviews reviews_booking_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1479,6 +2221,13 @@ ALTER TABLE ONLY public.reviews
 
 ALTER TABLE ONLY public.reviews
     ADD CONSTRAINT reviews_pkey PRIMARY KEY (id);
+
+--
+-- Name: service_addons service_addons_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_addons
+    ADD CONSTRAINT service_addons_pkey PRIMARY KEY (id);
 
 --
 -- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -1570,6 +2319,30 @@ CREATE INDEX admin_audit_log_created_at_idx ON public.admin_audit_log USING btre
 CREATE INDEX admin_audit_log_target_type_target_id_idx ON public.admin_audit_log USING btree (target_type, target_id);
 
 --
+-- Name: booking_changes_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_changes_booking_idx ON public.booking_changes USING btree (booking_id);
+
+--
+-- Name: booking_changes_one_open; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX booking_changes_one_open ON public.booking_changes USING btree (booking_id) WHERE (status = 'requested'::text);
+
+--
+-- Name: booking_charges_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_charges_booking_idx ON public.booking_charges USING btree (booking_id);
+
+--
+-- Name: booking_events_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_events_booking_idx ON public.booking_events USING btree (booking_id, id);
+
+--
 -- Name: bookings_customer_id_created_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1582,10 +2355,22 @@ CREATE INDEX bookings_customer_id_created_at_idx ON public.bookings USING btree 
 CREATE INDEX bookings_customer_requested_idx ON public.bookings USING btree (customer_id) WHERE (status = 'requested'::public.booking_status);
 
 --
+-- Name: bookings_idempotency_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX bookings_idempotency_key ON public.bookings USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+--
+-- Name: bookings_occupy_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_occupy_idx ON public.bookings USING btree (vendor_id, occupy_from, occupy_until) WHERE (status = ANY (ARRAY['requested'::public.booking_status, 'accepted'::public.booking_status, 'confirmed'::public.booking_status]));
+
+--
 -- Name: bookings_one_open_per_event_vendor; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX bookings_one_open_per_event_vendor ON public.bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::public.booking_status, 'accepted'::public.booking_status, 'confirmed'::public.booking_status]));
+CREATE UNIQUE INDEX bookings_one_open_per_event_vendor ON public.bookings USING btree (event_id, vendor_id) WHERE ((status = ANY (ARRAY['requested'::public.booking_status, 'accepted'::public.booking_status, 'confirmed'::public.booking_status])) AND (booking_type = 'slot'::text));
 
 --
 -- Name: bookings_package_id_idx; Type: INDEX; Schema: public; Owner: -
@@ -1628,6 +2413,18 @@ CREATE INDEX bookings_status_respond_by_idx ON public.bookings USING btree (stat
 --
 
 CREATE INDEX bookings_vendor_id_day_idx ON public.bookings USING btree (vendor_id, day);
+
+--
+-- Name: capacity_holds_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX capacity_holds_booking_idx ON public.capacity_holds USING btree (booking_id);
+
+--
+-- Name: capacity_holds_pool_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX capacity_holds_pool_idx ON public.capacity_holds USING gist (pool_key, period) WHERE (status = ANY (ARRAY['hold'::text, 'active'::text]));
 
 --
 -- Name: complaints_raised_by_idx; Type: INDEX; Schema: public; Owner: -
@@ -1694,6 +2491,54 @@ CREATE INDEX featured_purchases_status_paid_at_idx ON public.featured_purchases 
 --
 
 CREATE INDEX featured_purchases_vendor_id_created_at_idx ON public.featured_purchases USING btree (vendor_id, created_at DESC);
+
+--
+-- Name: inventory_items_category_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_items_category_idx ON public.inventory_items USING btree (vendor_id, category_id) WHERE is_active;
+
+--
+-- Name: inventory_items_vendor_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_items_vendor_idx ON public.inventory_items USING btree (vendor_id);
+
+--
+-- Name: inventory_items_vendor_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX inventory_items_vendor_name ON public.inventory_items USING btree (vendor_id, lower(name)) WHERE (deleted_at IS NULL);
+
+--
+-- Name: inventory_movements_item_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX inventory_movements_item_idx ON public.inventory_movements USING btree (inventory_item_id, created_at DESC);
+
+--
+-- Name: item_categories_default_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX item_categories_default_key ON public.item_categories USING btree (key) WHERE (vendor_id IS NULL);
+
+--
+-- Name: item_categories_vendor_name; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX item_categories_vendor_name ON public.item_categories USING btree (vendor_id, lower(name_en)) WHERE ((vendor_id IS NOT NULL) AND is_active);
+
+--
+-- Name: media_inventory_item_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX media_inventory_item_idx ON public.media USING btree (inventory_item_id) WHERE (inventory_item_id IS NOT NULL);
+
+--
+-- Name: media_resource_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX media_resource_idx ON public.media USING btree (resource_id) WHERE (resource_id IS NOT NULL);
 
 --
 -- Name: media_status_created_at_idx; Type: INDEX; Schema: public; Owner: -
@@ -1798,6 +2643,30 @@ CREATE INDEX refunds_booking_idx ON public.refunds USING btree (booking_id);
 CREATE INDEX refunds_due_idx ON public.refunds USING btree (next_attempt_at) WHERE (status = ANY (ARRAY['pending'::public.refund_status, 'sending'::public.refund_status]));
 
 --
+-- Name: reservations_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX reservations_booking_idx ON public.reservations USING btree (booking_id);
+
+--
+-- Name: reservations_expiry_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX reservations_expiry_idx ON public.reservations USING btree (expires_at) WHERE (status = 'hold'::text);
+
+--
+-- Name: resources_vehicle_registration_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX resources_vehicle_registration_key ON public.resources USING btree (upper((attributes ->> 'registration'::text))) WHERE (kind = 'vehicle'::text);
+
+--
+-- Name: resources_vendor_kind_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX resources_vendor_kind_idx ON public.resources USING btree (vendor_id, kind);
+
+--
 -- Name: reviews_customer_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1808,6 +2677,12 @@ CREATE INDEX reviews_customer_id_idx ON public.reviews USING btree (customer_id)
 --
 
 CREATE INDEX reviews_vendor_id_created_at_idx ON public.reviews USING btree (vendor_id, created_at DESC) WHERE (NOT is_hidden);
+
+--
+-- Name: service_addons_vendor_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX service_addons_vendor_idx ON public.service_addons USING btree (vendor_id);
 
 --
 -- Name: services_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
@@ -1872,6 +2747,83 @@ ALTER TABLE ONLY public.availability
     ADD CONSTRAINT availability_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
+-- Name: booking_addons booking_addons_addon_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_addons
+    ADD CONSTRAINT booking_addons_addon_id_fkey FOREIGN KEY (addon_id) REFERENCES public.service_addons(id);
+
+--
+-- Name: booking_addons booking_addons_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_addons
+    ADD CONSTRAINT booking_addons_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_changes booking_changes_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_changes
+    ADD CONSTRAINT booking_changes_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_changes booking_changes_requested_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_changes
+    ADD CONSTRAINT booking_changes_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(id);
+
+--
+-- Name: booking_charges booking_charges_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_charges
+    ADD CONSTRAINT booking_charges_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_charges booking_charges_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_charges
+    ADD CONSTRAINT booking_charges_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+--
+-- Name: booking_events booking_events_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_events
+    ADD CONSTRAINT booking_events_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_inspections booking_inspections_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_inspections
+    ADD CONSTRAINT booking_inspections_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_inspections booking_inspections_recorded_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_inspections
+    ADD CONSTRAINT booking_inspections_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.users(id);
+
+--
+-- Name: booking_lines booking_lines_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_lines
+    ADD CONSTRAINT booking_lines_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: booking_lines booking_lines_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_lines
+    ADD CONSTRAINT booking_lines_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id);
+
+--
 -- Name: bookings bookings_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1905,6 +2857,20 @@ ALTER TABLE ONLY public.bookings
 
 ALTER TABLE ONLY public.bookings
     ADD CONSTRAINT bookings_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: capacity_holds capacity_holds_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.capacity_holds
+    ADD CONSTRAINT capacity_holds_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: capacity_holds capacity_holds_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.capacity_holds
+    ADD CONSTRAINT capacity_holds_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
 -- Name: complaints complaints_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -1963,6 +2929,13 @@ ALTER TABLE ONLY public.coupons
     ADD CONSTRAINT coupons_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id);
 
 --
+-- Name: customer_licences customer_licences_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customer_licences
+    ADD CONSTRAINT customer_licences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+--
 -- Name: device_tokens device_tokens_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2003,6 +2976,62 @@ ALTER TABLE ONLY public.featured_purchases
 
 ALTER TABLE ONLY public.featured_purchases
     ADD CONSTRAINT featured_purchases_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: inventory_items inventory_items_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.item_categories(id);
+
+--
+-- Name: inventory_items inventory_items_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_items
+    ADD CONSTRAINT inventory_items_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: inventory_movements inventory_movements_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: inventory_movements inventory_movements_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory_movements
+    ADD CONSTRAINT inventory_movements_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id);
+
+--
+-- Name: item_categories item_categories_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.item_categories
+    ADD CONSTRAINT item_categories_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: media media_addon_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.media
+    ADD CONSTRAINT media_addon_id_fkey FOREIGN KEY (addon_id) REFERENCES public.service_addons(id);
+
+--
+-- Name: media media_inventory_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.media
+    ADD CONSTRAINT media_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id);
+
+--
+-- Name: media media_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.media
+    ADD CONSTRAINT media_resource_id_fkey FOREIGN KEY (resource_id) REFERENCES public.resources(id);
 
 --
 -- Name: media media_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2068,6 +3097,27 @@ ALTER TABLE ONLY public.refunds
     ADD CONSTRAINT refunds_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
 
 --
+-- Name: reservations reservations_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: reservations reservations_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reservations
+    ADD CONSTRAINT reservations_resource_id_fkey FOREIGN KEY (resource_id) REFERENCES public.resources(id);
+
+--
+-- Name: resources resources_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.resources
+    ADD CONSTRAINT resources_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
 -- Name: reviews reviews_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2087,6 +3137,27 @@ ALTER TABLE ONLY public.reviews
 
 ALTER TABLE ONLY public.reviews
     ADD CONSTRAINT reviews_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: service_addons service_addons_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_addons
+    ADD CONSTRAINT service_addons_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id);
+
+--
+-- Name: service_addons service_addons_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_addons
+    ADD CONSTRAINT service_addons_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: services services_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.services
+    ADD CONSTRAINT services_resource_fkey FOREIGN KEY (resource_id) REFERENCES public.resources(id);
 
 --
 -- Name: services services_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
@@ -2143,6 +3214,13 @@ ALTER TABLE ONLY public.vendor_bank_accounts
 
 ALTER TABLE ONLY public.vendor_bank_accounts
     ADD CONSTRAINT vendor_bank_accounts_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.admin_users(id);
+
+--
+-- Name: vendor_documents vendor_documents_resource_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vendor_documents
+    ADD CONSTRAINT vendor_documents_resource_id_fkey FOREIGN KEY (resource_id) REFERENCES public.resources(id);
 
 --
 -- Name: vendor_documents vendor_documents_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

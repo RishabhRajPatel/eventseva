@@ -51,6 +51,11 @@ class BookingListQuery {
   @IsOptional() @IsIn(BOOKING_STATUSES) status?: BookingStatus;
 }
 
+class PayQuery {
+  /** advance (default), or for a confirmed engine booking: balance / deposit. */
+  @IsOptional() @IsIn(['advance', 'balance', 'deposit']) part?: 'advance' | 'balance' | 'deposit';
+}
+
 class VerifyPaymentDto {
   @IsString() @MaxLength(64) razorpayOrderId: string;
   @IsString() @MaxLength(64) razorpayPaymentId: string;
@@ -175,8 +180,8 @@ export class BookingsController {
 
   @Post('bookings/:id/pay')
   @HttpCode(HttpStatus.OK)
-  pay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.bookings.startPayment(auth.userId, id);
+  pay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: PayQuery) {
+    return this.bookings.startPayment(auth.userId, id, q.part);
   }
 
   @Post('bookings/:id/pay/verify')
@@ -189,8 +194,8 @@ export class BookingsController {
   /** Test payments while PAYMENT_PROVIDER=fake (404 otherwise). */
   @Post('bookings/:id/pay/dev')
   @HttpCode(HttpStatus.OK)
-  async devPay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
-    await this.bookings.devPay(auth.userId, id);
+  async devPay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: PayQuery) {
+    await this.bookings.devPay(auth.userId, id, q.part);
     return this.one(auth.userId, id);
   }
 

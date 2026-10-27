@@ -37,6 +37,11 @@ import { AdminCouponsController, CouponsController } from './coupons/coupons.con
 import { FeaturedService } from './featured/featured.service';
 import { AdminFeaturedController, PartnerFeaturedController } from './featured/featured.controller';
 import { AdminExtrasController } from './admin/admin-extras.controller';
+import { EngineController } from './engine/engine.controller';
+import { EngineService } from './engine/engine.service';
+import { InventoryService } from './inventory/inventory.service';
+import { FulfilmentService } from './inventory/fulfilment.service';
+import { AdminRentalController, PartnerInventoryController, PartnerRentalController, RentalsController } from './inventory/inventory.controller';
 import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
 
 @Controller()
@@ -89,6 +94,11 @@ class ConfigModule {}
     AdminFeaturedController,
     AdminExtrasController,
     MediaController,
+    EngineController,
+    PartnerInventoryController,
+    PartnerRentalController,
+    RentalsController,
+    AdminRentalController,
   ],
   providers: [
     { provide: OTP_SENDER, useClass: ConsoleOtpSender },
@@ -100,6 +110,9 @@ class ConfigModule {}
     PartnerAppGuard,
     AdminGuard,
     BookingsService,
+    EngineService,
+    InventoryService,
+    FulfilmentService,
     RefundsService,
     CloudinaryService,
     PushService,

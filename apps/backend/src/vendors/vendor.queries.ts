@@ -14,6 +14,9 @@ export const PRICING_UNITS = [
 ] as const;
 export type PricingUnit = (typeof PRICING_UNITS)[number];
 
+/** Vendor gallery only: not photos of rental items, vehicles or extras. */
+export const GALLERY = 'inventory_item_id IS NULL AND resource_id IS NULL AND addon_id IS NULL';
+
 const categoryName = (lang: Language) => (lang === 'hi' ? 'c.name_hi' : 'c.name_en');
 
 interface VendorRow {
@@ -65,12 +68,17 @@ export async function loadVendor(
   const services = await q.query(
     `SELECT id, title, description, price_paise AS "pricePaise", unit, min_guests AS "minGuests",
             max_guests AS "maxGuests", is_active AS "isActive"
-       FROM services WHERE vendor_id = $1 AND is_active ORDER BY created_at`,
+       FROM services WHERE vendor_id = $1 AND is_active AND booking_type = 'slot' ORDER BY created_at`,
     [vendorId],
   );
   const packages = await q.query(
     `SELECT id, title, items, price_paise AS "pricePaise", is_active AS "isActive"
        FROM packages WHERE vendor_id = $1 AND is_active ORDER BY price_paise, created_at`,
+    [vendorId],
+  );
+
+  const rentals = await q.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM inventory_items WHERE vendor_id = $1 AND is_active AND deleted_at IS NULL`,
     [vendorId],
   );
 
@@ -80,7 +88,7 @@ export async function loadVendor(
     `SELECT id, type, public_id AS "publicId", width, height, duration_sec AS "durationSec", blurhash,
             is_cover AS "isCover", cover_crop AS "coverCrop", sort_order AS "sortOrder"
             ${audience === 'public' ? '' : ', status, reject_reason AS "rejectReason"'}
-       FROM media WHERE vendor_id = $1 AND ${audience === 'public' ? "status = 'approved'" : "status <> 'uploading'"}
+       FROM media WHERE vendor_id = $1 AND ${GALLERY} AND ${audience === 'public' ? "status = 'approved'" : "status <> 'uploading'"}
       ORDER BY is_cover DESC, sort_order, created_at`,
     [vendorId],
   );
@@ -100,6 +108,8 @@ export async function loadVendor(
     rating: { avg: Number(v.rating_avg), count: v.rating_count },
     services: services.rows,
     packages: packages.rows,
+    /** Items on rent (tent, furniture, utensils …); the app opens GET /v1/vendors/:id/rentals when > 0. */
+    rentalItemCount: rentals.rows[0].n,
     media: media.rows,
     // Review state is private to the owner and admins.
     ...(audience === 'public'
@@ -121,7 +131,7 @@ export function missingForReview(v: VendorDetail): string[] {
   const missing: string[] = [];
   if (!v.area) missing.push('area');
   if (!v.about || v.about.trim().length < 20) missing.push('about');
-  if (v.services.length + v.packages.length === 0) missing.push('services_or_packages');
+  if (v.services.length + v.packages.length + v.rentalItemCount === 0) missing.push('services_or_packages');
   if (!v.media.some((m) => m.type === 'photo' && m.status !== 'rejected')) missing.push('photos');
   return missing;
 }

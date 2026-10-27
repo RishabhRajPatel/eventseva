@@ -8,7 +8,8 @@ const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
 const SELECT = `
   SELECT b.id, b.status, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
-         b.progress, b.progress_at, b.eta_at,
+         b.progress, b.progress_at, b.eta_at, b.booking_type, b.starts_at, b.ends_at, b.fulfilment, b.deposit_paise, b.tax_paise,
+         b.charges_paise, b.deposit_settled_at,
          e.id AS event_id, e.title AS event_title, e.event_type, e.guest_count, e.venue_address,
          e.venue_lat, e.venue_lng, e.venue_landmark, v.lat AS vendor_lat, v.lng AS vendor_lng, v.service_radius_km,
          (SELECT cp.code FROM coupon_redemptions r JOIN coupons cp ON cp.id = r.coupon_id
@@ -28,6 +29,23 @@ const SELECT = `
     LEFT JOIN services s ON s.id = b.service_id
     LEFT JOIN packages p ON p.id = b.package_id`;
 
+/**
+ * One word for where a booking is, for the apps' status chip. Rentals go through their delivery steps:
+ * pending_confirmation → awaiting_payment → confirmed → preparing → dispatched → delivered →
+ * return_pending (event over) → returned_verified → completed; or cancelled / rejected / expired.
+ */
+export function stageOf(status: BookingStatus, fulfilment: string | null): string {
+  if (status === 'requested') return 'pending_confirmation';
+  if (status === 'accepted') return 'awaiting_payment';
+  if (status === 'confirmed') {
+    if (fulfilment === 'closed') return 'returned_verified';
+    if (fulfilment && fulfilment !== 'scheduled') return fulfilment;
+    return 'confirmed';
+  }
+  if (status === 'cancelled_by_customer' || status === 'cancelled_by_vendor') return 'cancelled';
+  return status;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toView(r: any, viewer: 'customer' | 'vendor') {
   const share = SHARES_PHONE.includes(r.status);
@@ -39,6 +57,11 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
   return {
     id: r.id,
     status: r.status,
+    /** slot (day + slot) or a booking-engine type (rental, transport …); engine bookings have exact times. */
+    bookingType: r.booking_type,
+    stage: stageOf(r.status, r.booking_type === 'slot' ? null : r.fulfilment),
+    startsAt: r.booking_type === 'slot' ? null : r.starts_at,
+    endsAt: r.booking_type === 'slot' ? null : r.ends_at,
     day: r.day,
     slot: r.slot,
     item: { type: r.item_type, id: r.item_id, title: r.item_title, unit: r.unit },
@@ -69,6 +92,10 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     advancePaise: r.advance_paise,
     balancePaise: r.amount_paise - r.advance_paise,
     refundPaise: r.refund_paise,
+    taxPaise: r.tax_paise,
+    /** Refundable security deposit (rentals, self-drive cars), paid apart from the price. */
+    depositPaise: r.deposit_paise,
+    depositSettledAt: r.deposit_settled_at,
     // Coupon discount, paid by EventSeva: lowers what is paid in the app, never the vendor's share.
     discountPaise: r.discount_paise,
     couponCode: viewer === 'customer' ? r.coupon_code : null,
@@ -77,7 +104,7 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     ...(viewer === 'vendor' ? {
           commissionPaise: r.commission_paise,
           payoutDeductionPaise: r.payout_deduction_paise,
-          payoutPaise: r.advance_paise - r.commission_paise - r.payout_deduction_paise,
+          payoutPaise: r.advance_paise + r.charges_paise - r.commission_paise - r.payout_deduction_paise,
         } : {}),
     respondBy: r.status === 'requested' ? r.respond_by : null,
     payBy: r.status === 'accepted' ? r.pay_by : null,

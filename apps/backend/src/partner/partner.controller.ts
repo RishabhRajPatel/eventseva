@@ -236,7 +236,7 @@ export class PartnerController {
     checkGuests(body.minGuests, body.maxGuests);
     return this.db.tx(async (client) => {
       const v = await this.editable(client, auth.userId);
-      const count = await this.db.one<{ n: number }>(client, 'SELECT count(*)::int AS n FROM services WHERE vendor_id = $1 AND is_active', [v.id]);
+      const count = await this.db.one<{ n: number }>(client, `SELECT count(*)::int AS n FROM services WHERE vendor_id = $1 AND is_active AND booking_type = 'slot'`, [v.id]);
       if (count!.n >= MAX_SERVICES) throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_SERVICES} services.`);
       return this.db.one(
         client,
@@ -253,7 +253,7 @@ export class PartnerController {
       const v = await this.editable(client, auth.userId);
       const current = await this.db.one<{ minGuests: number | null; maxGuests: number | null }>(
         client,
-        `SELECT min_guests AS "minGuests", max_guests AS "maxGuests" FROM services WHERE id = $1 AND vendor_id = $2 AND is_active`,
+        `SELECT min_guests AS "minGuests", max_guests AS "maxGuests" FROM services WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type = 'slot'`,
         [id, v.id],
       );
       if (!current) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
@@ -276,7 +276,7 @@ export class PartnerController {
   async removeService(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
     await this.db.tx(async (client) => {
       const v = await this.editable(client, auth.userId);
-      const res = await client.query('UPDATE services SET is_active = false WHERE id = $1 AND vendor_id = $2 AND is_active', [id, v.id]);
+      const res = await client.query(`UPDATE services SET is_active = false WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type = 'slot'`, [id, v.id]);
       if (!res.rowCount) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
     });
   }

@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-31 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+45 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -11,6 +11,8 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Catalogue:** [cities](#cities), [categories](#categories)
 - **Vendors:** [vendors](#vendors), [vendor_documents](#vendor_documents), [vendor_bank_accounts](#vendor_bank_accounts), [services](#services), [packages](#packages), [media](#media), [availability](#availability)
 - **Events and bookings:** [events](#events), [bookings](#bookings), [reviews](#reviews), [shortlists](#shortlists)
+- **Booking engine: resources, holds and changes:** [resources](#resources), [reservations](#reservations), [capacity_holds](#capacity_holds), [service_addons](#service_addons), [booking_addons](#booking_addons), [booking_inspections](#booking_inspections), [booking_charges](#booking_charges), [booking_changes](#booking_changes), [booking_events](#booking_events), [customer_licences](#customer_licences)
+- **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
 
@@ -20,7 +22,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - `booking_status`: `requested`, `accepted`, `rejected`, `expired`, `confirmed`, `completed`, `cancelled_by_customer`, `cancelled_by_vendor`
 - `media_type`: `photo`, `video`
 - `payment_status`: `created`, `paid`, `failed`, `refunded`
-- `payment_type`: `advance`, `final`, `refund`
+- `payment_type`: `advance`, `final`, `refund`, `deposit`
 - `payout_status`: `scheduled`, `processing`, `paid`, `failed`, `held`
 - `pricing_unit`: `per_event`, `per_day`, `per_shift`, `per_plate`, `per_hour`, `per_km`, `per_room_night`, `per_person`, `package`
 - `refund_status`: `pending`, `sending`, `sent`, `failed`
@@ -181,9 +183,14 @@ Service types (DJ & Sound, Cook & Catering …), managed by super admins. Hidden
 | `default_unit` | pricing_unit | yes |  |  |
 | `sort_order` | integer | yes | `0` |  |
 | `is_active` | boolean | yes | `true` |  |
+| `booking_type` | text | yes | `'slot'::text` | How bookings in this category work (see the booking type registry in apps/backend/src/engine) |
+| `group_key` | text | yes | `'other'::text` |  |
+| `template` | jsonb | yes | `'{}'::jsonb` | Admin template: attributes, customer questions, rule defaults and allowed pricing models (validated in code) |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK ((booking_type = ANY (ARRAY['slot'::text, 'time_window'::text, 'rental'::text, 'per_person'::text, 'staffing'::text, 'appointment'::text, 'transport'::text, 'quote'::text])))`
+- Check: `CHECK ((group_key = ANY (ARRAY['wedding'::text, 'entertainment'::text, 'catering'::text, 'transport'::text, 'wedding_services'::text, 'other'::text])))`
 - Unique: `UNIQUE (slug)`
 
 </details>
@@ -242,11 +249,12 @@ Private ID documents (Aadhaar, PAN, GST, shop photo) for verification; only the 
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 | `format` | text | yes | `'jpg'::text` |  |
 | `reject_reason` | text |  |  |  |
+| `resource_id` | uuid |  |  | → [resources](#resources).id |
 
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK (((last4 IS NULL) OR (last4 ~ '^\d{4}$'::text)))`
-- Check: `CHECK ((doc_type = ANY (ARRAY['aadhaar'::text, 'pan'::text, 'gst'::text, 'shop_photo'::text])))`
+- Check: `CHECK ((doc_type = ANY (ARRAY['aadhaar'::text, 'pan'::text, 'gst'::text, 'shop_photo'::text, 'vehicle_rc'::text, 'vehicle_insurance'::text, 'vehicle_permit'::text, 'vehicle_puc'::text, 'driver_licence'::text, 'police_verification'::text])))`
 - Index: `CREATE INDEX ON vendor_documents USING btree (vendor_id, created_at DESC)`
 
 </details>
@@ -292,6 +300,11 @@ What a vendor sells, priced per unit (per event, per plate, per day …). Soft-d
 | `max_guests` | integer |  |  |  |
 | `is_active` | boolean | yes | `true` |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `booking_type` | text | yes | `'slot'::text` | Copied from the category when the service is created; old services stay slot |
+| `pricing` | jsonb | yes | `'{}'::jsonb` | Pricing model and rates for the engine (fixed, hourly, daily, per_unit, per_person, per_trip, quote) |
+| `rules` | jsonb | yes | `'{}'::jsonb` | Vendor overrides of the category rule defaults (durations, buffers, quantities, advance, deposit, approval) |
+| `attributes` | jsonb | yes | `'{}'::jsonb` |  |
+| `resource_id` | uuid |  |  | → [resources](#resources).id; For a service that is one specific resource (a car, a hall): that resource |
 
 <details><summary>Rules and indexes</summary>
 
@@ -343,11 +356,16 @@ Vendor photos and videos on Cloudinary. Customers see them only after admin appr
 | `status` | review_status | yes | `'uploading'::review_status` |  |
 | `reject_reason` | text |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `resource_id` | uuid |  |  | → [resources](#resources).id |
+| `addon_id` | uuid |  |  | → [service_addons](#service_addons).id |
+| `inventory_item_id` | uuid |  |  | → [inventory_items](#inventory_items).id; Photo of a rental item (not shown in the vendor gallery) |
 
 <details><summary>Rules and indexes</summary>
 
 - Unique: `UNIQUE (public_id)`
 - Unique: `UNIQUE (vendor_id, file_hash)`
+- Index: `CREATE INDEX ON media USING btree (inventory_item_id) WHERE (inventory_item_id IS NOT NULL)`
+- Index: `CREATE INDEX ON media USING btree (resource_id) WHERE (resource_id IS NOT NULL)`
 - Index: `CREATE INDEX ON media USING btree (status, created_at) WHERE (status = 'pending'::review_status)`
 - Index: `CREATE INDEX ON media USING btree (vendor_id)`
 - Index: `CREATE INDEX ON media USING btree (vendor_id, sort_order) WHERE (status = 'approved'::review_status)`
@@ -433,18 +451,40 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `progress_at` | timestamp with time zone |  |  |  |
 | `eta_at` | timestamp with time zone |  |  |  |
 | `reminder_sent_at` | timestamp with time zone |  |  | When the day-before reminder went to both sides |
+| `booking_type` | text | yes | `'slot'::text` |  |
+| `starts_at` | timestamp with time zone |  |  | When the service starts (pickup, dispatch, appointment); ends_at when it ends or is due back |
+| `ends_at` | timestamp with time zone |  |  |  |
+| `occupy_from` | timestamp with time zone |  |  | Resources are held from occupy_from to occupy_until: the service time plus setup, dismantling, cleaning and turnaround buffers |
+| `occupy_until` | timestamp with time zone |  |  |  |
+| `return_due_at` | timestamp with time zone |  |  |  |
+| `snapshot` | jsonb | yes | `'{}'::jsonb` | Immutable copy of what was agreed: rules, pricing, the itemised quote, answers, add-ons and attributes |
+| `cancellation_policy` | jsonb |  |  | Refund tiers agreed at booking time; later policy changes never apply to this booking |
+| `tax_paise` | integer | yes | `0` |  |
+| `deposit_paise` | integer | yes | `0` | Refundable security deposit; kept apart from booking revenue |
+| `charges_paise` | integer | yes | `0` | Accepted extra charges (overtime, extra km, damage …) on top of amount_paise |
+| `fulfilment` | text | yes | `'scheduled'::text` | Progress after confirmation. Rentals: scheduled → preparing → dispatched → delivered → return_pending → closed (returned and verified). Others: scheduled → assigned → ready → in_progress → return_pending → closed |
+| `actual_start_at` | timestamp with time zone |  |  |  |
+| `actual_end_at` | timestamp with time zone |  |  |  |
+| `idempotency_key` | text |  |  |  |
+| `deposit_settled_at` | timestamp with time zone |  |  | When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((ends_at IS NULL) OR (ends_at > starts_at)))`
 - Check: `CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL)))`
+- Check: `CHECK ((deposit_paise >= 0))`
 - Check: `CHECK ((discount_paise >= 0))`
+- Check: `CHECK ((fulfilment = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'assigned'::text, 'ready'::text, 'dispatched'::text, 'delivered'::text, 'in_progress'::text, 'return_pending'::text, 'closed'::text])))`
 - Check: `CHECK ((payout_deduction_paise >= 0))`
 - Check: `CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text])))`
 - Check: `CHECK ((quantity > 0))`
 - Check: `CHECK ((slot = ANY (ARRAY['full'::text, 'day'::text, 'night'::text])))`
+- Check: `CHECK ((tax_paise >= 0))`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id, created_at DESC)`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id) WHERE (status = 'requested'::booking_status)`
-- Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
+- Index: `CREATE UNIQUE INDEX ON bookings USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
+- Index: `CREATE INDEX ON bookings USING btree (vendor_id, occupy_from, occupy_until) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
+- Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE ((status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status])) AND (booking_type = 'slot'::text))`
 - Index: `CREATE INDEX ON bookings USING btree (package_id) WHERE (package_id IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (day) WHERE ((status = 'confirmed'::booking_status) AND (reminder_sent_at IS NULL))`
 - Index: `CREATE INDEX ON bookings USING btree (service_id) WHERE (service_id IS NOT NULL)`
@@ -493,6 +533,414 @@ Vendors a customer saved (the heart button).
 <details><summary>Rules and indexes</summary>
 
 - Index: `CREATE INDEX ON shortlists USING btree (vendor_id)`
+
+</details>
+
+## Booking engine: resources, holds and changes
+
+### resources
+
+Vehicles, drivers, staff, artists, halls and equipment sets that one booking at a time can use; attributes validated per kind in code
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `kind` | text | yes |  |  |
+| `name` | text | yes |  |  |
+| `attributes` | jsonb | yes | `'{}'::jsonb` |  |
+| `status` | text | yes | `'active'::text` |  |
+| `verification` | text | yes | `'not_required'::text` |  |
+| `reject_reason` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `updated_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((kind = ANY (ARRAY['vehicle'::text, 'driver'::text, 'staff'::text, 'artist'::text, 'venue'::text, 'equipment'::text, 'crew'::text])))`
+- Check: `CHECK ((status = ANY (ARRAY['active'::text, 'maintenance'::text, 'inactive'::text])))`
+- Check: `CHECK ((verification = ANY (ARRAY['not_required'::text, 'pending'::text, 'approved'::text, 'rejected'::text, 'suspended'::text])))`
+- Index: `CREATE UNIQUE INDEX ON resources USING btree (upper((attributes ->> 'registration'::text))) WHERE (kind = 'vehicle'::text)`
+- Index: `CREATE INDEX ON resources USING btree (vendor_id, kind)`
+
+</details>
+
+### reservations
+
+Time a resource is taken: a hold (expires), active (booked or blocked by the vendor), then released
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `resource_id` | uuid | yes |  | → [resources](#resources).id |
+| `booking_id` | uuid |  |  | → [bookings](#bookings).id |
+| `period` | tstzrange | yes |  |  |
+| `status` | text | yes |  |  |
+| `reason` | text |  |  |  |
+| `expires_at` | timestamp with time zone |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((status <> 'hold'::text) OR (expires_at IS NOT NULL)))`
+- Check: `CHECK ((NOT isempty(period)))`
+- Check: `CHECK ((status = ANY (ARRAY['hold'::text, 'active'::text, 'released'::text, 'expired'::text])))`
+- Index: `CREATE INDEX ON reservations USING btree (booking_id)`
+- Index: `CREATE INDEX ON reservations USING btree (expires_at) WHERE (status = 'hold'::text)`
+
+</details>
+
+### capacity_holds
+
+Quantities taken from a pool for a time (item:<id> stock, staff:<kind> head-count, guests:<service> per day); checked under an advisory lock
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `pool_key` | text | yes |  |  |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `booking_id` | uuid |  |  | → [bookings](#bookings).id |
+| `qty` | integer | yes |  |  |
+| `period` | tstzrange | yes |  |  |
+| `status` | text | yes |  |  |
+| `expires_at` | timestamp with time zone |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `until_returned` | boolean | yes | `false` | Stock dispatched and not yet checked back in: blocks the pool past the end of its period |
+| `note` | text |  |  | A vendor's own block (no booking): why the stock is unavailable |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((booking_id IS NOT NULL) OR (note IS NOT NULL)))`
+- Check: `CHECK ((length(note) <= 200))`
+- Check: `CHECK ((qty > 0))`
+- Check: `CHECK ((status = ANY (ARRAY['hold'::text, 'active'::text, 'released'::text, 'expired'::text])))`
+- Index: `CREATE INDEX ON capacity_holds USING btree (booking_id)`
+- Index: `CREATE INDEX ON capacity_holds USING gist (pool_key, period) WHERE (status = ANY (ARRAY['hold'::text, 'active'::text]))`
+
+</details>
+
+### service_addons
+
+Optional extras a vendor offers (car decoration packages, drone, album, makeup trial); custom ones need vendor approval
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `service_id` | uuid |  |  | → [services](#services).id |
+| `name` | text | yes |  |  |
+| `kind` | text | yes | `'extra'::text` |  |
+| `inclusions` | text[] | yes | `'{}'::text[]` |  |
+| `exclusions` | text[] | yes | `'{}'::text[]` |  |
+| `price_paise` | integer | yes |  |  |
+| `setup_minutes` | integer | yes | `0` |  |
+| `requires_approval` | boolean | yes | `false` |  |
+| `is_active` | boolean | yes | `true` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((price_paise >= 0))`
+- Check: `CHECK ((setup_minutes >= 0))`
+- Index: `CREATE INDEX ON service_addons USING btree (vendor_id)`
+
+</details>
+
+### booking_addons
+
+Extras chosen with a booking, at the price agreed; ones needing approval are approved or declined when the vendor accepts
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `booking_id` | uuid | yes |  | primary key; → [bookings](#bookings).id |
+| `addon_id` | uuid | yes |  | primary key; → [service_addons](#service_addons).id |
+| `price_paise` | integer | yes |  |  |
+| `request_note` | text |  |  |  |
+| `status` | text | yes |  |  |
+| `decided_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((status = ANY (ARRAY['included'::text, 'pending_approval'::text, 'approved'::text, 'declined'::text])))`
+
+</details>
+
+### booking_inspections
+
+Condition at handover and return (odometer, fuel, damage, counts, photos) and the customer's agreement or dispute
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `phase` | text | yes |  |  |
+| `readings` | jsonb | yes | `'{}'::jsonb` |  |
+| `notes` | text |  |  |  |
+| `photo_ids` | text[] | yes | `'{}'::text[]` |  |
+| `recorded_by` | uuid | yes |  | → [users](#users).id |
+| `recorded_at` | timestamp with time zone | yes | `now()` |  |
+| `customer_ack` | text |  |  |  |
+| `customer_note` | text |  |  |  |
+| `acked_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((customer_ack = ANY (ARRAY['agreed'::text, 'disputed'::text])))`
+- Check: `CHECK ((phase = ANY (ARRAY['handover'::text, 'return'::text, 'dispatch'::text, 'delivery'::text])))`
+- Unique: `UNIQUE (booking_id, phase)`
+
+</details>
+
+### booking_charges
+
+Extra charges after the service (km, hours, late return, damage …): proposed by the vendor, accepted or disputed by the customer, decided by an admin in a dispute
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `kind` | text | yes |  |  |
+| `description` | text | yes |  |  |
+| `qty` | numeric | yes | `1` |  |
+| `amount_paise` | integer | yes |  |  |
+| `status` | text | yes | `'proposed'::text` |  |
+| `from_deposit` | boolean | yes | `false` |  |
+| `evidence_ids` | text[] | yes | `'{}'::text[]` |  |
+| `created_by` | uuid | yes |  | → [users](#users).id |
+| `decided_by` | uuid |  |  |  |
+| `decision_note` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `decided_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((amount_paise > 0))`
+- Check: `CHECK ((kind = ANY (ARRAY['extra_km'::text, 'extra_hours'::text, 'late_return'::text, 'waiting'::text, 'toll'::text, 'parking'::text, 'fuel'::text, 'damage'::text, 'missing'::text, 'cleaning'::text, 'extension'::text, 'guest_change'::text, 'other'::text])))`
+- Check: `CHECK ((status = ANY (ARRAY['proposed'::text, 'accepted'::text, 'disputed'::text, 'waived'::text, 'resolved'::text])))`
+- Index: `CREATE INDEX ON booking_charges USING btree (booking_id)`
+
+</details>
+
+### booking_changes
+
+Requests to extend, reschedule or change the quantity of a booking; one open at a time
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `kind` | text | yes |  |  |
+| `requested_by` | uuid | yes |  | → [users](#users).id |
+| `new_starts_at` | timestamp with time zone |  |  |  |
+| `new_ends_at` | timestamp with time zone |  |  |  |
+| `new_qty` | integer |  |  |  |
+| `price_diff_paise` | integer | yes | `0` |  |
+| `status` | text | yes | `'requested'::text` |  |
+| `reason` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `decided_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((kind = ANY (ARRAY['extension'::text, 'reschedule'::text, 'quantity'::text])))`
+- Check: `CHECK ((status = ANY (ARRAY['requested'::text, 'approved'::text, 'rejected'::text, 'cancelled'::text])))`
+- Index: `CREATE INDEX ON booking_changes USING btree (booking_id)`
+- Index: `CREATE UNIQUE INDEX ON booking_changes USING btree (booking_id) WHERE (status = 'requested'::text)`
+
+</details>
+
+### booking_events
+
+Audit trail of every state change on a booking (who, when, what)
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('booking_events_id_seq'::regclass)` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `event` | text | yes |  |  |
+| `actor_id` | uuid |  |  |  |
+| `data` | jsonb | yes | `'{}'::jsonb` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Index: `CREATE INDEX ON booking_events USING btree (booking_id, id)`
+
+</details>
+
+### customer_licences
+
+Driving licence for self-drive cars: number encrypted (BANK_DETAILS_KEY), verified by an admin or by the vendor at handover
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `user_id` | uuid | yes |  | primary key; → [users](#users).id |
+| `number_enc` | text | yes |  |  |
+| `number_last4` | text | yes |  |  |
+| `date_of_birth` | date | yes |  |  |
+| `expires_on` | date | yes |  |  |
+| `storage_key` | text |  |  |  |
+| `status` | text | yes | `'pending'::text` |  |
+| `reject_reason` | text |  |  |  |
+| `verified_by` | uuid |  |  |  |
+| `updated_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text])))`
+
+</details>
+
+## Rental stock
+
+### item_categories
+
+Groups for rental items: the defaults (tent, furniture, cooking, dining, serving, equipment) and categories vendors add themselves
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `vendor_id` | uuid |  |  | → [vendors](#vendors).id |
+| `key` | text |  |  |  |
+| `name_en` | text | yes |  |  |
+| `name_hi` | text | yes |  |  |
+| `examples_en` | text |  |  |  |
+| `examples_hi` | text |  |  |  |
+| `sort_order` | integer | yes | `100` |  |
+| `is_active` | boolean | yes | `true` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((length(name_en) >= 2) AND (length(name_en) <= 40)))`
+- Check: `CHECK (((length(name_hi) >= 1) AND (length(name_hi) <= 40)))`
+- Check: `CHECK (((vendor_id IS NULL) = (key IS NOT NULL)))`
+- Index: `CREATE UNIQUE INDEX ON item_categories USING btree (key) WHERE (vendor_id IS NULL)`
+- Index: `CREATE UNIQUE INDEX ON item_categories USING btree (vendor_id, lower(name_en)) WHERE ((vendor_id IS NOT NULL) AND is_active)`
+
+</details>
+
+### inventory_items
+
+Rental stock (plates, chairs, speakers, coolers …): how many exist, how many are in repair, price, deposit and damage charge per unit
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `name` | text | yes |  |  |
+| `unit` | text | yes | `'piece'::text` |  |
+| `total_qty` | integer | yes |  |  |
+| `repair_qty` | integer | yes | `0` | Units out of use (damaged, being repaired or cleaned); not bookable |
+| `rent_paise` | integer | yes | `0` |  |
+| `rent_per` | text | yes | `'booking'::text` |  |
+| `deposit_paise` | integer | yes | `0` |  |
+| `damage_paise` | integer | yes | `0` |  |
+| `min_qty` | integer | yes | `1` |  |
+| `attributes` | jsonb | yes | `'{}'::jsonb` |  |
+| `is_active` | boolean | yes | `true` |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `category_id` | uuid |  |  | → [item_categories](#item_categories).id |
+| `description` | text |  |  |  |
+| `quality` | text | yes | `'standard'::text` | basic / standard / premium, or custom with quality_label |
+| `quality_label` | text |  |  |  |
+| `condition` | text | yes | `'good'::text` | Listing condition; needs_repair stops new bookings |
+| `missing_paise` | integer | yes | `0` | Charge per unit not returned (0: use damage_paise) |
+| `max_qty` | integer |  |  |  |
+| `min_days` | integer | yes | `1` |  |
+| `max_days` | integer |  |  |  |
+| `deleted_at` | timestamp with time zone |  |  | Removed by the vendor but kept because bookings or stock records point to it |
+| `updated_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((deleted_at IS NULL) OR (NOT is_active)))`
+- Check: `CHECK (((length(unit) >= 1) AND (length(unit) <= 20)))`
+- Check: `CHECK (((max_days IS NULL) OR ((max_days >= 1) AND (max_days <= 60))))`
+- Check: `CHECK (((max_days IS NULL) OR (max_days >= min_days)))`
+- Check: `CHECK (((max_qty IS NULL) OR (max_qty >= 1)))`
+- Check: `CHECK (((min_days >= 1) AND (min_days <= 60)))`
+- Check: `CHECK ((condition = ANY (ARRAY['new'::text, 'good'::text, 'used'::text, 'needs_repair'::text])))`
+- Check: `CHECK ((damage_paise >= 0))`
+- Check: `CHECK ((deposit_paise >= 0))`
+- Check: `CHECK ((length(description) <= 1000))`
+- Check: `CHECK ((length(quality_label) <= 30))`
+- Check: `CHECK ((min_qty >= 1))`
+- Check: `CHECK ((missing_paise >= 0))`
+- Check: `CHECK ((quality = ANY (ARRAY['basic'::text, 'standard'::text, 'premium'::text, 'custom'::text])))`
+- Check: `CHECK ((rent_paise >= 0))`
+- Check: `CHECK ((rent_per = ANY (ARRAY['booking'::text, 'day'::text])))`
+- Check: `CHECK ((repair_qty <= total_qty))`
+- Check: `CHECK ((repair_qty >= 0))`
+- Check: `CHECK ((total_qty >= 0))`
+- Index: `CREATE INDEX ON inventory_items USING btree (vendor_id, category_id) WHERE is_active`
+- Index: `CREATE INDEX ON inventory_items USING btree (vendor_id)`
+- Index: `CREATE UNIQUE INDEX ON inventory_items USING btree (vendor_id, lower(name)) WHERE (deleted_at IS NULL)`
+
+</details>
+
+### booking_lines
+
+Items a rental booking takes from stock and their trip: loaded → dispatched → delivered → returned / damaged / missing, then verified
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `inventory_item_id` | uuid | yes |  | → [inventory_items](#inventory_items).id |
+| `qty` | integer | yes |  |  |
+| `unit_paise` | integer | yes |  |  |
+| `deposit_paise` | integer | yes | `0` |  |
+| `dispatched_qty` | integer | yes | `0` |  |
+| `returned_qty` | integer | yes | `0` |  |
+| `damaged_qty` | integer | yes | `0` |  |
+| `missing_qty` | integer | yes | `0` |  |
+| `item_snapshot` | jsonb | yes | `'{}'::jsonb` | Item name, unit, quality, condition and charges as booked; later listing edits never change it |
+| `damage_paise` | integer | yes | `0` |  |
+| `missing_paise` | integer | yes | `0` |  |
+| `loaded_qty` | integer | yes | `0` |  |
+| `delivered_qty` | integer | yes | `0` |  |
+| `note` | text |  |  |  |
+| `verified_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((((returned_qty + damaged_qty) + missing_qty) <= dispatched_qty))`
+- Check: `CHECK (((loaded_qty <= qty) AND (dispatched_qty <= loaded_qty) AND (delivered_qty <= dispatched_qty)))`
+- Check: `CHECK ((damage_paise >= 0))`
+- Check: `CHECK ((damaged_qty >= 0))`
+- Check: `CHECK ((delivered_qty >= 0))`
+- Check: `CHECK ((dispatched_qty >= 0))`
+- Check: `CHECK ((length(note) <= 500))`
+- Check: `CHECK ((loaded_qty >= 0))`
+- Check: `CHECK ((missing_paise >= 0))`
+- Check: `CHECK ((missing_qty >= 0))`
+- Check: `CHECK ((qty > 0))`
+- Check: `CHECK ((returned_qty >= 0))`
+- Unique: `UNIQUE (booking_id, inventory_item_id)`
+
+</details>
+
+### inventory_movements
+
+Every change to rental stock: dispatch, return, damage, missing, repair, write-off
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('inventory_movements_id_seq'::regclass)` | primary key |
+| `inventory_item_id` | uuid | yes |  | → [inventory_items](#inventory_items).id |
+| `booking_id` | uuid |  |  | → [bookings](#bookings).id |
+| `kind` | text | yes |  |  |
+| `qty` | integer | yes |  |  |
+| `note` | text |  |  |  |
+| `actor_id` | uuid |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((kind = ANY (ARRAY['dispatch'::text, 'return'::text, 'damaged'::text, 'missing'::text, 'repaired'::text, 'written_off'::text, 'added'::text, 'removed'::text])))`
+- Check: `CHECK ((qty > 0))`
+- Index: `CREATE INDEX ON inventory_movements USING btree (inventory_item_id, created_at DESC)`
 
 </details>
 

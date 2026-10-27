@@ -19,6 +19,8 @@ import { Db, Queryable } from '../db/db.service';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { PartnerAppGuard } from '../partner/partner.controller';
+import { GALLERY } from '../vendors/vendor.queries';
+import { MAX_ITEM_PHOTOS } from '../inventory/inventory.service';
 import { CloudinaryService, MAX_VIDEO_SEC, UPLOAD_RULES, type UploadKind } from './cloudinary.service';
 
 export const MAX_PHOTOS = 30;
@@ -45,6 +47,8 @@ class RegisterMediaDto extends UploadedDto {
   @IsString() @Length(8, 64) etag: string;
   @IsOptional() @IsInt() @Min(0) durationSec?: number;
   @IsOptional() @IsString() @MaxLength(100) blurhash?: string;
+  /** A photo of one rental item instead of the gallery. */
+  @IsOptional() @IsUUID() itemId?: string;
 }
 
 class RegisterDocumentDto extends UploadedDto {
@@ -100,7 +104,7 @@ export class MediaController {
   async list(@Auth() auth: AuthContext) {
     const vendorId = await this.vendorId(this.db, auth.userId);
     const { rows } = await this.db.query(
-      `SELECT ${MEDIA_COLUMNS} FROM media WHERE vendor_id = $1 AND status <> 'uploading' ORDER BY is_cover DESC, sort_order, created_at`,
+      `SELECT ${MEDIA_COLUMNS} FROM media WHERE vendor_id = $1 AND ${GALLERY} AND status <> 'uploading' ORDER BY is_cover DESC, sort_order, created_at`,
       [vendorId],
     );
     return { items: rows, limits: { photos: MAX_PHOTOS, videos: MAX_VIDEOS } };
@@ -116,24 +120,37 @@ export class MediaController {
       if (body.type === 'video' && (body.durationSec ?? 0) > MAX_VIDEO_SEC) {
         throw new AppError('VIDEO_TOO_LONG', `Videos can be up to ${MAX_VIDEO_SEC / 60} minutes long.`);
       }
-      const counts = await this.db.one<{ photos: number; videos: number }>(
-        client,
-        `SELECT count(*) FILTER (WHERE type = 'photo')::int AS photos, count(*) FILTER (WHERE type = 'video')::int AS videos
-           FROM media WHERE vendor_id = $1 AND status <> 'rejected'`,
-        [vendorId],
-      );
-      if (body.type === 'photo' ? counts!.photos >= MAX_PHOTOS : counts!.videos >= MAX_VIDEOS) {
-        throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_PHOTOS} photos and ${MAX_VIDEOS} videos.`);
+      if (body.itemId) {
+        // Item photos have their own limit and never become the vendor's cover.
+        if (body.type !== 'photo') throw new AppError('VALIDATION', 'Items take photos only.');
+        const item = await this.db.one<{ n: number }>(
+          client,
+          `SELECT (SELECT count(*)::int FROM media m WHERE m.inventory_item_id = i.id AND m.status <> 'rejected') AS n
+             FROM inventory_items i WHERE i.id = $1 AND i.vendor_id = $2 AND i.deleted_at IS NULL`,
+          [body.itemId, vendorId],
+        );
+        if (!item) throw new AppError('NOT_FOUND', 'Item not found.', HttpStatus.NOT_FOUND);
+        if (item.n >= MAX_ITEM_PHOTOS) throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_ITEM_PHOTOS} photos per item.`);
+      } else {
+        const counts = await this.db.one<{ photos: number; videos: number }>(
+          client,
+          `SELECT count(*) FILTER (WHERE type = 'photo')::int AS photos, count(*) FILTER (WHERE type = 'video')::int AS videos
+             FROM media WHERE vendor_id = $1 AND ${GALLERY} AND status <> 'rejected'`,
+          [vendorId],
+        );
+        if (body.type === 'photo' ? counts!.photos >= MAX_PHOTOS : counts!.videos >= MAX_VIDEOS) {
+          throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_PHOTOS} photos and ${MAX_VIDEOS} videos.`);
+        }
       }
       const row = await this.db.one(
         client,
-        `INSERT INTO media (vendor_id, type, public_id, width, height, bytes, duration_sec, blurhash, file_hash, status, sort_order, is_cover)
+        `INSERT INTO media (vendor_id, type, public_id, width, height, bytes, duration_sec, blurhash, file_hash, status, sort_order, is_cover, inventory_item_id)
          SELECT $1, $2::media_type, $3, $4, $5, $6, $7, $8, $9, 'pending',
                 COALESCE((SELECT max(sort_order) + 1 FROM media WHERE vendor_id = $1), 0),
-                $2::media_type = 'photo' AND NOT EXISTS (SELECT 1 FROM media WHERE vendor_id = $1 AND is_cover)
+                $10::uuid IS NULL AND $2::media_type = 'photo' AND NOT EXISTS (SELECT 1 FROM media WHERE vendor_id = $1 AND is_cover), $10
          ON CONFLICT DO NOTHING
          RETURNING ${MEDIA_COLUMNS}`,
-        [vendorId, body.type, body.publicId, body.width, body.height, body.bytes, body.durationSec ?? null, body.blurhash ?? null, body.etag],
+        [vendorId, body.type, body.publicId, body.width, body.height, body.bytes, body.durationSec ?? null, body.blurhash ?? null, body.etag, body.itemId ?? null],
       );
       if (!row) throw new AppError('MEDIA_DUPLICATE', 'You have already added this file.', HttpStatus.CONFLICT);
       return row;
@@ -155,7 +172,7 @@ export class MediaController {
       if (m.is_cover) {
         await client.query(
           `UPDATE media SET is_cover = true WHERE id = (
-             SELECT id FROM media WHERE vendor_id = $1 AND type = 'photo' AND status <> 'rejected'
+             SELECT id FROM media WHERE vendor_id = $1 AND type = 'photo' AND status <> 'rejected' AND ${GALLERY}
               ORDER BY (status = 'approved') DESC, sort_order LIMIT 1)`,
           [vendorId],
         );
@@ -172,7 +189,7 @@ export class MediaController {
       const vendorId = await this.vendorId(client, auth.userId, true);
       const ok = await this.db.one(
         client,
-        `SELECT 1 FROM media WHERE id = $1 AND vendor_id = $2 AND type = 'photo' AND status <> 'rejected'`,
+        `SELECT 1 FROM media WHERE id = $1 AND vendor_id = $2 AND type = 'photo' AND status <> 'rejected' AND ${GALLERY}`,
         [id, vendorId],
       );
       if (!ok) throw new AppError('NOT_FOUND', 'Photo not found.', HttpStatus.NOT_FOUND);

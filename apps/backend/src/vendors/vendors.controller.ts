@@ -55,7 +55,7 @@ export class VendorsController {
               (SELECT json_build_object('publicId', m.public_id, 'width', m.width, 'height', m.height, 'blurhash', m.blurhash)
                  FROM media m WHERE m.vendor_id = v.id AND m.status = 'approved' AND m.type = 'photo'
                 ORDER BY m.is_cover DESC, m.sort_order LIMIT 1) AS cover,
-              LEAST((SELECT min(price_paise) FROM services s WHERE s.vendor_id = v.id AND s.is_active),
+              LEAST((SELECT min(price_paise) FROM services s WHERE s.vendor_id = v.id AND s.is_active AND s.booking_type = 'slot'),
                     (SELECT min(price_paise) FROM packages p WHERE p.vendor_id = v.id AND p.is_active)) AS "startingPricePaise",
               (${distance})::float8 AS "distanceKm", v.service_radius_km AS "serviceRadiusKm"
          FROM vendors v JOIN categories c ON c.id = v.category_id

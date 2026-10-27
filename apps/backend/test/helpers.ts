@@ -78,6 +78,8 @@ export async function createTestApp(): Promise<TestApp> {
   await app.init();
   const db = app.get(Db);
   const http = () => request(app.getHttpServer());
+  // Default item categories hang off vendors' table family, so TRUNCATE … CASCADE empties them: put them back.
+  const itemCategories = (await db.query('SELECT key, name_en, name_hi, examples_en, examples_hi, sort_order FROM item_categories WHERE vendor_id IS NULL')).rows;
 
   return {
     app,
@@ -89,6 +91,12 @@ export async function createTestApp(): Promise<TestApp> {
     reset: async () => {
       sms.sent.length = 0;
       await db.query('TRUNCATE otp_requests, sessions, users, admin_users CASCADE');
+      for (const c of itemCategories) {
+        await db.query(
+          `INSERT INTO item_categories (key, name_en, name_hi, examples_en, examples_hi, sort_order) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+          [c.key, c.name_en, c.name_hi, c.examples_en, c.examples_hi, c.sort_order],
+        );
+      }
     },
     login: async (phone, appName = 'customer', status = 200) => {
       // Each login from its own IP, so tests with many users do not hit the per-IP limit.

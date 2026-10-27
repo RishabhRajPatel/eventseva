@@ -22,6 +22,9 @@ const GROUPS: [string, string[]][] = [
   ['Catalogue', ['cities', 'categories']],
   ['Vendors', ['vendors', 'vendor_documents', 'vendor_bank_accounts', 'services', 'packages', 'media', 'availability']],
   ['Events and bookings', ['events', 'bookings', 'reviews', 'shortlists']],
+  ['Booking engine: resources, holds and changes', ['resources', 'reservations', 'capacity_holds', 'service_addons', 'booking_addons', 'booking_inspections',
+    'booking_charges', 'booking_changes', 'booking_events', 'customer_licences']],
+  ['Rental stock', ['item_categories', 'inventory_items', 'booking_lines', 'inventory_movements']],
   ['Money', ['payments', 'refunds', 'payouts', 'coupons', 'coupon_redemptions', 'featured_plans', 'featured_purchases']],
   ['Messages, notifications and support', ['conversations', 'messages', 'notifications', 'complaints', 'admin_audit_log', 'system_alerts']],
 ];
