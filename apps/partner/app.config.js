@@ -14,6 +14,8 @@ module.exports = ({ config }) => {
     plugins: [
       ...(config.plugins ?? []),
       ['expo-notifications', { icon: './assets/notification-icon.png', color: '#312E81', defaultChannel: 'bookings' }],
+      // Plays vendor videos full screen in the photo viewer.
+      'expo-video',
     ],
   };
 };

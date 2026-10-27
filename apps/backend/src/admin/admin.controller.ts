@@ -9,7 +9,7 @@ import { Db } from '../db/db.service';
 import { loadVendor } from '../vendors/vendor.queries';
 import { Admin, AdminContext, AdminGuard, AdminRoles, ADMIN_TTL_SEC, signAdminToken } from './admin-auth';
 import { hashPassword, verifyPassword } from './password';
-import { verifyTotp } from './totp';
+import { totpStep } from './totp';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
 import { BookingsService } from '../bookings/bookings.service';
@@ -82,9 +82,11 @@ export class AdminController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() body: AdminLoginDto) {
-    const admin = await this.db.one<{ id: string; email: string; role: string; password_hash: string; totp_secret: string; locked: boolean }>(
+    const admin = await this.db.one<{
+      id: string; email: string; role: string; password_hash: string; totp_secret: string; totp_last_step: string | null; locked: boolean;
+    }>(
       this.db,
-      `SELECT id, email, role, password_hash, totp_secret, locked_until > now() AS locked
+      `SELECT id, email, role, password_hash, totp_secret, totp_last_step, locked_until > now() AS locked
          FROM admin_users WHERE email = $1 AND is_active`,
       [body.email.trim().toLowerCase()],
     );
@@ -94,7 +96,10 @@ export class AdminController {
     const hash = admin?.password_hash ?? (await (this.dummyHash ??= hashPassword('dummy-password')));
     const passwordOk = await verifyPassword(body.password, hash);
     // One message for every failure, so the response does not reveal which part was wrong.
-    if (!admin || !passwordOk || !verifyTotp(admin.totp_secret, body.totp)) {
+    // A code works once: a step at or before the last accepted one is refused (replayed or shoulder-surfed).
+    const step = admin ? totpStep(admin.totp_secret, body.totp) : null;
+    const freshStep = step !== null && (admin!.totp_last_step === null || step > Number(admin!.totp_last_step));
+    if (!admin || !passwordOk || !freshStep) {
       if (admin) {
         await this.db.query(
           `UPDATE admin_users SET
@@ -106,7 +111,13 @@ export class AdminController {
       }
       throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
     }
-    await this.db.query('UPDATE admin_users SET failed_logins = 0, locked_until = NULL WHERE id = $1', [admin.id]);
+    // Only one login can claim a step, even when two arrive at the same moment.
+    const claimed = await this.db.query(
+      `UPDATE admin_users SET failed_logins = 0, locked_until = NULL, totp_last_step = $2
+        WHERE id = $1 AND (totp_last_step IS NULL OR totp_last_step < $2)`,
+      [admin.id, step],
+    );
+    if (!claimed.rowCount) throw new AppError('ADMIN_LOGIN_FAILED', 'Email, password or 2FA code is wrong.', HttpStatus.UNAUTHORIZED);
     return {
       accessToken: signAdminToken(this.config, admin.id),
       expiresInSec: ADMIN_TTL_SEC,

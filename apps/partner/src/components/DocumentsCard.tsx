@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,9 +9,10 @@ import type { DocType, VendorDocument } from '@eventseva/app-shared';
 import { errorCode, errorText } from '../lib/errors';
 import { keys, useDocuments } from '../lib/queries';
 import { toast } from '../lib/toast';
-import { uploadDocument, type UploadStage } from '../lib/upload';
+import { uploadDocument, type PickedFile, type UploadStage } from '../lib/upload';
 import { c, radius, space } from '../lib/theme';
 import { toPicked } from '../hooks/usePhotoUpload';
+import { ActionSheet } from './ActionSheet';
 import { Button } from './Button';
 import { Card } from './Card';
 import { Pill, type Tone } from './Chip';
@@ -24,6 +26,22 @@ const DOCS: Array<{ type: DocType; required: boolean }> = [
   { type: 'gst', required: false },
   { type: 'shop_photo', required: false },
 ];
+/** A shop photo must be a photo; the cards can also be a PDF (e-Aadhaar, e-PAN, GST certificate). */
+const PDF_ALLOWED: DocType[] = ['aadhaar', 'pan', 'gst'];
+
+/** A PDF from the phone's files, in the shape the uploader takes. */
+export async function pickPdf(): Promise<PickedFile | null> {
+  const res = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true, multiple: false });
+  if (res.canceled || !res.assets?.length) return null;
+  const a = res.assets[0];
+  return { uri: a.uri, type: 'photo', width: 0, height: 0, fileSize: a.size ?? null, mimeType: a.mimeType ?? 'application/pdf', fileName: a.name };
+}
+
+async function pickPhoto(): Promise<PickedFile | null> {
+  const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
+  return result.canceled || !result.assets.length ? null : toPicked(result.assets[0]);
+}
+
 const TONE: Record<VendorDocument['status'], Tone> = { pending: 'warning', approved: 'success', rejected: 'danger' };
 
 export const isValidLast4 = (v: string) => /^\d{4}$/.test(v);
@@ -37,27 +55,28 @@ interface Active {
 /**
  * Verification documents (VendorDocs board). Files are private: only EventSeva verifiers can open them.
  * The photo is resized on the phone like work photos, uploads with a progress bar and can be cancelled.
- * (PDFs are not offered: there is no document picker in the app.)
+ * Aadhaar, PAN and GST can also be a PDF (sent as is, up to 10 MB).
  */
 export function DocumentsCard() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const documents = useDocuments();
   const [askLast4, setAskLast4] = useState(false);
+  const [choose, setChoose] = useState<{ type: DocType; last4?: string } | null>(null);
   const [active, setActive] = useState<Active | null>(null);
   const [failed, setFailed] = useState<Partial<Record<DocType, string>>>({});
   const controller = useRef<AbortController | null>(null);
 
-  async function upload(type: DocType, last4?: string) {
+  async function upload(type: DocType, last4: string | undefined, source: 'photo' | 'pdf') {
     if (controller.current) return;
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
-    if (result.canceled || !result.assets.length) return;
+    const file = source === 'pdf' ? await pickPdf() : await pickPhoto();
+    if (!file) return;
     const abort = new AbortController();
     controller.current = abort;
     setFailed((f) => ({ ...f, [type]: undefined }));
     setActive({ type, stage: 'preparing', progress: 0 });
     try {
-      await uploadDocument(toPicked(result.assets[0]), type, last4, {
+      await uploadDocument(file, type, last4, {
         signal: abort.signal,
         onStage: (stage) => setActive((a) => (a ? { ...a, stage } : a)),
         onProgress: (progress) => setActive((a) => (a && Math.round(a.progress * 100) !== Math.round(progress * 100) ? { ...a, progress } : a)),
@@ -77,7 +96,9 @@ export function DocumentsCard() {
   }
 
   const byType = new Map((documents.data ?? []).map((d) => [d.docType, d]));
-  const start = (type: DocType) => (type === 'aadhaar' ? setAskLast4(true) : upload(type));
+  /** Photo or PDF? Shop photos skip the question. */
+  const pickSource = (type: DocType, last4?: string) => (PDF_ALLOWED.includes(type) ? setChoose({ type, last4 }) : upload(type, last4, 'photo'));
+  const start = (type: DocType) => (type === 'aadhaar' ? setAskLast4(true) : pickSource(type));
 
   return (
     <View style={{ gap: space.md }} testID="documents">
@@ -152,8 +173,18 @@ export function DocumentsCard() {
         onClose={() => setAskLast4(false)}
         onDone={(last4) => {
           setAskLast4(false);
-          void upload('aadhaar', last4);
+          pickSource('aadhaar', last4);
         }}
+      />
+      <ActionSheet
+        visible={!!choose}
+        title={choose ? t('docs.sourceTitle', { doc: t(`docs.${choose.type}`) }) : ''}
+        message={t('docs.sourceNote')}
+        onClose={() => setChoose(null)}
+        actions={[
+          { label: t('docs.fromPhotos'), icon: 'image', testID: 'doc-source-photo', onPress: () => choose && (setChoose(null), void upload(choose.type, choose.last4, 'photo')) },
+          { label: t('docs.fromPdf'), icon: 'file', testID: 'doc-source-pdf', onPress: () => choose && (setChoose(null), void upload(choose.type, choose.last4, 'pdf')) },
+        ]}
       />
     </View>
   );

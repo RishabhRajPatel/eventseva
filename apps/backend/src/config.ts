@@ -23,6 +23,8 @@ export interface AppConfig {
   razorpayWebhookSecret?: string;
   /** How often expired requests and finished events are processed; 0 turns it off (tests). */
   bookingSweepSec: number;
+  /** Postgres connections per API server (DB_POOL_MAX). */
+  dbPoolMax: number;
   /** From CLOUDINARY_URL (cloudinary://key:secret@cloud); unset = uploads switched off. */
   cloudinary?: { cloudName: string; apiKey: string; apiSecret: string };
   /** 32-byte key for bank account numbers (BANK_DETAILS_KEY, base64). */
@@ -50,7 +52,7 @@ export interface AppConfig {
 function positiveInt(value: string | undefined, fallback: number): number {
   if (value === undefined || value === '') return fallback;
   const n = Number(value);
-  if (!Number.isInteger(n) || n < 1) throw new Error(`OTP limits and the SMS budget must be whole numbers of 1 or more (got "${value}")`);
+  if (!Number.isInteger(n) || n < 1) throw new Error(`Number settings in .env (OTP limits, SMS budget, DB_POOL_MAX) must be whole numbers of 1 or more (got "${value}")`);
   return n;
 }
 
@@ -116,6 +118,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     razorpayKeySecret: env.RAZORPAY_KEY_SECRET || undefined,
     razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET || undefined,
     bookingSweepSec: Number(env.BOOKING_SWEEP_SEC ?? 60),
+    dbPoolMax: positiveInt(env.DB_POOL_MAX, 10),
     cloudinary: parseCloudinaryUrl(env.CLOUDINARY_URL),
     bankDetailsKey,
     firebase: parseServiceAccount(env.FIREBASE_SERVICE_ACCOUNT),

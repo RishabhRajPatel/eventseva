@@ -172,18 +172,24 @@ describe('vendor onboarding and approval', () => {
         await hashPassword('right password 1'),
         secret,
       ]);
-      const login = (password: string) =>
-        t.http().post('/v1/admin/login').send({ email: 'lock@eventseva.test', password, totp: totpAt(secret) });
+      const login = (password: string, totp = totpAt(secret)) =>
+        t.http().post('/v1/admin/login').send({ email: 'lock@eventseva.test', password, totp });
 
       for (let i = 0; i < 4; i++) await login('wrong password').expect(401);
-      const ok = (await login('right password 1').expect(200)).body; // success resets the count
+      const usedCode = totpAt(secret);
+      const ok = (await login('right password 1', usedCode).expect(200)).body; // success resets the count
       for (let i = 0; i < 5; i++) await login('wrong password').expect(401);
       expect((await login('right password 1').expect(429)).body.error.code).toBe('ADMIN_LOCKED');
       await t.db.query(`UPDATE admin_users SET locked_until = now() - interval '1 second'`);
+      // The 2FA code from the first login cannot be used again …
+      expect((await login('right password 1', usedCode).expect(401)).body.error.code).toBe('ADMIN_LOGIN_FAILED');
+      // … a newer one can (as if 30 seconds had passed).
+      await t.db.query(`UPDATE admin_users SET totp_last_step = totp_last_step - 2, locked_until = NULL, failed_logins = 0`);
       await login('right password 1').expect(200);
 
       await t.http().post('/v1/admin/logout').set('Authorization', `Bearer ${ok.accessToken}`).expect(204);
       await t.http().get('/v1/admin/me').set('Authorization', `Bearer ${ok.accessToken}`).expect(401);
+      await t.db.query(`UPDATE admin_users SET totp_last_step = totp_last_step - 2`);
       const fresh = (await login('right password 1').expect(200)).body;
       await t.http().get('/v1/admin/me').set('Authorization', `Bearer ${fresh.accessToken}`).expect(200);
     });

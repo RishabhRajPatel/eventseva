@@ -153,5 +153,11 @@ export function useMediaActions(media: Media[]) {
   );
 
   const visible = useMemo(() => media.filter((m) => !hidden.has(m.id)), [media, hidden]);
-  return { visible, remove, makeCover: (id: string) => makeCover.mutate(id), move };
+  /** Saves a whole new order (from drag to re-order). */
+  const setOrder = useCallback(
+    (ids: string[]) =>
+      reorder.mutate(ids, { onSuccess: () => toast.success(t('photos.orderSaved')) }),
+    [reorder, t],
+  );
+  return { visible, remove, makeCover: (id: string) => makeCover.mutate(id), move, setOrder };
 }

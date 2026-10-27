@@ -27,6 +27,7 @@ import { monthOf } from '../../../components/DatePicker';
 import { VendorPageSkeleton } from '../../../components/Skeleton';
 import { EmptyState, ErrorState } from '../../../components/States';
 import { VendorImage } from '../../../components/VendorImage';
+import { VideoModal, VideoTiles } from '../../../components/VideoPlayer';
 
 export default function VendorScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,6 +58,8 @@ export default function VendorScreen() {
 
   const items = useMemo(() => (vendor.data ? vendorItems(vendor.data) : []), [vendor.data]);
   const photos = useMemo(() => (vendor.data?.media ?? []).filter((m: Media) => m.type === 'photo'), [vendor.data]);
+  const videos = useMemo(() => (vendor.data?.media ?? []).filter((m: Media) => m.type === 'video'), [vendor.data]);
+  const [playing, setPlaying] = useState<Media | null>(null);
   const allReviews = useMemo(() => reviews.data?.pages.flatMap((p) => p.items) ?? [], [reviews.data]);
   const selected = items.find((i) => itemKey(i) === selectedKey) ?? items[0];
   const heroHeight = isTablet ? 360 : 220;
@@ -160,6 +163,13 @@ export default function VendorScreen() {
             </Pressable>
           ) : null}
 
+          {videos.length ? (
+            <View style={styles.section}>
+              <SectionTitle title={t('vendor.videos')} />
+              <VideoTiles videos={videos} onOpen={setPlaying} />
+            </View>
+          ) : null}
+
           {items.length === 0 ? <Notice icon="alert">{t('vendor.noItems')}</Notice> : null}
           {packages.length ? (
             <View style={styles.section} accessibilityRole="radiogroup">
@@ -214,6 +224,8 @@ export default function VendorScreen() {
           )
         }
       />
+
+      {playing ? <VideoModal media={playing} onClose={() => setPlaying(null)} /> : null}
 
       <SafeAreaView edges={['bottom']} style={[styles.footer, { paddingHorizontal: gutter }]}>
         {chat.error ? (

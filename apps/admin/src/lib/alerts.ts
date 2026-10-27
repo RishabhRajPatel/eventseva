@@ -87,12 +87,25 @@ export const ALERT_GUIDES: Record<string, AlertGuide> = {
     severity: 'danger',
     whatToDo: `Existing users can still log in. ${CHECK_USERS} ${RAISE_BUDGET}`,
   },
+  refund_failed: {
+    title: 'A refund could not be sent',
+    severity: 'danger',
+    whatToDo:
+      'Open the booking and check the payment in the Razorpay dashboard. If no refund is there, refund it by hand in Razorpay, then mark this resolved.',
+  },
   sms_budget_hard_stop: {
     title: 'All login codes stopped',
     severity: 'danger',
     whatToDo: `Nobody can log in to the apps until the 24-hour count drops. ${CHECK_USERS} ${RAISE_BUDGET}`,
   },
 };
+
+/** Where the alert's "open" button goes: the booking for a failed refund, Users for SMS alerts. */
+export function alertLink(a: Pick<SystemAlert, 'kind' | 'data'>): { href: string; label: string; page: 'bookings' | 'users' } {
+  const bookingId = typeof a.data?.bookingId === 'string' ? a.data.bookingId : null;
+  if (a.kind === 'refund_failed' && bookingId) return { href: `/bookings/${bookingId}`, label: 'Open booking', page: 'bookings' };
+  return { href: '/users', label: 'Open Users', page: 'users' };
+}
 
 /** The guide for an alert kind; a kind added on the backend later still gets a sensible line. */
 export function alertGuide(kind: string): AlertGuide {

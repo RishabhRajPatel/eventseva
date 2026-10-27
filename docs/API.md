@@ -23,6 +23,9 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   - **Money** is integer **paise** (₹1 = 100). Never send amounts for bookings; the server prices them.
   - **Days** are `YYYY-MM-DD` India dates. Timestamps are ISO strings.
 - **Paging:** `?page=N` returns `{items, page, hasMore}`, 20 per page unless noted.
+- **Caching:** public GETs send `Cache-Control: public` (cities and categories 5 min; vendor search and
+  vendor page 30 s; reviews and offers 1 min) with `Vary: Accept-Language` and an ETag, so repeat fetches are
+  tiny 304s. Answers over 1 KB are gzipped.
 - **Images:**
   - Media come as Cloudinary `publicId` with `width`, `height` and `blurhash`. Build URLs with
     `cardImage / wideImage / zoomImage / videoPoster / videoStream` from app-shared.
@@ -122,6 +125,11 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
     `EXPO_PUBLIC_PAYMENTS=dev`, show a "Test payment" button that calls `pay/dev`.
 - **Cancel refunds:** before payment, nothing to refund. After payment the advance is refunded by days to the
   event: 15+ days 90%, 7–14 days 50%, under 7 days 0%. If the vendor cancels, the refund is 100%.
+  - **Refunds are queued:** they are saved with the cancellation and sent to Razorpay right after it,
+    retried for about a day if Razorpay is down (never twice: each refund carries its queue id in
+    `notes.refund_ref`). After 8 failed tries the team gets a `refund_failed` system alert.
+  - **The vendor's share of a late cancellation:** the part of the advance the customer does not get back,
+    minus EventSeva's commission, is paid to the vendor on the normal schedule after the original event day.
 
 **Booking statuses and what the customer sees**
 
@@ -195,7 +203,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/partner/media` | `{items: Media[], limits: {photos: 30, videos: 5}}` |
 | `POST /v1/partner/media` | `{publicId, version, signature, type, width, height, bytes, etag, durationSec?, blurhash?}` (from Cloudinary's response) → `Media` (pending) |
 | `DELETE /v1/partner/media/:id` · `POST /v1/partner/media/:id/cover` · `PUT /v1/partner/media/order {ids}` | |
-| `GET /v1/partner/documents` · `POST /v1/partner/documents` | `{publicId, version, signature, docType: aadhaar\|pan\|gst\|shop_photo, format, last4?}`; Aadhaar needs `last4` |
+| `GET /v1/partner/documents` · `POST /v1/partner/documents` | `{publicId, version, signature, docType: aadhaar\|pan\|gst\|shop_photo, format, last4?}`; Aadhaar needs `last4`. `format` is `jpg`, `jpeg`, `png` or `pdf` (a PDF is uploaded as is, up to 10 MB) |
 
 - **Upload steps:**
   1. Call `sign`.
@@ -226,7 +234,8 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 
 - **Login:** `POST /v1/admin/login {email, password, totp}` → `{accessToken, expiresInSec, admin{id, email, role}}`.
   Any wrong part returns `ADMIN_LOGIN_FAILED` 401. After 5 wrong attempts the account is locked for 15 min
-  (`ADMIN_LOCKED` 429). `POST /v1/admin/logout` (204) ends every token already issued to that admin.
+  (`ADMIN_LOCKED` 429). Each 2FA code works only once: a code (or an older one) that already logged in is
+  refused. `POST /v1/admin/logout` (204) ends every token already issued to that admin.
   Create admins with `pnpm --filter @eventseva/backend create-admin`.
 - **Roles:**
   - `super`: everything.
@@ -243,7 +252,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/admin/vendors/:id` | verifier, support | full vendor + `owner{phone}` + `history[]` + all media + `documents[]` (`viewUrl` for verifier/super only, valid 10 min) |
 | `POST /v1/admin/documents/:id/approve` · `/reject {reason}` | verifier | ID document review |
 | `POST /v1/admin/vendors/:id/approve` · `/reject {reason}` · `/hold {reason}` | verifier | `VENDOR_BAD_STATUS` 409. `/hold` closes the vendor's open requests and returns `closedBookings` and `confirmedBookings` (customers to call) |
-| `GET /v1/admin/bookings?status=&q=&page=` · `GET /v1/admin/bookings/:id` | support, finance | `q` matches vendor name, phone or booking id; detail has `payments[]` and `payout` |
+| `GET /v1/admin/bookings?status=&q=&page=` · `GET /v1/admin/bookings/:id` | support, finance | `q` matches vendor name, phone or booking id; detail has `payments[]`, `refunds[]` (the refund queue: `status` pending / sending / sent / failed, `attempts`, `lastError`) and `payout` |
 | `GET /v1/admin/payouts?status=&due=true&page=` | finance | each payout has `bankStatus` (`null` = no bank account) |
 | `GET /v1/admin/vendors/:id/bank-account` | finance | full account number; each view is audit-logged |
 | `POST /v1/admin/vendors/:id/bank-account/verify` · `/reject {reason}` | finance | the vendor is notified |

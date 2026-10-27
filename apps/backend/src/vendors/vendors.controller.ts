@@ -5,6 +5,7 @@ import { AppError } from '../common/errors';
 import { Db } from '../db/db.service';
 import { pickLanguage } from '../catalog/catalog.controller';
 import { loadVendor } from './vendor.queries';
+import { PublicCache } from '../common/cache';
 
 class VendorSearchQuery {
   @IsOptional() @IsString() @MaxLength(40) category?: string;
@@ -24,6 +25,7 @@ class MonthQuery {
 export class VendorsController {
   constructor(private readonly db: Db) {}
 
+  @PublicCache(30)
   @Get()
   async list(@Query() query: VendorSearchQuery, @Headers('accept-language') acceptLanguage?: string) {
     const lang = pickLanguage(acceptLanguage);
@@ -67,6 +69,7 @@ export class VendorsController {
     return { month: query.month, busy: rows };
   }
 
+  @PublicCache(30)
   @Get(':id')
   async get(@Param('id', ParseUUIDPipe) id: string, @Headers('accept-language') acceptLanguage?: string) {
     const v = await loadVendor(this.db, id, pickLanguage(acceptLanguage), 'public');

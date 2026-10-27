@@ -1,5 +1,5 @@
 import { PixelRatio } from 'react-native';
-import { cardImage, videoPoster, wideImage, type Media } from '@eventseva/app-shared';
+import { cardImage, videoPoster, videoStream, wideImage, type Media } from '@eventseva/app-shared';
 import { CLOUDINARY_CLOUD_NAME } from './config';
 
 /** URL for a square/card thumbnail, or null when Cloudinary is not set up yet. */
@@ -12,6 +12,11 @@ export function thumbUrl(m: Pick<Media, 'publicId'> & { type?: Media['type'] }, 
 export function wideUrl(m: Pick<Media, 'publicId'>, width: number): string | null {
   if (!CLOUDINARY_CLOUD_NAME) return null;
   return wideImage(CLOUDINARY_CLOUD_NAME, m.publicId, width, PixelRatio.get());
+}
+
+/** Adaptive stream for playing a video, or null when Cloudinary is not set up yet. */
+export function streamUrl(m: Pick<Media, 'publicId'>): string | null {
+  return CLOUDINARY_CLOUD_NAME ? videoStream(CLOUDINARY_CLOUD_NAME, m.publicId) : null;
 }
 
 export const coverOf = (media: Media[]) => media.find((m) => m.isCover && m.type === 'photo') ?? media.find((m) => m.type === 'photo') ?? null;

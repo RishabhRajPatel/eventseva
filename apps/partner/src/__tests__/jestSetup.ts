@@ -10,3 +10,16 @@ afterEach(async () => {
     (require('../lib/uploadQueue') as typeof import('../lib/uploadQueue')).mediaUploads.clear();
   });
 });
+
+// expo-video is native-only: a stand-in player that records what it was asked to do.
+jest.mock('expo-video', () => {
+  const { View } = require('react-native');
+  return {
+    useVideoPlayer: (source: unknown, setup?: (p: object) => void) => {
+      const player = { source, loop: true, play: jest.fn(), pause: jest.fn() };
+      setup?.(player);
+      return player;
+    },
+    VideoView: (props: object) => require('react').createElement(View, props),
+  };
+});

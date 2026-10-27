@@ -11,10 +11,11 @@ import { useMediaActions } from '../hooks/useMediaActions';
 import { usePhotoUpload } from '../hooks/usePhotoUpload';
 import { useIsTablet } from '../hooks/useIsTablet';
 import { ActionSheet, type SheetAction } from '../components/ActionSheet';
-import { Button } from '../components/Button';
+import { Button, LinkButton } from '../components/Button';
 import { Card, CardHeader, Row } from '../components/Card';
 import { Icon } from '../components/Icon';
 import { MediaGrid } from '../components/MediaGrid';
+import { ReorderGrid } from '../components/ReorderGrid';
 import { MediaViewer } from '../components/MediaViewer';
 import { Notice } from '../components/Notice';
 import { Screen } from '../components/Screen';
@@ -45,6 +46,9 @@ function Photos({ page }: { page: MediaPage }) {
   const upload = usePhotoUpload({ media, limits: page.limits });
   const [viewing, setViewing] = useState<Media | null>(null);
   const [sheetFor, setSheetFor] = useState<Media | null>(null);
+  const [reordering, setReordering] = useState(false);
+  // Only finished files can be re-ordered (uploads in progress have no place yet).
+  const sortable = media.filter((m) => m.status !== 'rejected');
   const cover = coverOf(media);
   const coverUrl = cover ? wideUrl(cover, Math.min(width, 760)) : null;
   const rejected = media.filter((m) => m.status === 'rejected');
@@ -105,19 +109,35 @@ function Photos({ page }: { page: MediaPage }) {
             </Txt>
           }
         />
-        <MediaGrid
-          media={media}
-          uploads={upload.items}
-          columns={tablet ? 6 : 3}
-          onAdd={editable ? () => void upload.pick() : undefined}
-          canAdd={upload.canAdd}
-          onOpen={setViewing}
-          onMore={editable ? openOptions : undefined}
-          selectedId={sheetFor?.id}
-          onCancelUpload={upload.cancel}
-          onRetryUpload={upload.retry}
-          onDismissUpload={upload.dismiss}
-        />
+        {reordering ? (
+          <ReorderGrid
+            media={sortable}
+            columns={tablet ? 6 : 3}
+            onCancel={() => setReordering(false)}
+            onSave={(ids) => {
+              setReordering(false);
+              // Rejected files keep their place at the end.
+              actions.setOrder([...ids, ...media.filter((m) => m.status === 'rejected').map((m) => m.id)]);
+            }}
+          />
+        ) : (
+          <MediaGrid
+            media={media}
+            uploads={upload.items}
+            columns={tablet ? 6 : 3}
+            onAdd={editable ? () => void upload.pick() : undefined}
+            canAdd={upload.canAdd}
+            onOpen={setViewing}
+            onMore={editable ? openOptions : undefined}
+            selectedId={sheetFor?.id}
+            onCancelUpload={upload.cancel}
+            onRetryUpload={upload.retry}
+            onDismissUpload={upload.dismiss}
+          />
+        )}
+        {editable && !reordering && sortable.length > 1 && !upload.busy ? (
+          <LinkButton testID="start-reorder" label={t('photos.reorder')} onPress={() => setReordering(true)} />
+        ) : null}
         <Txt size="xs" color={c.textMuted} style={{ lineHeight: 17 }}>
           {t('photos.guidelines')} {t('photos.reviewNote')} {editable ? t('photos.tapHint') : ''}
         </Txt>

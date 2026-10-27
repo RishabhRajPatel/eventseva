@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsIn,
   IsInt,
@@ -54,7 +55,7 @@ class RegisterDocumentDto extends UploadedDto {
 }
 
 class OrderDto {
-  @IsArray() @ArrayMaxSize(MAX_PHOTOS + MAX_VIDEOS) @IsUUID('all', { each: true }) ids: string[];
+  @IsArray() @ArrayMaxSize(MAX_PHOTOS + MAX_VIDEOS) @ArrayUnique() @IsUUID('all', { each: true }) ids: string[];
 }
 
 const MEDIA_COLUMNS = `id, type, public_id AS "publicId", width, height, duration_sec AS "durationSec", blurhash,
@@ -186,8 +187,10 @@ export class MediaController {
   async order(@Auth() auth: AuthContext, @Body() body: OrderDto) {
     const vendorId = await this.vendorId(this.db, auth.userId);
     await this.db.query(
-      `UPDATE media m SET sort_order = o.pos FROM unnest($2::uuid[]) WITH ORDINALITY AS o(id, pos)
-        WHERE m.id = o.id AND m.vendor_id = $1`,
+      // Files not in the list (e.g. one that finished uploading meanwhile) go after the listed ones.
+      `UPDATE media m SET sort_order = COALESCE(o.pos, array_length($2::uuid[], 1) + m.sort_order + 1)
+         FROM media x LEFT JOIN unnest($2::uuid[]) WITH ORDINALITY AS o(id, pos) ON o.id = x.id
+        WHERE m.id = x.id AND m.vendor_id = $1`,
       [vendorId, body.ids],
     );
   }

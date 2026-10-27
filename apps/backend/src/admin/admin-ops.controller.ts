@@ -201,6 +201,12 @@ export class AdminOpsController {
          FROM payouts WHERE booking_id = $1`,
       [id],
     );
+    const refunds = await this.db.query(
+      `SELECT id, amount_paise AS "amountPaise", reason, status, attempts, last_error AS "lastError",
+              razorpay_refund_id AS "refundId", created_at AS "createdAt", sent_at AS "sentAt"
+         FROM refunds WHERE booking_id = $1 ORDER BY created_at`,
+      [id],
+    );
     return {
       id: b.id,
       status: b.status,
@@ -220,6 +226,8 @@ export class AdminOpsController {
       customer: { id: b.customer_id, name: b.customer_name, phone: b.customer_phone },
       createdAt: b.created_at,
       payments: payments.rows,
+      /** The refund queue: pending / sending ones are still on their way to Razorpay. */
+      refunds: refunds.rows,
       payout: payout ?? null,
     };
   }

@@ -489,7 +489,7 @@
     "previous": "Previous",
     "next": "Next",
     "coverLabel": "Cover photo. Tap to see it full screen.",
-    "videoPreviewNote": "This is the first frame of the video. Customers can play the whole video on your profile.",
+    "videoPreviewNote": "Tap play to watch the video. Customers see it on your profile once it is approved.",
     "deletePhoto": "Delete photo",
     "deleteVideo": "Delete video",
     "deleteVideoTitle": "Delete this video?",
@@ -499,7 +499,13 @@
     "photoDeleted": "Photo deleted",
     "videoDeleted": "Video deleted",
     "deleteFailed": "Couldn't delete it, so it is back in your photos. {{reason}}",
-    "coverChanged": "Cover photo changed. Customers see it first."
+    "coverChanged": "Cover photo changed. Customers see it first.",
+    "playVideo": "Play video",
+    "reorder": "Change the order",
+    "reorderHint": "Hold a photo and drag it to a new place. The first photos are what customers see first.",
+    "reorderItem": "{{kind}} {{n}} of {{total}}",
+    "saveOrder": "Save order",
+    "orderSaved": "New order saved."
   },
   "docs": {
     "title": "Documents",
@@ -522,9 +528,13 @@
     "last4Title": "Last 4 digits of Aadhaar",
     "last4Label": "Last 4 digits",
     "last4Error": "Enter exactly 4 digits.",
-    "chooseFile": "Choose Aadhaar photo",
+    "chooseFile": "Continue",
     "uploaded": "{{doc}} uploaded. The team checks it within 24–48 hours.",
-    "uploadFailed": "{{doc}} was not uploaded. The reason is shown on its card."
+    "uploadFailed": "{{doc}} was not uploaded. The reason is shown on its card.",
+    "sourceTitle": "Add {{doc}}",
+    "sourceNote": "Use a clear photo with all 4 corners visible, or the PDF you downloaded (e-Aadhaar, e-PAN, GST certificate). Up to 10 MB.",
+    "fromPhotos": "Photo from gallery",
+    "fromPdf": "PDF file"
   },
   "bank": {
     "title": "Bank account",

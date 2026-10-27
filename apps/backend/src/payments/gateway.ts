@@ -14,7 +14,10 @@ export interface PaymentGateway {
   verifyPayment(orderId: string, paymentId: string, signature: string): boolean;
   /** Checks a webhook call really came from the provider. */
   verifyWebhook(rawBody: Buffer, signature: string): boolean;
+  /** `notes.refund_ref` is our refunds row id, so a retry can find a refund that already went through. */
   refund(paymentId: string, amountPaise: number, notes: Record<string, string>): Promise<{ refundId: string }>;
+  /** The refund made earlier for this payment with `notes.refund_ref = ref`, if any. */
+  findRefund(paymentId: string, ref: string): Promise<{ refundId: string } | null>;
 }
 
 const hmacHex = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest('hex');
@@ -38,11 +41,13 @@ export class RazorpayGateway implements PaymentGateway {
     this.auth = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
   }
 
-  private async call<T>(path: string, body: object): Promise<T> {
+  private async call<T>(path: string, body?: object): Promise<T> {
     const res = await fetch(`https://api.razorpay.com/v1${path}`, {
-      method: 'POST',
+      method: body ? 'POST' : 'GET',
       headers: { Authorization: this.auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: body ? JSON.stringify(body) : undefined,
+      // A hung connection must not hold a refund or order forever.
+      signal: AbortSignal.timeout(15_000),
     });
     const json = (await res.json().catch(() => ({}))) as T & { error?: { description?: string } };
     if (!res.ok) {
@@ -72,6 +77,14 @@ export class RazorpayGateway implements PaymentGateway {
     });
     return { refundId: refund.id };
   }
+
+  async findRefund(paymentId: string, ref: string) {
+    const list = await this.call<{ items: { id: string; notes?: Record<string, string> }[] }>(
+      `/payments/${encodeURIComponent(paymentId)}/refunds?count=100`,
+    );
+    const hit = list.items.find((r) => r.notes?.refund_ref === ref);
+    return hit ? { refundId: hit.id } : null;
+  }
 }
 
 /**
@@ -82,6 +95,11 @@ export class FakeGateway implements PaymentGateway {
   static readonly SECRET = 'fake-payment-secret';
   readonly keyId = 'rzp_test_fake';
   readonly refunds: { paymentId: string; amountPaise: number }[] = [];
+  private readonly refs = new Map<string, string>();
+  /** Tests: how many of the next refund calls fail. */
+  failRefunds = 0;
+  /** Tests: the refund goes through at the provider but the reply is lost. */
+  loseNextRefundReply = false;
 
   static sign(orderId: string, paymentId: string) {
     return hmacHex(FakeGateway.SECRET, `${orderId}|${paymentId}`);
@@ -103,9 +121,24 @@ export class FakeGateway implements PaymentGateway {
     return sameHex(hmacHex(FakeGateway.SECRET, rawBody), signature);
   }
 
-  async refund(paymentId: string, amountPaise: number) {
+  async refund(paymentId: string, amountPaise: number, notes: Record<string, string> = {}) {
+    if (this.failRefunds > 0) {
+      this.failRefunds--;
+      throw new AppError('PAYMENT_PROVIDER_ERROR', 'Payment service is not responding. Please try again.', HttpStatus.BAD_GATEWAY);
+    }
     this.refunds.push({ paymentId, amountPaise });
-    return { refundId: `rfnd_fake_${randomBytes(8).toString('hex')}` };
+    const refundId = `rfnd_fake_${randomBytes(8).toString('hex')}`;
+    if (notes.refund_ref) this.refs.set(`${paymentId}|${notes.refund_ref}`, refundId);
+    if (this.loseNextRefundReply) {
+      this.loseNextRefundReply = false;
+      throw new Error('socket hang up');
+    }
+    return { refundId };
+  }
+
+  async findRefund(paymentId: string, ref: string) {
+    const refundId = this.refs.get(`${paymentId}|${ref}`);
+    return refundId ? { refundId } : null;
   }
 }
 

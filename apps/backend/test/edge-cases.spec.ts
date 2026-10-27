@@ -1,7 +1,8 @@
 import { eventStart, payByFor, respondByFor, todayIst } from '../src/bookings/booking.rules';
 import { maskPhones } from '../src/chat/chat.controller';
 import { TrimBodyPipe } from '../src/common/trim.pipe';
-import { FakeGateway } from '../src/payments/gateway';
+import { FakeGateway, PAYMENT_GATEWAY } from '../src/payments/gateway';
+import { RefundsService } from '../src/payments/refunds.service';
 import { createTestApp, TestApp } from './helpers';
 
 const inDays = (n: number) => {
@@ -88,6 +89,15 @@ describe('edge cases (API)', () => {
     customer = (await t.login('9822222222')).body.accessToken;
   });
 
+  it('public catalogue answers can be cached per language', async () => {
+    const res = await t.http().get('/v1/categories').set('Accept-Language', 'hi').expect(200);
+    expect(res.headers['cache-control']).toBe('public, max-age=300, stale-while-revalidate=3000');
+    expect(res.headers.vary).toMatch(/Accept-Language/);
+    expect(res.headers.etag).toBeTruthy();
+    // Personal answers are never marked public.
+    expect((await as(customer).get('/v1/bookings').expect(200)).headers['cache-control'] ?? '').not.toMatch(/public/);
+  });
+
   it('refuses blank reasons and titles made of spaces', async () => {
     const b = await requestDj();
     const res = await as(vendorToken).post(`/v1/partner/bookings/${b.id}/reject`, { reason: '     ' }).expect(400);
@@ -166,5 +176,89 @@ describe('edge cases (API)', () => {
     const res = await as(finance).post(`/v1/admin/bookings/${b.id}/refund`, { amountPaise: 10_000, reason: 'Goodwill', fromVendorPayout: true }).expect(409);
     expect(res.body.error.code).toBe('NO_VENDOR_PAYOUT');
     await as(finance).post(`/v1/admin/bookings/${b.id}/refund`, { amountPaise: 10_000, reason: 'Goodwill' }).expect(200);
+  });
+  describe('refund queue and late cancellations', () => {
+    let gateway: FakeGateway;
+    let refunds: RefundsService;
+    beforeAll(() => {
+      gateway = t.app.get(PAYMENT_GATEWAY);
+      refunds = t.app.get(RefundsService);
+    });
+    beforeEach(() => {
+      gateway.refunds.length = 0;
+      gateway.failRefunds = 0;
+      gateway.loseNextRefundReply = false;
+    });
+
+    const confirmed = async (daysAhead: number) => {
+      const b = await requestDj(daysAhead);
+      await as(vendorToken).post(`/v1/partner/bookings/${b.id}/accept`).expect(200);
+      const order = (await as(customer).post(`/v1/bookings/${b.id}/pay`).expect(200)).body;
+      const paymentId = `pay_${b.id.slice(0, 8)}`;
+      await as(customer).post(`/v1/bookings/${b.id}/pay/verify`, {
+        razorpayOrderId: order.orderId, razorpayPaymentId: paymentId, razorpaySignature: FakeGateway.sign(order.orderId, paymentId),
+      }).expect(200);
+      return b.id as string;
+    };
+    const refundRows = (bookingId: string) =>
+      t.db.query<{ status: string; attempts: number; razorpay_refund_id: string | null }>(
+        'SELECT status, attempts, razorpay_refund_id FROM refunds WHERE booking_id = $1', [bookingId]).then((r) => r.rows);
+    const makeDue = () => t.db.query('UPDATE refunds SET next_attempt_at = now()');
+
+    it('a Razorpay outage does not block the cancellation; the refund is retried', async () => {
+      const id = await confirmed(30);
+      gateway.failRefunds = 1;
+      const res = (await as(customer).post(`/v1/bookings/${id}/cancel`, { reason: 'Plans changed' }).expect(200)).body;
+      expect(res).toMatchObject({ status: 'cancelled_by_customer', refundPaise: 337_500 });
+      expect(gateway.refunds).toEqual([]);
+      expect(await refundRows(id)).toEqual([{ status: 'sending', attempts: 1, razorpay_refund_id: null }]);
+
+      await makeDue();
+      expect(await refunds.flush()).toBe(1);
+      expect(gateway.refunds).toEqual([{ paymentId: `pay_${id.slice(0, 8)}`, amountPaise: 337_500 }]);
+      expect((await refundRows(id))[0]).toMatchObject({ status: 'sent', attempts: 2 });
+      expect((await t.db.query(`SELECT 1 FROM payments WHERE booking_id = $1 AND type = 'refund'`, [id])).rowCount).toBe(1);
+    });
+
+    it('never refunds twice when the reply to the first attempt was lost', async () => {
+      const id = await confirmed(30);
+      gateway.loseNextRefundReply = true;
+      await as(customer).post(`/v1/bookings/${id}/cancel`, { reason: 'Plans changed' }).expect(200);
+      expect(gateway.refunds).toHaveLength(1); // the money went back, but we did not hear about it
+      await makeDue();
+      await refunds.flush();
+      expect(gateway.refunds).toHaveLength(1);
+      expect((await refundRows(id))[0].status).toBe('sent');
+    });
+
+    it('gives up after 8 tries and raises a system alert', async () => {
+      const id = await confirmed(30);
+      gateway.failRefunds = 100;
+      await as(customer).post(`/v1/bookings/${id}/cancel`, { reason: 'Plans changed' }).expect(200);
+      for (let i = 0; i < 7; i++) {
+        await makeDue();
+        await refunds.flush();
+      }
+      expect((await refundRows(id))[0]).toMatchObject({ status: 'failed', attempts: 8 });
+      const alert = await t.db.one<{ data: { bookingId: string } }>(t.db, `SELECT data FROM system_alerts WHERE kind = 'refund_failed'`);
+      expect(alert!.data.bookingId).toBe(id);
+    });
+
+    it('a late customer cancellation still pays the vendor what was kept, minus commission', async () => {
+      const id = await confirmed(3); // under 7 days: no refund
+      const res = (await as(customer).post(`/v1/bookings/${id}/cancel`, { reason: 'Plans changed' }).expect(200)).body;
+      expect(res.refundPaise).toBe(0);
+      const b = await t.db.one<{ advance_paise: number; commission_paise: number }>(t.db, 'SELECT advance_paise, commission_paise FROM bookings WHERE id = $1', [id]);
+      const payout = await t.db.one<{ amount_paise: number; status: string }>(t.db, 'SELECT amount_paise, status FROM payouts WHERE booking_id = $1', [id]);
+      expect(payout).toEqual({ amount_paise: b!.advance_paise - b!.commission_paise, status: 'scheduled' });
+
+      // An admin can still take a goodwill refund out of that payout; cutting it to ₹0 closes it.
+      const finance = await t.adminLogin('finance');
+      await as(finance).post(`/v1/admin/bookings/${id}/refund`, { amountPaise: payout!.amount_paise + 100, reason: 'Goodwill', fromVendorPayout: true }).expect(400);
+      await as(finance).post(`/v1/admin/bookings/${id}/refund`, { amountPaise: payout!.amount_paise, reason: 'Goodwill', fromVendorPayout: true }).expect(200);
+      expect(await t.db.one(t.db, 'SELECT amount_paise, status FROM payouts WHERE booking_id = $1', [id])).toEqual({ amount_paise: 0, status: 'paid' });
+      const detail = (await as(finance).get(`/v1/admin/bookings/${id}`).expect(200)).body;
+      expect(detail.refunds).toEqual([expect.objectContaining({ amountPaise: payout!.amount_paise, reason: 'admin', status: 'sent' })]);
+    });
   });
 });

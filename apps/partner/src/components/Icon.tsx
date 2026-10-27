@@ -142,6 +142,8 @@ const ICONS = {
   tent: <Path d="M2 20L12 4l10 16zM12 4v16M8.5 20L12 13l3.5 7" />,
   // Wedding & event planners: a clipboard with a tick.
   planner: <Path d="M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M9 13l2 2 4-4" />,
+  // A document file (PDF).
+  file: <Path d="M14 3H6v18h12V7zM14 3v4h4M9 13h6M9 17h6" />,
   // Upload states and the photo menu.
   retry: <Path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />,
   more: (

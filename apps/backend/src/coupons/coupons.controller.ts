@@ -10,6 +10,7 @@ import { loadBookings } from '../bookings/booking.view';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { CouponsService } from './coupons.service';
 import { describeCoupon } from './coupon.rules';
+import { PublicCache } from '../common/cache';
 
 class ApplyDto {
   @IsString() @Length(3, 20) code: string;
@@ -74,6 +75,7 @@ export class CouponsController {
   ) {}
 
   /** Public offers that can still be used (no login needed). */
+  @PublicCache(60)
   @Get('offers')
   async offers(@Headers('accept-language') acceptLanguage?: string) {
     const lang = pickLanguage(acceptLanguage);

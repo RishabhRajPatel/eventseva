@@ -72,6 +72,21 @@ export const PAYMENT_STATUS: Record<string, StatusLabel> = {
   failed: { label: 'Failed', tone: 'danger' },
 };
 
+/** Refund queue rows: "Sending" means Razorpay has not confirmed yet and it will be retried. */
+export const REFUND_STATUS: Record<string, StatusLabel> = {
+  pending: { label: 'Queued', tone: 'warning' },
+  sending: { label: 'Retrying', tone: 'warning' },
+  sent: { label: 'Sent', tone: 'success' },
+  failed: { label: 'Failed: refund by hand', tone: 'danger' },
+};
+
+export const REFUND_REASON: Record<string, string> = {
+  cancellation: 'Cancellation',
+  late_payment: 'Paid after the booking ended',
+  replaced_order: 'Duplicate payment',
+  admin: 'Admin refund',
+};
+
 /** Yes / no states drawn as pills (user blocked, coupon active, city shown …). */
 export const ON_OFF = {
   active: { label: 'Active', tone: 'success' },

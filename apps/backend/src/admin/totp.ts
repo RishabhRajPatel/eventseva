@@ -49,10 +49,17 @@ export function totpAt(secret: string, timeMs = Date.now()): string {
   return String(num).padStart(6, '0');
 }
 
-/** Accepts the current code and the one either side of it, for phone clocks that drift a little. */
-export function verifyTotp(secret: string, code: string, timeMs = Date.now()): boolean {
-  return [-1, 0, 1].some((w) => totpAt(secret, timeMs + w * STEP_SEC * 1000) === code);
+/**
+ * Accepts the current code and the one either side of it, for phone clocks that drift a little.
+ * Returns the matching time step (so the caller can refuse it next time), or null.
+ */
+export function totpStep(secret: string, code: string, timeMs = Date.now()): number | null {
+  const now = Math.floor(timeMs / 1000 / STEP_SEC);
+  for (const w of [-1, 0, 1]) if (totpAt(secret, (now + w) * STEP_SEC * 1000) === code) return now + w;
+  return null;
 }
+
+export const verifyTotp = (secret: string, code: string, timeMs = Date.now()) => totpStep(secret, code, timeMs) !== null;
 
 export const otpauthUrl = (secret: string, email: string) =>
   `otpauth://totp/EventSeva%20Admin:${encodeURIComponent(email)}?secret=${secret}&issuer=EventSeva`;

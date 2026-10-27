@@ -20,7 +20,14 @@ export class Db implements OnModuleDestroy, Queryable {
   private readonly pool: Pool;
 
   constructor(@Inject(CONFIG) config: AppConfig) {
-    this.pool = new Pool({ connectionString: config.databaseUrl, max: 10 });
+    this.pool = new Pool({
+      connectionString: config.databaseUrl,
+      max: config.dbPoolMax,
+      // A runaway query or a transaction left open must not hold connections and locks forever.
+      statement_timeout: 15_000,
+      idle_in_transaction_session_timeout: 30_000,
+      connectionTimeoutMillis: 10_000,
+    });
   }
 
   query<T extends QueryResultRow = any>(text: string, params?: unknown[]) {

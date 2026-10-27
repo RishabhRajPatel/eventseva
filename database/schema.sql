@@ -6,6 +6,18 @@
 --
 
 --
+-- Name: pg_trgm; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
+
+--
+-- Name: EXTENSION pg_trgm; Type: COMMENT; Schema: -; Owner: -
+--
+
+COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
+--
 -- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
 --
 
@@ -102,6 +114,17 @@ CREATE TYPE public.pricing_unit AS ENUM (
 );
 
 --
+-- Name: refund_status; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.refund_status AS ENUM (
+    'pending',
+    'sending',
+    'sent',
+    'failed'
+);
+
+--
 -- Name: review_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -186,7 +209,8 @@ CREATE TABLE public.admin_users (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     failed_logins integer DEFAULT 0 NOT NULL,
     locked_until timestamp with time zone,
-    tokens_valid_after timestamp with time zone
+    tokens_valid_after timestamp with time zone,
+    totp_last_step bigint
 );
 
 --
@@ -194,6 +218,12 @@ CREATE TABLE public.admin_users (
 --
 
 COMMENT ON TABLE public.admin_users IS 'EventSeva team logins for the admin panel: email, scrypt password hash, 2FA secret, role, and lockout state.';
+
+--
+-- Name: COLUMN admin_users.totp_last_step; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.admin_users.totp_last_step IS 'Time step of the last 2FA code accepted; older or equal steps are refused';
 
 --
 -- Name: availability; Type: TABLE; Schema: public; Owner: -
@@ -782,6 +812,44 @@ CREATE TABLE public.payouts (
 COMMENT ON TABLE public.payouts IS 'What EventSeva owes a vendor for a completed booking (advance − commission − deductions), and when it was paid.';
 
 --
+-- Name: refunds; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.refunds (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    razorpay_payment_id text NOT NULL,
+    amount_paise integer NOT NULL,
+    reason text NOT NULL,
+    status public.refund_status DEFAULT 'pending'::public.refund_status NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    next_attempt_at timestamp with time zone DEFAULT now() NOT NULL,
+    last_error text,
+    razorpay_refund_id text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    sent_at timestamp with time zone,
+    CONSTRAINT refunds_amount_paise_check CHECK ((amount_paise > 0))
+);
+
+--
+-- Name: TABLE refunds; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.refunds IS 'Refund queue: every refund is recorded here first and sent to Razorpay after the booking change commits, with safe retries.';
+
+--
+-- Name: COLUMN refunds.reason; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.refunds.reason IS 'cancellation, late_payment, replaced_order or admin';
+
+--
+-- Name: COLUMN refunds.status; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.refunds.status IS 'pending → sending → sent; failed after too many attempts (raises a system alert)';
+
+--
 -- Name: reviews; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1307,6 +1375,20 @@ ALTER TABLE ONLY public.payouts
     ADD CONSTRAINT payouts_razorpay_transfer_id_key UNIQUE (razorpay_transfer_id);
 
 --
+-- Name: refunds refunds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT refunds_pkey PRIMARY KEY (id);
+
+--
+-- Name: refunds refunds_razorpay_refund_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT refunds_razorpay_refund_id_key UNIQUE (razorpay_refund_id);
+
+--
 -- Name: reviews reviews_booking_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1428,6 +1510,18 @@ CREATE INDEX bookings_customer_requested_idx ON public.bookings USING btree (cus
 CREATE UNIQUE INDEX bookings_one_open_per_event_vendor ON public.bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::public.booking_status, 'accepted'::public.booking_status, 'confirmed'::public.booking_status]));
 
 --
+-- Name: bookings_package_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_package_id_idx ON public.bookings USING btree (package_id) WHERE (package_id IS NOT NULL);
+
+--
+-- Name: bookings_service_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_service_id_idx ON public.bookings USING btree (service_id) WHERE (service_id IS NOT NULL);
+
+--
 -- Name: bookings_status_day_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1450,6 +1544,12 @@ CREATE INDEX bookings_status_respond_by_idx ON public.bookings USING btree (stat
 --
 
 CREATE INDEX bookings_vendor_id_day_idx ON public.bookings USING btree (vendor_id, day);
+
+--
+-- Name: complaints_raised_by_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX complaints_raised_by_idx ON public.complaints USING btree (raised_by, created_at DESC);
 
 --
 -- Name: complaints_status_created_at_idx; Type: INDEX; Schema: public; Owner: -
@@ -1494,6 +1594,12 @@ CREATE UNIQUE INDEX coupon_redemptions_one_live_per_booking ON public.coupon_red
 CREATE INDEX device_tokens_user_id_app_idx ON public.device_tokens USING btree (user_id, app);
 
 --
+-- Name: events_customer_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX events_customer_id_idx ON public.events USING btree (customer_id, event_date);
+
+--
 -- Name: featured_purchases_status_paid_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1510,6 +1616,12 @@ CREATE INDEX featured_purchases_vendor_id_created_at_idx ON public.featured_purc
 --
 
 CREATE INDEX media_status_created_at_idx ON public.media USING btree (status, created_at) WHERE (status = 'pending'::public.review_status);
+
+--
+-- Name: media_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX media_vendor_id_idx ON public.media USING btree (vendor_id);
 
 --
 -- Name: media_vendor_id_sort_order_idx; Type: INDEX; Schema: public; Owner: -
@@ -1542,6 +1654,12 @@ CREATE INDEX notifications_unpushed_idx ON public.notifications USING btree (id)
 CREATE INDEX notifications_user_id_id_idx ON public.notifications USING btree (user_id, id DESC);
 
 --
+-- Name: otp_requests_ip_created_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX otp_requests_ip_created_at_idx ON public.otp_requests USING btree (ip, created_at DESC) WHERE (ip IS NOT NULL);
+
+--
 -- Name: otp_requests_phone_created_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1552,6 +1670,12 @@ CREATE INDEX otp_requests_phone_created_at_idx ON public.otp_requests USING btre
 --
 
 CREATE INDEX otp_requests_sms_sent_idx ON public.otp_requests USING btree (created_at) WHERE sms_sent;
+
+--
+-- Name: packages_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX packages_vendor_id_idx ON public.packages USING btree (vendor_id);
 
 --
 -- Name: payments_booking_id_idx; Type: INDEX; Schema: public; Owner: -
@@ -1572,10 +1696,52 @@ CREATE UNIQUE INDEX payouts_one_per_booking ON public.payouts USING btree (booki
 CREATE INDEX payouts_status_release_after_idx ON public.payouts USING btree (status, release_after);
 
 --
+-- Name: payouts_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payouts_vendor_id_idx ON public.payouts USING btree (vendor_id, release_after DESC);
+
+--
+-- Name: refunds_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX refunds_booking_idx ON public.refunds USING btree (booking_id);
+
+--
+-- Name: refunds_due_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX refunds_due_idx ON public.refunds USING btree (next_attempt_at) WHERE (status = ANY (ARRAY['pending'::public.refund_status, 'sending'::public.refund_status]));
+
+--
+-- Name: reviews_customer_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX reviews_customer_id_idx ON public.reviews USING btree (customer_id);
+
+--
 -- Name: reviews_vendor_id_created_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX reviews_vendor_id_created_at_idx ON public.reviews USING btree (vendor_id, created_at DESC) WHERE (NOT is_hidden);
+
+--
+-- Name: services_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX services_vendor_id_idx ON public.services USING btree (vendor_id);
+
+--
+-- Name: sessions_user_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX sessions_user_id_idx ON public.sessions USING btree (user_id);
+
+--
+-- Name: shortlists_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX shortlists_vendor_id_idx ON public.shortlists USING btree (vendor_id);
 
 --
 -- Name: system_alerts_open_idx; Type: INDEX; Schema: public; Owner: -
@@ -1588,6 +1754,18 @@ CREATE INDEX system_alerts_open_idx ON public.system_alerts USING btree (created
 --
 
 CREATE INDEX vendor_documents_vendor_id_created_at_idx ON public.vendor_documents USING btree (vendor_id, created_at DESC);
+
+--
+-- Name: vendors_area_trgm_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX vendors_area_trgm_idx ON public.vendors USING gin (area public.gin_trgm_ops);
+
+--
+-- Name: vendors_business_name_trgm_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX vendors_business_name_trgm_idx ON public.vendors USING gin (business_name public.gin_trgm_ops);
 
 --
 -- Name: vendors_city_id_category_id_status_idx; Type: INDEX; Schema: public; Owner: -
@@ -1797,6 +1975,13 @@ ALTER TABLE ONLY public.payouts
 
 ALTER TABLE ONLY public.payouts
     ADD CONSTRAINT payouts_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: refunds refunds_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.refunds
+    ADD CONSTRAINT refunds_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
 
 --
 -- Name: reviews reviews_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

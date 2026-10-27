@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ALERT_GUIDES, alertGuide, openAlerts, smsBudget, timeAgo, type SystemAlert } from './alerts.ts';
+import { ALERT_GUIDES, alertGuide, alertLink, openAlerts, smsBudget, timeAgo, type SystemAlert } from './alerts.ts';
 
 test('SMS budget bar: royal below 80%, peach from 80%, red from 100%', () => {
   assert.deepEqual(
@@ -96,4 +96,10 @@ test('openAlerts drops resolved ones and puts the serious ones first', () => {
     openAlerts(list).map((x) => x.id),
     [4, 2, 1],
   );
+});
+
+test('a failed refund alert links to its booking', () => {
+  assert.deepEqual(alertLink({ kind: 'refund_failed', data: { bookingId: 'b1' } }), { href: '/bookings/b1', label: 'Open booking', page: 'bookings' });
+  assert.equal(alertLink({ kind: 'sms_budget_warning', data: null }).href, '/users');
+  assert.equal(alertGuide('refund_failed').severity, 'danger');
 });

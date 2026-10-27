@@ -332,4 +332,20 @@ describe('uploadDocument', () => {
     await uploadDocument(photo, 'pan', '9999', opts());
     expect(post.mock.calls[1][1]).not.toHaveProperty('last4');
   });
+
+  it('sends a PDF as it is (no resizing) and checks its size first', async () => {
+    const pdf = { uri: 'file:///e-pan.pdf', type: 'photo' as const, width: 0, height: 0, fileSize: 800_000, mimeType: 'application/pdf', fileName: 'e-pan.pdf' };
+    expect(checkFile(pdf, 'document')).toBeNull();
+    expect(checkFile({ ...pdf, fileSize: 11 * 1024 * 1024 }, 'document')).toMatchObject({ code: 'FILE_TOO_BIG' });
+    // A PDF is never accepted as a work photo.
+    expect(checkFile(pdf, 'photo')).toMatchObject({ code: 'UNSUPPORTED_FILE' });
+
+    captureForm();
+    manipulate.mockClear();
+    answers(signature, { id: 'd3' });
+    FakeXhr.script.push((x) => x.respond(200, { ...cloudinaryResponse, format: 'pdf' }));
+    await uploadDocument(pdf, 'pan', undefined, opts());
+    expect(manipulate).not.toHaveBeenCalled();
+    expect(post.mock.calls[1][1]).toMatchObject({ docType: 'pan', format: 'pdf' });
+  });
 });

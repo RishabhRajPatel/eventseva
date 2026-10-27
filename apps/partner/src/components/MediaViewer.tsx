@@ -1,9 +1,11 @@
-import { Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Image } from 'expo-image';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import type { Media } from '@eventseva/app-shared';
-import { wideUrl, thumbUrl } from '../lib/media';
+import { streamUrl, wideUrl, thumbUrl } from '../lib/media';
 import { c, space } from '../lib/theme';
 import { Button, IconButton } from './Button';
 import { Pill } from './Chip';
@@ -21,6 +23,10 @@ export function MediaViewer({ media, list, onChange, onClose, onOptions }: { med
   const i = list.findIndex((m) => m.id === media.id);
   const url = media.type === 'video' ? thumbUrl(media, Math.min(width, 900), Math.round(Math.min(width, 900) * 0.5625)) : wideUrl(media, Math.min(width, 1200));
   const status = media.status ?? 'approved';
+  const [playing, setPlaying] = useState(false);
+  // Moving to another photo or video stops the one playing.
+  useEffect(() => setPlaying(false), [media.id]);
+  const stream = media.type === 'video' ? streamUrl(media) : null;
   return (
     <Modal visible animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={[styles.page, { paddingTop: insets.top + space.sm, paddingBottom: insets.bottom + space.lg }]} testID="media-viewer">
@@ -45,10 +51,19 @@ export function MediaViewer({ media, list, onChange, onClose, onOptions }: { med
           ) : (
             <Icon name="image" size={48} color={c.lilac} strokeWidth={1.5} />
           )}
-          {media.type === 'video' ? (
-            <View style={styles.play}>
+          {playing && stream ? (
+            <InlineVideo key={media.id} uri={stream} />
+          ) : media.type === 'video' ? (
+            <Pressable
+              testID="viewer-play"
+              accessibilityRole="button"
+              accessibilityLabel={t('photos.playVideo')}
+              disabled={!stream}
+              onPress={() => setPlaying(true)}
+              style={({ pressed }) => [styles.play, pressed && { opacity: 0.85 }]}
+            >
               <Icon name="play" size={28} color={c.white} />
-            </View>
+            </Pressable>
           ) : null}
           {i > 0 ? (
             <View style={[styles.nav, { left: space.sm }]}>
@@ -84,6 +99,15 @@ export function MediaViewer({ media, list, onChange, onClose, onOptions }: { med
       </View>
     </Modal>
   );
+}
+
+/** Loads the video only when play is tapped (adaptive HLS from Cloudinary). */
+function InlineVideo({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.play();
+  });
+  return <VideoView player={player} style={StyleSheet.absoluteFill} contentFit="contain" nativeControls testID="viewer-video" />;
 }
 
 const styles = StyleSheet.create({

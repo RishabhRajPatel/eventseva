@@ -8,7 +8,7 @@ import { useShell } from '@/components/ShellContext';
 import { Fact, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import type { AdminBooking } from '@/lib/admin-types';
-import { BOOKING_STATUS, humanize, PAYMENT_STATUS, PAYOUT_STATUS, shortId, SLOT_LABELS } from '@/lib/labels';
+import { BOOKING_STATUS, humanize, PAYMENT_STATUS, PAYOUT_STATUS, REFUND_REASON, REFUND_STATUS, shortId, SLOT_LABELS } from '@/lib/labels';
 import { maxRefundablePaise, paidAdvancePaise } from '@/lib/money';
 import { can, canView } from '@/lib/roles';
 
@@ -196,6 +196,47 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
           </div>
         )}
       </section>
+
+      {b.refunds?.length ? (
+        <section className="box stack" aria-labelledby="refunds-title">
+          <h2 id="refunds-title">Refund queue</h2>
+          <p className="small muted">Refunds go to Razorpay right after the change is saved, and are retried automatically if Razorpay is down.</p>
+          <div className="table-wrap">
+            <table className="tbl" aria-label="Refund queue">
+              <thead>
+                <tr>
+                  <th scope="col">Why</th>
+                  <th scope="col" className="num">
+                    Amount
+                  </th>
+                  <th scope="col">Status</th>
+                  <th scope="col" className="num">
+                    Tries
+                  </th>
+                  <th scope="col">Razorpay refund</th>
+                  <th scope="col">Queued</th>
+                  <th scope="col">Last problem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {b.refunds.map((r) => (
+                  <tr key={r.id}>
+                    <td>{REFUND_REASON[r.reason] ?? humanize(r.reason)}</td>
+                    <td className="num">{rupees(r.amountPaise)}</td>
+                    <td>
+                      <StatusPill map={REFUND_STATUS} status={r.status} />
+                    </td>
+                    <td className="num">{r.attempts}</td>
+                    <td className="mono">{r.refundId ?? '—'}</td>
+                    <td className="nowrap">{formatDateTime(r.createdAt)}</td>
+                    <td>{r.status === 'sent' ? '—' : (r.lastError ?? '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {refunding ? <RefundDialog booking={b} maxPaise={maxRefund} onClose={() => setRefunding(false)} onDone={reload} /> : null}
     </>

@@ -21,6 +21,7 @@ import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { pickLanguage } from '../catalog/catalog.controller';
 import { notify } from '../notifications/notify';
+import { PublicCache } from '../common/cache';
 
 class ReviewDto {
   @IsInt() @Min(1) @Max(5) rating: number;
@@ -72,6 +73,7 @@ export async function refreshRating(q: Queryable, vendorId: string) {
 export class PublicReviewsController {
   constructor(private readonly db: Db) {}
 
+  @PublicCache(60)
   @Get(':id/reviews')
   async reviews(@Param('id', ParseUUIDPipe) id: string, @Query() query: PageQuery) {
     const page = query.page ?? 1;

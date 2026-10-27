@@ -92,6 +92,18 @@ export interface AdminPayment {
   paidAt: string | null;
 }
 
+export interface AdminRefund {
+  id: string;
+  amountPaise: number;
+  reason: 'cancellation' | 'late_payment' | 'replaced_order' | 'admin' | string;
+  status: 'pending' | 'sending' | 'sent' | 'failed';
+  attempts: number;
+  lastError: string | null;
+  refundId: string | null;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 export interface AdminBooking {
   id: string;
   status: BookingStatus;
@@ -113,6 +125,8 @@ export interface AdminBooking {
   customer: { id: string; name: string | null; phone: string };
   createdAt: string;
   payments: AdminPayment[];
+  /** The refund queue: pending / sending ones are still on their way to Razorpay. */
+  refunds: AdminRefund[];
   payout: { id: string; amountPaise: number; status: PayoutStatus; releaseAfter: string; reference: string | null } | null;
 }
 

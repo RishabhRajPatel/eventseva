@@ -7,7 +7,7 @@ import { useShell } from '@/components/ShellContext';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { useBusy } from '@/hooks/useBusy';
 import { useNow } from '@/hooks/useNow';
-import { alertGuide, openAlerts, timeAgo, type SystemAlert } from '@/lib/alerts';
+import { alertGuide, alertLink, openAlerts, timeAgo, type SystemAlert } from '@/lib/alerts';
 import { api } from '@/lib/api';
 import { describeError } from '@/lib/errors';
 import { can, canView } from '@/lib/roles';
@@ -60,6 +60,7 @@ const AlertItem = memo(function AlertItem({ alert: a, now, onResolved }: { alert
   const { session, toast } = useShell();
   const role = session.admin.role;
   const guide = alertGuide(a.kind);
+  const link = alertLink(a);
   const [busy, run] = useBusy();
 
   const resolve = () =>
@@ -88,9 +89,9 @@ const AlertItem = memo(function AlertItem({ alert: a, now, onResolved }: { alert
         <b>What to do:</b> {guide.whatToDo}
       </p>
       <div className="btn-row">
-        {canView(role, 'users') ? (
-          <Link href="/users" className="btn btn-small btn-outline-royal">
-            Open Users
+        {canView(role, link.page) ? (
+          <Link href={link.href} className="btn btn-small btn-outline-royal">
+            {link.label}
           </Link>
         ) : null}
         {can(role, 'alert.resolve') ? (

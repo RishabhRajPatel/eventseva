@@ -102,6 +102,13 @@ async function withRetry<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise
 export function checkFile(file: PickedFile, kind: UploadKind = file.type): UploadError | null {
   const mime = file.mimeType ?? '';
   const wantVideo = kind === 'video';
+  // Documents may also be a PDF; it is not resized, so its size is checked here.
+  if (kind === 'document' && isPdf(file)) {
+    if (file.fileSize && file.fileSize > MAX_BYTES.document) {
+      return new UploadError('FILE_TOO_BIG', 'This file is too big.', { maxBytes: MAX_BYTES.document });
+    }
+    return null;
+  }
   if (mime && !mime.startsWith(wantVideo ? 'video/' : 'image/')) {
     return new UploadError('UNSUPPORTED_FILE', 'This type of file cannot be added.', { kind });
   }
@@ -115,6 +122,9 @@ export function checkFile(file: PickedFile, kind: UploadKind = file.type): Uploa
   }
   return null;
 }
+
+export const isPdf = (file: Pick<PickedFile, 'mimeType' | 'fileName'>) =>
+  file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.fileName ?? '');
 
 const jpgName = (name?: string | null) => (name ? `${name.replace(/\.[^.]+$/, '')}.jpg` : null);
 
@@ -230,7 +240,7 @@ async function send(file: PickedFile, kind: UploadKind, opts: UploadOptions) {
   const problem = checkFile(file, kind);
   if (problem) throw problem;
   opts.onStage?.('preparing');
-  const prepared = file.type === 'photo' ? await resizePhoto(file) : file;
+  const prepared = file.type === 'photo' && !isPdf(file) ? await resizePhoto(file) : file;
   throwIfAborted(opts.signal);
   const sig = await signUpload(kind, opts.signal);
   throwIfAborted(opts.signal);
@@ -258,7 +268,7 @@ export async function uploadMedia(file: PickedFile, opts: UploadOptions = {}): P
   );
 }
 
-/** Uploads a private verification document (a photo of it). For Aadhaar only the last 4 digits are sent. */
+/** Uploads a private verification document (a photo or a PDF). For Aadhaar only the last 4 digits are sent. */
 export async function uploadDocument(file: PickedFile, docType: DocType, last4?: string, opts: UploadOptions = {}): Promise<VendorDocument> {
   const { result: r } = await send({ ...file, type: 'photo' }, 'document', opts);
   return withRetry(() =>

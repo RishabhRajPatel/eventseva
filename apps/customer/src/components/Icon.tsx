@@ -81,6 +81,7 @@ const paths = {
   ),
   star: <Path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z" />,
   close: <Path d="M6 6l12 12M18 6L6 18" />,
+  play: <Path d="M8 5v14l11-7z" />,
   plus: <Path d="M12 5v14M5 12h14" />,
   more: (
     <>

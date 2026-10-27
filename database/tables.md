@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-30 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+31 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -11,9 +11,8 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Catalogue:** [cities](#cities), [categories](#categories)
 - **Vendors:** [vendors](#vendors), [vendor_documents](#vendor_documents), [vendor_bank_accounts](#vendor_bank_accounts), [services](#services), [packages](#packages), [media](#media), [availability](#availability)
 - **Events and bookings:** [events](#events), [bookings](#bookings), [reviews](#reviews), [shortlists](#shortlists)
-- **Money:** [payments](#payments), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
-- **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log)
-- **Other:** [system_alerts](#system_alerts)
+- **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
+- **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
 
 ## Allowed values (enums)
 
@@ -24,6 +23,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - `payment_type`: `advance`, `final`, `refund`
 - `payout_status`: `scheduled`, `processing`, `paid`, `failed`, `held`
 - `pricing_unit`: `per_event`, `per_day`, `per_shift`, `per_plate`, `per_hour`, `per_km`, `per_room_night`, `per_person`, `package`
+- `refund_status`: `pending`, `sending`, `sent`, `failed`
 - `review_status`: `uploading`, `pending`, `approved`, `rejected`
 - `slot_status`: `free`, `booked`, `blocked`
 - `vendor_status`: `draft`, `pending`, `approved`, `rejected`, `on_hold`
@@ -70,6 +70,7 @@ One row per OTP sent. Only an HMAC of the code is stored; attempts and created_a
 
 <details><summary>Rules and indexes</summary>
 
+- Index: `CREATE INDEX ON otp_requests USING btree (ip, created_at DESC) WHERE (ip IS NOT NULL)`
 - Index: `CREATE INDEX ON otp_requests USING btree (phone, created_at DESC)`
 - Index: `CREATE INDEX ON otp_requests USING btree (created_at) WHERE sms_sent`
 
@@ -94,6 +95,7 @@ One row per logged-in device. Holds only a hash of the refresh token; revoked_at
 
 - Check: `CHECK ((app = ANY (ARRAY['customer'::text, 'partner'::text])))`
 - Unique: `UNIQUE (refresh_token_hash)`
+- Index: `CREATE INDEX ON sessions USING btree (user_id)`
 
 </details>
 
@@ -134,6 +136,7 @@ EventSeva team logins for the admin panel: email, scrypt password hash, 2FA secr
 | `failed_logins` | integer | yes | `0` |  |
 | `locked_until` | timestamp with time zone |  |  |  |
 | `tokens_valid_after` | timestamp with time zone |  |  |  |
+| `totp_last_step` | bigint |  |  | Time step of the last 2FA code accepted; older or equal steps are refused |
 
 <details><summary>Rules and indexes</summary>
 
@@ -212,6 +215,8 @@ A business profile owned by one user. status: draft → pending → approved / r
 <details><summary>Rules and indexes</summary>
 
 - Unique: `UNIQUE (user_id)`
+- Index: `CREATE INDEX ON vendors USING gin (area gin_trgm_ops)`
+- Index: `CREATE INDEX ON vendors USING gin (business_name gin_trgm_ops)`
 - Index: `CREATE INDEX ON vendors USING btree (city_id, category_id, status)`
 
 </details>
@@ -286,6 +291,7 @@ What a vendor sells, priced per unit (per event, per plate, per day …). Soft-d
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK ((price_paise > 0))`
+- Index: `CREATE INDEX ON services USING btree (vendor_id)`
 
 </details>
 
@@ -306,6 +312,7 @@ Fixed-price bundles a vendor offers ("Gold: DJ + lights + 5 hours").
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK ((price_paise > 0))`
+- Index: `CREATE INDEX ON packages USING btree (vendor_id)`
 
 </details>
 
@@ -337,6 +344,7 @@ Vendor photos and videos on Cloudinary. Customers see them only after admin appr
 - Unique: `UNIQUE (public_id)`
 - Unique: `UNIQUE (vendor_id, file_hash)`
 - Index: `CREATE INDEX ON media USING btree (status, created_at) WHERE (status = 'pending'::review_status)`
+- Index: `CREATE INDEX ON media USING btree (vendor_id)`
 - Index: `CREATE INDEX ON media USING btree (vendor_id, sort_order) WHERE (status = 'approved'::review_status)`
 
 </details>
@@ -378,6 +386,12 @@ A customer's occasion (wedding, birthday …) that bookings belong to.
 | `budget_paise` | integer |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 
+<details><summary>Rules and indexes</summary>
+
+- Index: `CREATE INDEX ON events USING btree (customer_id, event_date)`
+
+</details>
+
 ### bookings
 
 One vendor booked for one event and slot. requested → accepted → confirmed (advance paid) → completed; money in paise, priced by the server.
@@ -417,6 +431,8 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Index: `CREATE INDEX ON bookings USING btree (customer_id, created_at DESC)`
 - Index: `CREATE INDEX ON bookings USING btree (customer_id) WHERE (status = 'requested'::booking_status)`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
+- Index: `CREATE INDEX ON bookings USING btree (package_id) WHERE (package_id IS NOT NULL)`
+- Index: `CREATE INDEX ON bookings USING btree (service_id) WHERE (service_id IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (status, day) WHERE (status = 'confirmed'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, pay_by) WHERE (status = 'accepted'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, respond_by) WHERE (status = 'requested'::booking_status)`
@@ -444,6 +460,7 @@ One rating and comment per completed booking, with an optional vendor reply. Hid
 
 - Check: `CHECK (((rating >= 1) AND (rating <= 5)))`
 - Unique: `UNIQUE (booking_id)`
+- Index: `CREATE INDEX ON reviews USING btree (customer_id)`
 - Index: `CREATE INDEX ON reviews USING btree (vendor_id, created_at DESC) WHERE (NOT is_hidden)`
 
 </details>
@@ -457,6 +474,12 @@ Vendors a customer saved (the heart button).
 | `customer_id` | uuid | yes |  | primary key; → [users](#users).id |
 | `vendor_id` | uuid | yes |  | primary key; → [vendors](#vendors).id |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Index: `CREATE INDEX ON shortlists USING btree (vendor_id)`
+
+</details>
 
 ## Money
 
@@ -488,6 +511,34 @@ Razorpay orders and payments for booking advances, and refunds (type = refund).
 
 </details>
 
+### refunds
+
+Refund queue: every refund is recorded here first and sent to Razorpay after the booking change commits, with safe retries.
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `razorpay_payment_id` | text | yes |  |  |
+| `amount_paise` | integer | yes |  |  |
+| `reason` | text | yes |  | cancellation, late_payment, replaced_order or admin |
+| `status` | refund_status | yes | `'pending'::refund_status` | pending → sending → sent; failed after too many attempts (raises a system alert) |
+| `attempts` | integer | yes | `0` |  |
+| `next_attempt_at` | timestamp with time zone | yes | `now()` |  |
+| `last_error` | text |  |  |  |
+| `razorpay_refund_id` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `sent_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((amount_paise > 0))`
+- Unique: `UNIQUE (razorpay_refund_id)`
+- Index: `CREATE INDEX ON refunds USING btree (booking_id)`
+- Index: `CREATE INDEX ON refunds USING btree (next_attempt_at) WHERE (status = ANY (ARRAY['pending'::refund_status, 'sending'::refund_status]))`
+
+</details>
+
 ### payouts
 
 What EventSeva owes a vendor for a completed booking (advance − commission − deductions), and when it was paid.
@@ -508,6 +559,7 @@ What EventSeva owes a vendor for a completed booking (advance − commission −
 - Unique: `UNIQUE (razorpay_transfer_id)`
 - Index: `CREATE UNIQUE INDEX ON payouts USING btree (booking_id)`
 - Index: `CREATE INDEX ON payouts USING btree (status, release_after)`
+- Index: `CREATE INDEX ON payouts USING btree (vendor_id, release_after DESC)`
 
 </details>
 
@@ -715,6 +767,7 @@ Help & support requests from customers or vendors, optionally about a booking.
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK ((status = ANY (ARRAY['open'::text, 'in_progress'::text, 'resolved'::text])))`
+- Index: `CREATE INDEX ON complaints USING btree (raised_by, created_at DESC)`
 - Index: `CREATE INDEX ON complaints USING btree (status, created_at)`
 
 </details>
@@ -740,8 +793,6 @@ Every admin action (approve, refund, block, export …) with who, when, and the 
 - Index: `CREATE INDEX ON admin_audit_log USING btree (target_type, target_id)`
 
 </details>
-
-## Other
 
 ### system_alerts
 

@@ -86,7 +86,9 @@ Ask before anything that cannot be undone or costs money: delete, cancel a booki
   - Several files upload one or two at a time, each with its own state: waiting, uploading 45%, done ✓, failed ⟳ retry.
 - **After:**
   - Status badge (Waiting for review / Live / Not approved + reason).
-  - Tap to view full screen; long-press or a ⋯ menu for Make cover / Move / Delete.
+  - Tap to view full screen (videos play there, streamed adaptively); long-press or a ⋯ menu for Make cover / Move / Delete.
+  - "Change the order" switches the grid to drag mode: hold and drag, then Save order. Screen readers get Move earlier / later actions.
+  - Documents (Aadhaar, PAN, GST) can be a photo or a PDF; a PDF is uploaded as is.
 - **Delete:** a confirm dialog for the cover photo and for videos; Undo toast for other photos.
 
 ## 7. Speed

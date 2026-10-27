@@ -1,5 +1,6 @@
 import { Controller, Get, Headers } from '@nestjs/common';
 import { Db } from '../db/db.service';
+import { PublicCache } from '../common/cache';
 
 /** "hi", "hi-IN", "hi;q=0.9,en" → hi; anything else → en. */
 export const pickLanguage = (header?: string): 'en' | 'hi' =>
@@ -9,6 +10,7 @@ export const pickLanguage = (header?: string): 'en' | 'hi' =>
 export class CatalogController {
   constructor(private readonly db: Db) {}
 
+  @PublicCache(300)
   @Get('cities')
   async cities(@Headers('accept-language') acceptLanguage?: string) {
     const hi = pickLanguage(acceptLanguage) === 'hi';
@@ -17,6 +19,7 @@ export class CatalogController {
   }
 
   /** Category names come back in the app's language (Accept-Language: en | hi). */
+  @PublicCache(300)
   @Get('categories')
   async categories(@Headers('accept-language') acceptLanguage?: string) {
     const lang = pickLanguage(acceptLanguage);

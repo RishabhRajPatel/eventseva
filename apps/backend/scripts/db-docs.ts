@@ -22,8 +22,8 @@ const GROUPS: [string, string[]][] = [
   ['Catalogue', ['cities', 'categories']],
   ['Vendors', ['vendors', 'vendor_documents', 'vendor_bank_accounts', 'services', 'packages', 'media', 'availability']],
   ['Events and bookings', ['events', 'bookings', 'reviews', 'shortlists']],
-  ['Money', ['payments', 'payouts', 'coupons', 'coupon_redemptions', 'featured_plans', 'featured_purchases']],
-  ['Messages, notifications and support', ['conversations', 'messages', 'notifications', 'complaints', 'admin_audit_log']],
+  ['Money', ['payments', 'refunds', 'payouts', 'coupons', 'coupon_redemptions', 'featured_plans', 'featured_purchases']],
+  ['Messages, notifications and support', ['conversations', 'messages', 'notifications', 'complaints', 'admin_audit_log', 'system_alerts']],
 ];
 
 const HEADER = (kind: string) =>

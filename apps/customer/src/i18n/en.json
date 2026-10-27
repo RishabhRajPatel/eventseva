@@ -136,7 +136,9 @@
     "chat": "Chat with vendor",
     "book": "Book now",
     "bookOn": "Book now · {{date}}",
-    "noReviewsBody": "Book this vendor and be the first to share how it went."
+    "noReviewsBody": "Book this vendor and be the first to share how it went.",
+    "videos": "Videos",
+    "playVideo": "Play video {{n}} of {{total}}"
   },
   "date": {
     "free": "Free",

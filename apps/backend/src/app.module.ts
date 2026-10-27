@@ -1,6 +1,7 @@
 import { Controller, Get, Global, INestApplication, Module, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import compression from 'compression';
 import helmet from 'helmet';
 import { AppConfig, CONFIG, loadConfig } from './config';
 import { ErrorFilter } from './common/errors';
@@ -21,6 +22,7 @@ import { BookingsController } from './bookings/bookings.controller';
 import { PartnerBookingsController } from './bookings/partner-bookings.controller';
 import { BookingsService } from './bookings/bookings.service';
 import { PaymentWebhookController } from './payments/webhook.controller';
+import { RefundsService } from './payments/refunds.service';
 import { PublicReviewsController, SocialController } from './social/social.controller';
 import { ChatController } from './chat/chat.controller';
 import { PartnerHomeController } from './partner/partner-home.controller';
@@ -98,6 +100,7 @@ class ConfigModule {}
     PartnerAppGuard,
     AdminGuard,
     BookingsService,
+    RefundsService,
     CloudinaryService,
     PushService,
     CouponsService,
@@ -118,6 +121,8 @@ export function configureApp(app: INestApplication) {
   // Behind a load balancer, req.ip must be the user's IP (from X-Forwarded-For), not the proxy's.
   if (config.trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
   app.use(helmet());
+  // gzip for JSON over ~1 KB: vendor lists and chats are 5–10× smaller on mobile data.
+  app.use(compression({ threshold: 1024 }));
   app.useGlobalPipes(new TrimBodyPipe(), new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalFilters(new ErrorFilter());
   app.enableShutdownHooks();
