@@ -49,6 +49,8 @@ class RegisterMediaDto extends UploadedDto {
   @IsOptional() @IsString() @MaxLength(100) blurhash?: string;
   /** A photo of one rental item instead of the gallery. */
   @IsOptional() @IsUUID() itemId?: string;
+  /** A photo of one vehicle, hall or artist instead of the gallery. */
+  @IsOptional() @IsUUID() resourceId?: string;
 }
 
 class RegisterDocumentDto extends UploadedDto {
@@ -120,14 +122,18 @@ export class MediaController {
       if (body.type === 'video' && (body.durationSec ?? 0) > MAX_VIDEO_SEC) {
         throw new AppError('VIDEO_TOO_LONG', `Videos can be up to ${MAX_VIDEO_SEC / 60} minutes long.`);
       }
-      if (body.itemId) {
-        // Item photos have their own limit and never become the vendor's cover.
+      if (body.itemId && body.resourceId) throw new AppError('VALIDATION', 'Send itemId or resourceId, not both.');
+      if (body.itemId || body.resourceId) {
+        // Item and vehicle photos have their own limit and never become the vendor's cover.
         if (body.type !== 'photo') throw new AppError('VALIDATION', 'Items take photos only.');
         const item = await this.db.one<{ n: number }>(
           client,
-          `SELECT (SELECT count(*)::int FROM media m WHERE m.inventory_item_id = i.id AND m.status <> 'rejected') AS n
-             FROM inventory_items i WHERE i.id = $1 AND i.vendor_id = $2 AND i.deleted_at IS NULL`,
-          [body.itemId, vendorId],
+          body.itemId
+            ? `SELECT (SELECT count(*)::int FROM media m WHERE m.inventory_item_id = i.id AND m.status <> 'rejected') AS n
+                 FROM inventory_items i WHERE i.id = $1 AND i.vendor_id = $2 AND i.deleted_at IS NULL`
+            : `SELECT (SELECT count(*)::int FROM media m WHERE m.resource_id = r.id AND m.status <> 'rejected') AS n
+                 FROM resources r WHERE r.id = $1 AND r.vendor_id = $2 AND r.status <> 'inactive' AND r.kind <> 'crew'`,
+          [body.itemId ?? body.resourceId, vendorId],
         );
         if (!item) throw new AppError('NOT_FOUND', 'Item not found.', HttpStatus.NOT_FOUND);
         if (item.n >= MAX_ITEM_PHOTOS) throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_ITEM_PHOTOS} photos per item.`);
@@ -144,13 +150,13 @@ export class MediaController {
       }
       const row = await this.db.one(
         client,
-        `INSERT INTO media (vendor_id, type, public_id, width, height, bytes, duration_sec, blurhash, file_hash, status, sort_order, is_cover, inventory_item_id)
+        `INSERT INTO media (vendor_id, type, public_id, width, height, bytes, duration_sec, blurhash, file_hash, status, sort_order, is_cover, inventory_item_id, resource_id)
          SELECT $1, $2::media_type, $3, $4, $5, $6, $7, $8, $9, 'pending',
                 COALESCE((SELECT max(sort_order) + 1 FROM media WHERE vendor_id = $1), 0),
-                $10::uuid IS NULL AND $2::media_type = 'photo' AND NOT EXISTS (SELECT 1 FROM media WHERE vendor_id = $1 AND is_cover), $10
+                $10::uuid IS NULL AND $11::uuid IS NULL AND $2::media_type = 'photo' AND NOT EXISTS (SELECT 1 FROM media WHERE vendor_id = $1 AND is_cover), $10, $11
          ON CONFLICT DO NOTHING
          RETURNING ${MEDIA_COLUMNS}`,
-        [vendorId, body.type, body.publicId, body.width, body.height, body.bytes, body.durationSec ?? null, body.blurhash ?? null, body.etag, body.itemId ?? null],
+        [vendorId, body.type, body.publicId, body.width, body.height, body.bytes, body.durationSec ?? null, body.blurhash ?? null, body.etag, body.itemId ?? null, body.resourceId ?? null],
       );
       if (!row) throw new AppError('MEDIA_DUPLICATE', 'You have already added this file.', HttpStatus.CONFLICT);
       return row;
@@ -219,7 +225,7 @@ export class MediaController {
     const vendorId = await this.vendorId(this.db, auth.userId);
     const { rows } = await this.db.query(
       `SELECT DISTINCT ON (doc_type) id, doc_type AS "docType", last4, status, reject_reason AS "rejectReason", created_at AS "createdAt"
-         FROM vendor_documents WHERE vendor_id = $1 ORDER BY doc_type, created_at DESC`,
+         FROM vendor_documents WHERE vendor_id = $1 AND resource_id IS NULL ORDER BY doc_type, created_at DESC`,
       [vendorId],
     );
     return { items: rows };
@@ -233,7 +239,7 @@ export class MediaController {
       const vendorId = await this.vendorId(client, auth.userId, true);
       this.checkUpload(vendorId, 'document', body);
       const replaced = await client.query<{ storage_key: string }>(
-        'DELETE FROM vendor_documents WHERE vendor_id = $1 AND doc_type = $2 RETURNING storage_key',
+        'DELETE FROM vendor_documents WHERE vendor_id = $1 AND doc_type = $2 AND resource_id IS NULL RETURNING storage_key',
         [vendorId, body.docType],
       );
       const inserted = await this.db.one(

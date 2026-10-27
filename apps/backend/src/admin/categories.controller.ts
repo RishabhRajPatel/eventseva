@@ -1,9 +1,11 @@
 import { Body, Controller, Get, HttpStatus, Param, ParseIntPipe, Patch, Post, Put, UseGuards } from '@nestjs/common';
-import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Length, Matches } from 'class-validator';
 import { CATEGORY_ICONS } from '@eventseva/core';
 import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { PRICING_UNITS, type PricingUnit } from '../vendors/vendor.queries';
+import { checkTemplate } from '../engine/rules';
+import { BOOKING_TYPES, type BookingTypeKey, type CategoryTemplate } from '../engine/types';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from './admin-auth';
 
 class CreateCategoryDto {
@@ -21,6 +23,11 @@ class UpdateCategoryDto {
   @IsOptional() @IsIn(CATEGORY_ICONS) icon?: string;
   @IsOptional() @IsIn(PRICING_UNITS) defaultUnit?: PricingUnit;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** How new services in this category are booked; existing services keep theirs. */
+  @IsOptional() @IsIn(BOOKING_TYPES) bookingType?: BookingTypeKey;
+  /** Vendor attributes, customer questions and default rules (checked on the server). */
+  @IsOptional() @IsObject() template?: CategoryTemplate;
+  @IsOptional() @IsIn(['wedding', 'entertainment', 'catering', 'transport', 'wedding_services', 'other']) groupKey?: string;
 }
 
 class OrderDto {
@@ -28,7 +35,7 @@ class OrderDto {
 }
 
 const COLUMNS = `c.id, c.slug, c.name_en AS "nameEn", c.name_hi AS "nameHi", c.icon, c.default_unit AS "defaultUnit",
-  c.sort_order AS "sortOrder", c.is_active AS "isActive",
+  c.sort_order AS "sortOrder", c.is_active AS "isActive", c.booking_type AS "bookingType", c.group_key AS "groupKey", c.template,
   (SELECT count(*)::int FROM vendors v WHERE v.category_id = c.id AND v.status = 'approved') AS "liveVendors",
   (SELECT count(*)::int FROM vendors v WHERE v.category_id = c.id) AS "allVendors"`;
 
@@ -93,11 +100,15 @@ export class AdminCategoriesController {
         const dup = await this.db.one(client, 'SELECT 1 FROM categories WHERE lower(name_en) = lower($1) AND id <> $2', [body.nameEn.trim(), id]);
         if (dup) throw new AppError('CATEGORY_EXISTS', 'A category with this name already exists.', HttpStatus.CONFLICT);
       }
+      const type = (body.bookingType ?? before.bookingType) as BookingTypeKey;
+      const template = body.template !== undefined || body.bookingType !== undefined ? checkTemplate(type, body.template ?? before.template) : null;
       await client.query(
         `UPDATE categories SET name_en = COALESCE($2, name_en), name_hi = COALESCE($3, name_hi), icon = COALESCE($4, icon),
-                default_unit = COALESCE($5, default_unit), is_active = COALESCE($6, is_active)
+                default_unit = COALESCE($5, default_unit), is_active = COALESCE($6, is_active),
+                booking_type = COALESCE($7, booking_type), template = COALESCE($8, template), group_key = COALESCE($9, group_key)
           WHERE id = $1`,
-        [id, body.nameEn?.trim() ?? null, body.nameHi?.trim() ?? null, body.icon ?? null, body.defaultUnit ?? null, body.isActive ?? null],
+        [id, body.nameEn?.trim() ?? null, body.nameHi?.trim() ?? null, body.icon ?? null, body.defaultUnit ?? null, body.isActive ?? null,
+          body.bookingType ?? null, template, body.groupKey ?? null],
       );
       const after = await this.db.one(client, `SELECT ${COLUMNS} FROM categories c WHERE c.id = $1`, [id]);
       const action = body.isActive === false && before.isActive ? 'category.hide' : body.isActive && !before.isActive ? 'category.show' : 'category.update';

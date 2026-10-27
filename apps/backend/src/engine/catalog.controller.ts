@@ -1,0 +1,217 @@
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Length,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
+import { Auth, AuthGuard } from '../auth/auth.guard';
+import type { AuthContext } from '../auth/token.service';
+import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
+import { PartnerAppGuard } from '../partner/partner.controller';
+import { PublicCache } from '../common/cache';
+import { EngineCatalogService, VENDOR_RESOURCE_KINDS, type VendorResourceKind } from './catalog.service';
+import type { Pricing, RuleSet } from './types';
+
+class EngineServiceDto {
+  @IsString() @Length(2, 80) title: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) description?: string | null;
+  /** Checked against the category template on the server (model, rates, included hours / km …). */
+  @IsObject() pricing: Pricing;
+  @IsOptional() @IsObject() rules?: RuleSet;
+  @IsOptional() @IsObject() attributes?: Record<string, unknown>;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() resourceId?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) minGuests?: number | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
+}
+
+class UpdateEngineServiceDto {
+  @IsOptional() @IsString() @Length(2, 80) title?: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) description?: string | null;
+  @IsOptional() @IsObject() pricing?: Pricing;
+  @IsOptional() @IsObject() rules?: RuleSet;
+  @IsOptional() @IsObject() attributes?: Record<string, unknown>;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() resourceId?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) minGuests?: number | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
+}
+
+class ResourceDto {
+  @IsIn(VENDOR_RESOURCE_KINDS) kind: VendorResourceKind;
+  @IsString() @Length(2, 80) name: string;
+  @IsOptional() @IsObject() attributes?: Record<string, unknown>;
+}
+
+class UpdateResourceDto {
+  @IsOptional() @IsString() @Length(2, 80) name?: string;
+  @IsOptional() @IsObject() attributes?: Record<string, unknown>;
+  @IsOptional() @IsIn(['active', 'maintenance', 'inactive']) status?: 'active' | 'maintenance' | 'inactive';
+}
+
+class ResourceQuery {
+  @IsOptional() @IsIn(VENDOR_RESOURCE_KINDS) kind?: VendorResourceKind;
+}
+
+class ResourceDocumentDto {
+  @IsString() @MaxLength(255) publicId: string;
+  @IsInt() @Min(1) version: number;
+  @IsString() @Matches(/^[0-9a-f]{40}$/i) signature: string;
+  @IsIn(['vehicle_rc', 'vehicle_insurance', 'vehicle_permit', 'vehicle_puc', 'driver_licence', 'police_verification']) docType: string;
+  @Matches(/^(jpg|jpeg|png|pdf)$/) format: string;
+}
+
+class AddonDto {
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() serviceId?: string | null;
+  @IsString() @Length(2, 80) name: string;
+  @IsOptional() @IsIn(['extra', 'decoration', 'package', 'equipment', 'trial']) kind?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) inclusions?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) exclusions?: string[];
+  @IsInt() @Min(0) @Max(10_000_000) pricePaise: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1440) setupMinutes?: number;
+  @IsOptional() @IsBoolean() requiresApproval?: boolean;
+}
+
+class UpdateAddonDto {
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() serviceId?: string | null;
+  @IsOptional() @IsString() @Length(2, 80) name?: string;
+  @IsOptional() @IsIn(['extra', 'decoration', 'package', 'equipment', 'trial']) kind?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) inclusions?: string[];
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) exclusions?: string[];
+  @IsOptional() @IsInt() @Min(0) @Max(10_000_000) pricePaise?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1440) setupMinutes?: number;
+  @IsOptional() @IsBoolean() requiresApproval?: boolean;
+}
+
+class VerifyDto {
+  @IsIn(['approve', 'reject', 'suspend']) decision: 'approve' | 'reject' | 'suspend';
+  @IsOptional() @IsString() @Length(3, 300) reason?: string;
+}
+
+/** Partner app: services booked by time / quantity, the vehicles, drivers, staff and halls they use, and extras. */
+@UseGuards(AuthGuard, PartnerAppGuard)
+@Controller('v1/partner')
+export class PartnerEngineCatalogController {
+  constructor(private readonly catalog: EngineCatalogService) {}
+
+  @Get('service-setup')
+  setup(@Auth() auth: AuthContext) {
+    return this.catalog.setup(auth.userId);
+  }
+
+  @Get('engine-services')
+  async services(@Auth() auth: AuthContext) {
+    return { items: await this.catalog.services(auth.userId) };
+  }
+
+  @Post('engine-services')
+  createService(@Auth() auth: AuthContext, @Body() body: EngineServiceDto) {
+    return this.catalog.createService(auth.userId, body);
+  }
+
+  @Patch('engine-services/:id')
+  updateService(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateEngineServiceDto) {
+    return this.catalog.updateService(auth.userId, id, body);
+  }
+
+  @Delete('engine-services/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeService(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.catalog.removeService(auth.userId, id);
+  }
+
+  @Get('resources')
+  async resources(@Auth() auth: AuthContext, @Query() q: ResourceQuery) {
+    return { items: await this.catalog.resources(auth.userId, q.kind) };
+  }
+
+  @Post('resources')
+  createResource(@Auth() auth: AuthContext, @Body() body: ResourceDto) {
+    return this.catalog.createResource(auth.userId, body);
+  }
+
+  @Patch('resources/:id')
+  updateResource(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateResourceDto) {
+    return this.catalog.updateResource(auth.userId, id, body);
+  }
+
+  @Delete('resources/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeResource(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.catalog.removeResource(auth.userId, id);
+  }
+
+  @Post('resources/:id/documents')
+  addDocument(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ResourceDocumentDto) {
+    return this.catalog.addResourceDocument(auth.userId, id, body);
+  }
+
+  @Get('addons')
+  async addons(@Auth() auth: AuthContext) {
+    return { items: await this.catalog.addons(auth.userId) };
+  }
+
+  @Post('addons')
+  createAddon(@Auth() auth: AuthContext, @Body() body: AddonDto) {
+    return this.catalog.createAddon(auth.userId, body);
+  }
+
+  @Patch('addons/:id')
+  updateAddon(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdateAddonDto) {
+    return this.catalog.updateAddon(auth.userId, id, body);
+  }
+
+  @Delete('addons/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeAddon(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.catalog.removeAddon(auth.userId, id);
+  }
+}
+
+/** Customers: a vendor's bookable services with what the booking form needs. */
+@Controller('v1/vendors')
+export class PublicEngineServicesController {
+  constructor(private readonly catalog: EngineCatalogService) {}
+
+  @PublicCache(30)
+  @Get(':id/engine-services')
+  services(@Param('id', ParseUUIDPipe) id: string) {
+    return this.catalog.publicServices(id);
+  }
+}
+
+/** Admin: checking vehicles and drivers before they can be booked. */
+@UseGuards(AdminGuard)
+@Controller('v1/admin/resources')
+export class AdminResourcesController {
+  constructor(private readonly catalog: EngineCatalogService) {}
+
+  @AdminRoles('verifier')
+  @Get('pending')
+  async pending() {
+    return { items: await this.catalog.pendingResources() };
+  }
+
+  @AdminRoles('verifier')
+  @Get(':id/documents')
+  async documents(@Param('id', ParseUUIDPipe) id: string) {
+    return { items: await this.catalog.resourceDocuments(id) };
+  }
+
+  @AdminRoles('verifier')
+  @Post(':id/verify')
+  @HttpCode(HttpStatus.OK)
+  verify(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: VerifyDto) {
+    return this.catalog.verifyResource(admin.adminId, id, body.decision, body.reason);
+  }
+}

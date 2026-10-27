@@ -183,9 +183,9 @@ Service types (DJ & Sound, Cook & Catering …), managed by super admins. Hidden
 | `default_unit` | pricing_unit | yes |  |  |
 | `sort_order` | integer | yes | `0` |  |
 | `is_active` | boolean | yes | `true` |  |
-| `booking_type` | text | yes | `'slot'::text` | How bookings in this category work (see the booking type registry in apps/backend/src/engine) |
+| `booking_type` | text | yes | `'slot'::text` | How new services in this category are booked (slot, time_window, rental, per_person, staffing, appointment, transport, quote) |
 | `group_key` | text | yes | `'other'::text` |  |
-| `template` | jsonb | yes | `'{}'::jsonb` | Admin template: attributes, customer questions, rule defaults and allowed pricing models (validated in code) |
+| `template` | jsonb | yes | `'{}'::jsonb` | Vendor attributes, customer questions and default rules for this kind of service; checked by checkTemplate() |
 
 <details><summary>Rules and indexes</summary>
 

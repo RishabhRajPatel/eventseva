@@ -239,7 +239,7 @@ export class AdminController {
     const docs = await this.db.query<{ id: string; docType: string; last4: string | null; status: string; rejectReason: string | null; createdAt: Date; storage_key: string; format: string }>(
       `SELECT DISTINCT ON (doc_type) id, doc_type AS "docType", last4, status, reject_reason AS "rejectReason",
               created_at AS "createdAt", storage_key, format
-         FROM vendor_documents WHERE vendor_id = $1 ORDER BY doc_type, created_at DESC`,
+         FROM vendor_documents WHERE vendor_id = $1 AND resource_id IS NULL ORDER BY doc_type, created_at DESC`,
       [id],
     );
     const documents = docs.rows.map(({ storage_key, format, ...d }) => ({

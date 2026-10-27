@@ -45,7 +45,7 @@ describe('categories managed by admins', () => {
     ]);
     expect(hi.find((c) => c.slug === 'tent')!.icon).toBe('tent');
     expect((await t.db.query(`SELECT slug FROM categories WHERE NOT is_active ORDER BY slug`)).rows.map((r) => r.slug)).toEqual([
-      'band', 'bartender', 'car', 'halwai', 'hotel', 'hall', 'makeup', 'other',
+      'band', 'bartender', 'car', 'generator', 'guest-transport', 'halwai', 'hotel', 'hall', 'makeup', 'other',
     ].sort());
   });
 
@@ -60,7 +60,7 @@ describe('categories managed by admins', () => {
     const admin = await t.adminLogin('super');
     const list = (await as(admin).get('/v1/admin/categories').expect(200)).body;
     expect(list.icons).toContain('planner');
-    expect(list.items).toHaveLength(15);
+    expect(list.items).toHaveLength(17);
 
     const bad = await as(admin).post('/v1/admin/categories', { nameEn: 'Mehendi Artist', nameHi: 'मेहंदी आर्टिस्ट', icon: 'rocket', defaultUnit: 'per_event' }).expect(400);
     expect(bad.body.error.code).toBe('VALIDATION');

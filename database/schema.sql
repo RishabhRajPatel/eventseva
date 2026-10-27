@@ -666,13 +666,13 @@ COMMENT ON TABLE public.categories IS 'Service types (DJ & Sound, Cook & Caterin
 -- Name: COLUMN categories.booking_type; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.categories.booking_type IS 'How bookings in this category work (see the booking type registry in apps/backend/src/engine)';
+COMMENT ON COLUMN public.categories.booking_type IS 'How new services in this category are booked (slot, time_window, rental, per_person, staffing, appointment, transport, quote)';
 
 --
 -- Name: COLUMN categories.template; Type: COMMENT; Schema: public; Owner: -
 --
 
-COMMENT ON COLUMN public.categories.template IS 'Admin template: attributes, customer questions, rule defaults and allowed pricing models (validated in code)';
+COMMENT ON COLUMN public.categories.template IS 'Vendor attributes, customer questions and default rules for this kind of service; checked by checkTemplate()';
 
 --
 -- Name: categories_id_seq; Type: SEQUENCE; Schema: public; Owner: -
