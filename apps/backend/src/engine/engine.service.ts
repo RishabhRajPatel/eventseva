@@ -31,6 +31,13 @@ interface Loaded {
   addons: { id: string; name: string; price_paise: number; requires_approval: boolean; setup_minutes: number }[];
 }
 
+/** What was agreed in a booking: changes are priced with these, not today's listing. */
+export interface Agreed {
+  pricing: ServiceRow['pricing'];
+  rules: ServiceRow['rules'];
+  items: Record<string, { rentPaise: number; rentPer: 'booking' | 'day'; depositPaise: number }>;
+}
+
 export interface Priced {
   quote: Quote;
   plan: ReturnType<(typeof HANDLERS)['rental']>;
@@ -47,7 +54,7 @@ export class EngineService {
   ) {}
 
   /** Everything needed to price and hold one request. Throws clear errors for anything not bookable. */
-  private async load(q: Queryable, customerId: string, req: EngineRequest, now: Date): Promise<Loaded> {
+  private async load(q: Queryable, customerId: string, req: EngineRequest, now: Date, agreed?: Agreed): Promise<Loaded> {
     parseTime(req.startsAt, 'startsAt');
     if (req.endsAt !== undefined) parseTime(req.endsAt, 'endsAt');
     const event = await this.db.one<{ id: string; event_date: string; venue_lat: string | null; venue_lng: string | null }>(
@@ -66,11 +73,15 @@ export class EngineService {
         WHERE s.id = $1`,
       [req.serviceId],
     );
-    if (!svc || !svc.is_active || svc.vendor_status !== 'approved') throw new AppError('ITEM_NOT_FOUND', 'This service is not offered any more.', HttpStatus.NOT_FOUND);
+    if (!svc || (!svc.is_active && !agreed) || svc.vendor_status !== 'approved') throw new AppError('ITEM_NOT_FOUND', 'This service is not offered any more.', HttpStatus.NOT_FOUND);
+    if (agreed) {
+      svc.pricing = agreed.pricing;
+      svc.rules = {};
+    }
     if (svc.vendor_user_id === customerId) throw new AppError('OWN_VENDOR', 'You cannot book your own business.');
     if (svc.booking_type === 'slot') throw new AppError('USE_SLOT_BOOKING', 'Book this service by date and slot.', HttpStatus.BAD_REQUEST);
     const type = svc.booking_type as Exclude<BookingTypeKey, 'slot'>;
-    const rules = effectiveRules(type, svc.template ?? {}, svc.rules ?? {});
+    const rules = agreed ? agreed.rules : effectiveRules(type, svc.template ?? {}, svc.rules ?? {});
 
     // A wedding's services can sit a few days around the main date (mehendi before, returns after).
     const startDay = istDay(new Date(req.startsAt));
@@ -83,10 +94,14 @@ export class EngineService {
         `SELECT i.id, i.name, i.unit, i.total_qty - i.repair_qty AS available, i.rent_paise, i.rent_per, i.deposit_paise, i.min_qty, i.max_qty,
                 i.min_days, i.max_days, i.damage_paise, i.missing_paise, i.quality, i.quality_label, i.condition, c.name_en AS category
            FROM inventory_items i LEFT JOIN item_categories c ON c.id = i.category_id
-          WHERE i.vendor_id = $1 AND i.is_active AND i.deleted_at IS NULL AND i.condition <> 'needs_repair' AND i.id = ANY($2::uuid[])`,
-        [svc.vendor_id, (req.lines ?? []).map((l) => l.itemId).filter((id) => /^[0-9a-f-]{36}$/i.test(id))],
+          WHERE i.vendor_id = $1 AND (($3 AND i.is_active AND i.deleted_at IS NULL AND i.condition <> 'needs_repair') OR NOT $3) AND i.id = ANY($2::uuid[])`,
+        [svc.vendor_id, (req.lines ?? []).map((l) => l.itemId).filter((id) => /^[0-9a-f-]{36}$/i.test(id)), !agreed],
       );
-      for (const r of rows) items.set(r.id, r);
+      // A change to a booking keeps the rent agreed for each item, even if the listing changed since.
+      for (const r of rows) {
+        const a = agreed?.items[r.id];
+        items.set(r.id, a ? { ...r, rent_paise: a.rentPaise, rent_per: a.rentPer, deposit_paise: a.depositPaise, min_qty: 1, max_qty: null, min_days: 1, max_days: null } : r);
+      }
     }
     const resource = svc.resource_id
       ? ((await this.db.one<ResourceRow>(q, 'SELECT id, kind, name, status, verification, attributes FROM resources WHERE id = $1', [svc.resource_id])) ?? null)
@@ -141,8 +156,8 @@ export class EngineService {
     return (await this.db.one<{ id: string }>(q, `INSERT INTO resources (vendor_id, kind, name) VALUES ($1, 'crew', 'Main team') RETURNING id`, [vendorId]))!.id;
   }
 
-  private async price(q: Queryable, customerId: string, req: EngineRequest, now = new Date()): Promise<Priced> {
-    const loaded = await this.load(q, customerId, req, now);
+  private async price(q: Queryable, customerId: string, req: EngineRequest, now = new Date(), agreed?: Agreed): Promise<Priced> {
+    const loaded = await this.load(q, customerId, req, now, agreed);
     const { ctx } = loaded;
     const plan = HANDLERS[ctx.type as Exclude<BookingTypeKey, 'slot'>](ctx);
     const p = ctx.service.pricing;
@@ -272,6 +287,8 @@ export class EngineService {
           mode: plan.answers.mode ?? null,
           needs: plan.needs,
           addons: p.addonRows,
+          // The request as made, so a later change (reschedule, extension) can be priced the same way.
+          request: { ...req, note: undefined },
         };
         const booking = await this.db.one<{ id: string }>(
           client,
@@ -337,6 +354,33 @@ export class EngineService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Prices a booking again for new times with what was agreed (rates, rules, item rents), without
+   * holding anything. Notice and "too far" checks are relaxed: the booking already exists.
+   */
+  async planChange(q: Queryable, b: { id: string; customer_id: string; snapshot: Record<string, unknown> }, startsAt: Date, endsAt: Date) {
+    const snap = b.snapshot as { request?: EngineRequest; service: { pricing: Agreed['pricing'] }; rules: Agreed['rules']; addons?: { id: string; status: string }[] };
+    if (!snap.request) throw new AppError('CHANGE_NOT_SUPPORTED', 'This booking cannot be changed in the app. Please contact support.', HttpStatus.CONFLICT);
+    const lines = await q.query<{ inventory_item_id: string; item_snapshot: { rentPaise: number; rentPer: 'booking' | 'day'; depositPaise: number } }>(
+      'SELECT inventory_item_id, item_snapshot FROM booking_lines WHERE booking_id = $1',
+      [b.id],
+    );
+    const items: Agreed['items'] = {};
+    for (const l of lines.rows) items[l.inventory_item_id] = { rentPaise: l.item_snapshot.rentPaise, rentPer: l.item_snapshot.rentPer, depositPaise: l.item_snapshot.depositPaise };
+    // Declined extras stay out; the rest keep their agreed price through the snapshot.
+    const kept = new Set((snap.addons ?? []).filter((a) => a.status !== 'declined').map((a) => a.id));
+    const req: EngineRequest = {
+      ...snap.request,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      addons: (snap.request.addons ?? []).filter((a) => kept.has(a.addonId)),
+    };
+    const lead = ((snap.rules?.leadTimeHours ?? 0) + 1) * HOUR;
+    const now = new Date(Math.min(Date.now(), startsAt.getTime() - lead));
+    const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0 }, items });
+    return { plan: p.plan, quote: p.quote, commissionPaise: p.commissionPaise };
   }
 
   /** Licence for self-drive: the number is encrypted; only the last 4 digits are ever shown. */

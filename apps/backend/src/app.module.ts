@@ -40,6 +40,8 @@ import { AdminExtrasController } from './admin/admin-extras.controller';
 import { EngineController } from './engine/engine.controller';
 import { EngineCatalogService } from './engine/catalog.service';
 import { TripService } from './engine/trip.service';
+import { ChangesService } from './engine/changes.service';
+import { ChangesController, PartnerChangesController } from './engine/changes.controller';
 import { AdminLicencesController, PartnerTripController, TripController } from './engine/trip.controller';
 import { AdminResourcesController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
 import { EngineService } from './engine/engine.service';
@@ -105,6 +107,8 @@ class ConfigModule {}
     PartnerTripController,
     TripController,
     AdminLicencesController,
+    ChangesController,
+    PartnerChangesController,
     PartnerInventoryController,
     PartnerRentalController,
     RentalsController,
@@ -123,6 +127,7 @@ class ConfigModule {}
     EngineService,
     EngineCatalogService,
     TripService,
+    ChangesService,
     InventoryService,
     FulfilmentService,
     RefundsService,

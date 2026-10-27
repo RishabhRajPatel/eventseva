@@ -216,7 +216,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
 
       const open = await this.db.one(
         client,
-        'SELECT 1 FROM bookings WHERE event_id = $1 AND vendor_id = $2 AND status = ANY($3)',
+        `SELECT 1 FROM bookings WHERE event_id = $1 AND vendor_id = $2 AND status = ANY($3) AND booking_type = 'slot'`,
         [body.eventId, body.vendorId, ACTIVE],
       );
       if (open) throw new AppError('BOOKING_EXISTS', 'You already have a booking with this vendor for this event.', HttpStatus.CONFLICT);
