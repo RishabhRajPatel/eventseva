@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { rupees, type OwnVendor } from '@eventseva/app-shared';
 import { canEdit, isCategoryLocked } from '../../lib/routing';
 import { coverOf, thumbUrl } from '../../lib/media';
+import { usesEngine } from '../../lib/engine';
 import { useDashboard, useVendor } from '../../lib/queries';
 import { useSession } from '../../lib/session';
 import { confirm } from '../../lib/confirm';
@@ -48,6 +49,17 @@ function ProfileBody({ vendor }: { vendor: OwnVendor }) {
   const status = vendor.status === 'approved' ? { label: t('home.verified'), tone: 'success' as const } : vendorStatus(t, vendor.status);
 
   const menu: Array<{ icon: IconName; label: string; value?: string; onPress: () => unknown; testID: string }> = [
+    ...(usesEngine(vendor.category.bookingType)
+      ? [
+          {
+            icon: (vendor.category.bookingType === 'transport' ? 'car' : 'calendar') as IconName,
+            label: t(vendor.category.bookingType === 'transport' ? 'profile.servicesCars' : 'profile.servicesEngine'),
+            value: vendor.engineServiceCount ? t('profile.servicesCount', { count: vendor.engineServiceCount }) : undefined,
+            onPress: () => router.push('/engine'),
+            testID: 'menu-engine',
+          },
+        ]
+      : []),
     {
       icon: 'tent',
       label: t('profile.rentalItems'),

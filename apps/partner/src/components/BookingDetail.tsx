@@ -21,6 +21,9 @@ import { TripCard } from './TripCard';
 import { Txt } from './Txt';
 import { openLink } from '../lib/links';
 import { RentalPanel } from './RentalPanel';
+import { ChangesPanel } from './ChangesPanel';
+import { EngineDetails } from './EngineDetails';
+import { TripPanel } from './TripPanel';
 
 /** Everything about one booking and what the vendor can do next. Used full-screen and in the tablet side panel. */
 export function BookingDetail({ booking, now }: { booking: Booking; now: number }) {
@@ -83,6 +86,9 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
       <TripCard booking={booking} />
 
       {booking.bookingType === 'rental' ? <RentalPanel booking={booking} /> : null}
+      {booking.bookingType === 'transport' ? <TripPanel booking={booking} /> : null}
+      <EngineDetails booking={booking} />
+      <ChangesPanel booking={booking} />
 
       <Card>
         <CardHeader title={t('money.title')} />
@@ -94,12 +100,19 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
         ) : null}
       </Card>
 
+      {['confirmed', 'completed'].includes(booking.status) && booking.bookingType !== 'slot' ? (
+        <View style={styles.invoices}>
+          <LinkButton testID="open-invoice" label={t('invoice.open')} onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: booking.id } })} />
+          <LinkButton testID="open-commission-invoice" label={t('invoice.openCommission')} onPress={() => router.push({ pathname: '/invoice/[id]', params: { id: booking.id, kind: 'commission' } })} />
+        </View>
+      ) : null}
+
       {booking.status === 'requested' && respondLeft ? (
         <Card style={{ gap: space.md }}>
           <Notice icon="clock" tone="warning">
             {t('requests.answerWithin', { time: timeLeftLabel(t, respondLeft) })}
           </Notice>
-          <RequestActions bookingId={booking.id} />
+          <RequestActions bookingId={booking.id} booking={booking} />
         </Card>
       ) : null}
 
@@ -163,4 +176,5 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
 const styles = StyleSheet.create({
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: space.sm },
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.md },
+  invoices: { flexDirection: 'row', flexWrap: 'wrap', gap: space.lg },
 });

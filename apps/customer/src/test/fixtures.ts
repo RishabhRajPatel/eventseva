@@ -7,7 +7,7 @@ export const inDays = (n: number) => addDays(todayIst(), n);
 export const vendor: VendorDetail = {
   id: 'v1',
   businessName: 'Shree Ram Caterers',
-  category: { id: 3, slug: 'catering', name: 'Cook & Catering', icon: 'catering' },
+  category: { id: 3, slug: 'catering', name: 'Cook & Catering', icon: 'catering', bookingType: 'slot' },
   city: { id: 1, name: 'Prayagraj' },
   area: 'Civil Lines',
   address: null,
@@ -20,6 +20,7 @@ export const vendor: VendorDetail = {
   ],
   packages: [{ id: 'p1', title: 'Haldi lunch', items: ['5 dishes', 'Sweet'], pricePaise: 2_500_000, isActive: true }],
   rentalItemCount: 0,
+  engineServiceCount: 0,
   media: [],
 };
 

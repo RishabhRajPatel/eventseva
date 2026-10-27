@@ -301,3 +301,17 @@ export async function uploadDocument(file: PickedFile, docType: DocType, last4?:
     }),
   );
 }
+
+/** RC, insurance, permit, PUC of a vehicle, or a driver's licence / police verification: private, like KYC. */
+export async function uploadResourceDocument(file: PickedFile, resourceId: string, docType: string, opts: UploadOptions = {}): Promise<{ id: string; docType: string; status: string }> {
+  const { result: r } = await send({ ...file, type: 'photo' }, 'document', opts);
+  return withRetry(() =>
+    api.post<{ id: string; docType: string; status: string }>(`/v1/partner/resources/${resourceId}/documents`, {
+      publicId: r.public_id,
+      version: r.version,
+      signature: r.signature,
+      docType,
+      format: r.format,
+    }),
+  );
+}

@@ -149,7 +149,8 @@ export interface Package {
 export interface VendorDetail {
   id: string;
   businessName: string;
-  category: { id: number; slug: string; name: string; icon: string };
+  /** bookingType: how the category is booked (slot, rental, transport, staffing …). */
+  category: { id: number; slug: string; name: string; icon: string; bookingType: BookingType };
   city: { id: number; name: string };
   area: string | null;
   /** null for the public. */
@@ -164,6 +165,8 @@ export interface VendorDetail {
   packages: Package[];
   /** Items on rent (tent, furniture, utensils …): when > 0 the vendor page offers "Rent items". */
   rentalItemCount: number;
+  /** Services booked by time / quantity (cars, staff, catering …): when > 0 the vendor page offers "Book". */
+  engineServiceCount: number;
   media: Media[];
   /** Owner and admin views only. */
   status?: VendorStatus;
@@ -172,6 +175,8 @@ export interface VendorDetail {
   createdAt?: string;
   /** Owner and admin views: end of the current featured period, or null. */
   featuredUntil?: string | null;
+  /** Owner and admin views: GST number, needed before charging GST. */
+  gstin?: string | null;
 }
 
 /** GET /v1/partner/vendor */
@@ -968,4 +973,22 @@ export interface CheckoutResult {
   eventId: string;
   createdAt: string;
   bookings: { id: string; status: BookingStatus; vendorId: string; businessName: string; title: string | null; amountPaise: number; advancePaise: number; depositPaise: number; startsAt: string; endsAt: string }[];
+}
+
+/** GET /v1/bookings/:id/invoice (customer), /v1/partner/bookings/:id/invoice and …/commission-invoice. */
+export interface Invoice {
+  title: 'Tax invoice' | 'Bill of supply';
+  number: string;
+  issuedAt: string;
+  seller: { name: string; address: string | null; gstin: string | null };
+  buyer: { name: string; address: string | null; gstin: string | null };
+  booking: { id: string; service: string; from: string | null; until: string | null; day: string };
+  lines: { description: string; qty: number; amountPaise: number }[];
+  taxablePaise: number;
+  cgstPaise: number;
+  sgstPaise: number;
+  totalPaise: number;
+  paidPaise?: number;
+  refundedPaise?: number;
+  note: string;
 }

@@ -24,7 +24,12 @@ export interface BusinessValues {
   pin: LatLng | null;
   /** How far they usually travel, km; null = not set. */
   radiusKm: number | null;
+  /** GST number, needed before charging GST; empty = not registered. */
+  gstin: string;
 }
+
+/** 15 characters: state code, PAN, entity number, Z, check character. */
+export const GSTIN = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
 /** Travel ranges offered as chips. */
 export const RADIUS_CHOICES = [5, 10, 20, 30, 50, 100] as const;
@@ -41,14 +46,15 @@ export function initialBusiness(v: OwnVendor | null | undefined): BusinessValues
     about: v?.about ?? '',
     pin: v?.location ?? null,
     radiusKm: v?.serviceRadiusKm ?? null,
+    gstin: v?.gstin ?? '',
   };
 }
 
 export type BusinessErrors = Partial<Record<keyof BusinessValues, string>>;
 
 /** Same limits as the API, so most mistakes are caught before sending. */
-export function validateBusiness(v: BusinessValues): Partial<Record<keyof BusinessValues, 'required' | 'short' | 'tooLong'>> {
-  const e: Partial<Record<keyof BusinessValues, 'required' | 'short' | 'tooLong'>> = {};
+export function validateBusiness(v: BusinessValues): Partial<Record<keyof BusinessValues, 'required' | 'short' | 'tooLong' | 'gstin'>> {
+  const e: Partial<Record<keyof BusinessValues, 'required' | 'short' | 'tooLong' | 'gstin'>> = {};
   const name = v.businessName.trim();
   if (!name) e.businessName = 'required';
   else if (name.length < 2) e.businessName = 'short';
@@ -58,6 +64,7 @@ export function validateBusiness(v: BusinessValues): Partial<Record<keyof Busine
   else if (v.area.trim().length < 2) e.area = 'short';
   if (v.address.trim() && v.address.trim().length < 5) e.address = 'short';
   if (v.about.length > 1500) e.about = 'tooLong';
+  if (v.gstin.trim() && !GSTIN.test(v.gstin.trim().toUpperCase())) e.gstin = 'gstin';
   return e;
 }
 
@@ -238,6 +245,18 @@ export function BusinessForm({
         hint={values.about.trim().length < ABOUT_MIN ? t('business.aboutHint', { min: ABOUT_MIN }) : t('business.aboutCount', { n: values.about.length })}
         error={err('about')}
       />
+
+      <Field
+        testID="business-gstin"
+        label={`${t('business.gstin')} ${t('form.optional')}`}
+        value={values.gstin}
+        onChangeText={(v) => set('gstin', v.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 15))}
+        placeholder="09ABCDE1234F1Z5"
+        autoCapitalize="characters"
+        maxLength={15}
+        hint={t('business.gstinHint')}
+        error={err('gstin')}
+      />
     </View>
   );
 }
@@ -262,6 +281,9 @@ export function businessPayload(v: BusinessValues, initial?: BusinessValues) {
   }
   // null is sent on purpose: it clears the range.
   if (!initial ? v.radiusKm !== null : initial.radiusKm !== v.radiusKm) out.serviceRadiusKm = v.radiusKm;
+  // Clearing the GST number is allowed (null); unchanged it is left out.
+  const gstin = v.gstin.trim().toUpperCase();
+  if (!initial ? gstin !== '' : initial.gstin !== gstin) out.gstin = gstin || null;
   return out;
 }
 

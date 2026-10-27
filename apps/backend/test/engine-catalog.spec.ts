@@ -92,7 +92,10 @@ describe('engine catalogue', () => {
     expect(created).toMatchObject({ bookingType: 'time_window', pricing: { model: 'fixed' } });
     // Slot service routes cannot touch it, and it is not in the old services list.
     await as(dj.token).patch(`/v1/partner/services/${created.id}`, { title: 'Renamed' }).expect(404);
-    expect((await t.http().get(`/v1/vendors/${dj.id}`).expect(200)).body.services).toHaveLength(0);
+    const page = (await t.http().get(`/v1/vendors/${dj.id}`).expect(200)).body;
+    expect(page.services).toHaveLength(0);
+    // The vendor page tells the apps to offer "Book" for these services.
+    expect(page).toMatchObject({ engineServiceCount: 1, category: { bookingType: 'time_window' } });
 
     const pub = (await t.http().get(`/v1/vendors/${dj.id}/engine-services`).expect(200)).body.items;
     expect(pub[0]).toMatchObject({ id: created.id, bookingType: 'time_window', rules: { minDurationMin: 120, leadTimeHours: 12 } });

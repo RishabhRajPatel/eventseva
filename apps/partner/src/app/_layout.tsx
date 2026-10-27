@@ -138,6 +138,12 @@ function AppStack() {
         <Stack.Screen name="inventory/index" />
         <Stack.Screen name="inventory/[id]" />
         <Stack.Screen name="rental-settings" />
+        <Stack.Screen name="engine/index" />
+        <Stack.Screen name="engine/service/[id]" />
+        <Stack.Screen name="engine/resource/[id]" />
+        <Stack.Screen name="engine/addon/[id]" />
+        <Stack.Screen name="engine/bundle/[id]" />
+        <Stack.Screen name="invoice/[id]" />
         <Stack.Screen name="business" />
         <Stack.Screen name="photos" />
         <Stack.Screen name="documents" />

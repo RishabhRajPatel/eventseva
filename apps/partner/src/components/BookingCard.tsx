@@ -70,7 +70,7 @@ export const BookingCard = memo(function BookingCard({ booking, now, onOpen, sel
         </View>
       ) : null}
       {booking.status !== 'rejected' && booking.status !== 'expired' ? <MoneyBreakdown booking={booking} /> : null}
-      {isRequest ? <RequestActions bookingId={booking.id} /> : null}
+      {isRequest ? <RequestActions bookingId={booking.id} booking={booking} /> : null}
     </Card>
   );
 });

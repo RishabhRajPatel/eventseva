@@ -27,6 +27,7 @@ interface VendorRow {
   category_slug: string;
   category_name: string;
   category_icon: string;
+  category_booking_type: string;
   city_id: number;
   city_name: string;
   area: string | null;
@@ -58,7 +59,7 @@ export async function loadVendor(
   audience: 'public' | 'owner' | 'admin',
 ) {
   const { rows } = await q.query<VendorRow>(
-    `SELECT v.*, c.slug AS category_slug, c.icon AS category_icon, ${categoryName(lang)} AS category_name, ci.name AS city_name
+    `SELECT v.*, c.slug AS category_slug, c.icon AS category_icon, c.booking_type AS category_booking_type, ${categoryName(lang)} AS category_name, ci.name AS city_name
        FROM vendors v JOIN categories c ON c.id = v.category_id JOIN cities ci ON ci.id = v.city_id
       WHERE v.id = $1 ${audience === 'public' ? "AND v.status = 'approved'" : ''}`,
     [vendorId],
@@ -82,6 +83,10 @@ export async function loadVendor(
     `SELECT count(*)::int AS n FROM inventory_items WHERE vendor_id = $1 AND is_active AND deleted_at IS NULL`,
     [vendorId],
   );
+  const engine = await q.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM services WHERE vendor_id = $1 AND is_active AND booking_type NOT IN ('slot', 'rental')`,
+    [vendorId],
+  );
 
   // Photos and videos: Cloudinary public ids; the apps build the URL with their cloud name.
   // The public sees approved media only; the owner and admins also see what is waiting for review.
@@ -97,7 +102,7 @@ export async function loadVendor(
   return {
     id: v.id,
     businessName: v.business_name,
-    category: { id: v.category_id, slug: v.category_slug, name: v.category_name, icon: v.category_icon },
+    category: { id: v.category_id, slug: v.category_slug, name: v.category_name, icon: v.category_icon, bookingType: v.category_booking_type },
     city: { id: v.city_id, name: v.city_name },
     area: v.area,
     address: audience === 'public' ? null : v.address,
@@ -111,6 +116,8 @@ export async function loadVendor(
     packages: packages.rows,
     /** Items on rent (tent, furniture, utensils …); the app opens GET /v1/vendors/:id/rentals when > 0. */
     rentalItemCount: rentals.rows[0].n,
+    /** Services booked by time / quantity (cars, staff, catering …); the app opens GET /v1/vendors/:id/engine-services when > 0. */
+    engineServiceCount: engine.rows[0].n,
     media: media.rows,
     // Review state is private to the owner and admins.
     ...(audience === 'public'
@@ -133,7 +140,7 @@ export function missingForReview(v: VendorDetail): string[] {
   const missing: string[] = [];
   if (!v.area) missing.push('area');
   if (!v.about || v.about.trim().length < 20) missing.push('about');
-  if (v.services.length + v.packages.length + v.rentalItemCount === 0) missing.push('services_or_packages');
+  if (v.services.length + v.packages.length + v.rentalItemCount + v.engineServiceCount === 0) missing.push('services_or_packages');
   if (!v.media.some((m) => m.type === 'photo' && m.status !== 'rejected')) missing.push('photos');
   return missing;
 }

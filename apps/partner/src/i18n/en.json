@@ -17,7 +17,9 @@
     "saveChanges": "Save changes",
     "saving": "Saving…",
     "stay": "Stay logged in",
-    "undo": "Undo"
+    "undo": "Undo",
+    "yes": "Yes",
+    "no": "No"
   },
   "tabs": {
     "home": "Home",
@@ -172,7 +174,13 @@
     "accepting": "Accepting…",
     "declined": "Request declined. We've told the customer.",
     "declineBody": "The customer sees your reason and can book someone else. This can't be undone.",
-    "declineConfirm": "Decline request"
+    "declineConfirm": "Decline request",
+    "acceptTitle": "Before you accept",
+    "quoteNote": "The customer asked for a quotation. Enter your full price: they see it and pay the advance to confirm.",
+    "yourPrice": "Your price",
+    "addonYes": "Can do",
+    "addonNo": "Can't do",
+    "decideEachExtra": "Choose “Can do” or “Can't do” for each extra."
   },
   "booking": {
     "title": "Booking",
@@ -365,7 +373,11 @@
     "featuredUntil": "Until {{day}}",
     "rentalItems": "Rental items",
     "rentalItemsCount_one": "{{count}} item",
-    "rentalItemsCount_other": "{{count}} items"
+    "rentalItemsCount_other": "{{count}} items",
+    "servicesEngine": "Services & bookings",
+    "servicesCars": "Cars, drivers & trips",
+    "servicesCount_one": "{{count}} service",
+    "servicesCount_other": "{{count}} services"
   },
   "catalog": {
     "title": "Services & packages",
@@ -428,7 +440,9 @@
   "form": {
     "required": "This is required.",
     "short": "Too short — please write a little more.",
-    "tooLong": "This is too long."
+    "tooLong": "This is too long.",
+    "optional": "(optional)",
+    "gstin": "Enter the 15-character GST number, e.g. 09ABCDE1234F1Z5."
   },
   "business": {
     "title": "Business info",
@@ -465,7 +479,9 @@
     },
     "radius": "How far you usually travel",
     "radiusAny": "Anywhere",
-    "radiusHint": "Requests from further away are still allowed; the customer is told you may charge for travel."
+    "radiusHint": "Requests from further away are still allowed; the customer is told you may charge for travel.",
+    "gstin": "GST number",
+    "gstinHint": "Needed only if you charge GST. Customers get a tax invoice in your name."
   },
   "photos": {
     "title": "Photos & videos",
@@ -1063,5 +1079,382 @@
       "return": "Return count saved",
       "verify": "Return verified. Stock updated."
     }
+  },
+  "engine": {
+    "title": "Services & bookings",
+    "intro": {
+      "time_window": "Customers book you from a start time to an end time. Set your price, minimum hours and how much time you need to set up.",
+      "per_person": "Customers book for a number of guests. Set your rate per plate and how many guests you can serve in a day.",
+      "staffing": "Customers book a number of workers for a shift. Add your staff so we know how many you have.",
+      "appointment": "Customers book for a number of people. Set your rate and the time each person takes.",
+      "transport": "Add your cars and drivers first. EventSeva checks the RC, insurance and licence before customers can book.",
+      "quote": "Customers send their needs and budget. You reply with your price when you accept."
+    },
+    "services": "Your services",
+    "servicesEmpty": "No services yet. Add one so customers can book you.",
+    "addService": "Add service",
+    "newService": "New service",
+    "editService": "Edit service",
+    "deleteService": "Remove service",
+    "deleteServiceBody": "Customers can no longer book it. Bookings already made still go ahead.",
+    "serviceAdded": "Service added",
+    "serviceSaved": "Service saved",
+    "serviceRemoved": "Service removed",
+    "notFound": "This was removed or is not yours.",
+    "serviceTitle": "Service name",
+    "titleRequired": "Enter a name for this service",
+    "nameRequired": "Enter a name",
+    "titlePlaceholder": {
+      "time_window": "e.g. Wedding DJ night",
+      "per_person": "e.g. Veg wedding thali",
+      "staffing": "e.g. Halwai for a day",
+      "appointment": "e.g. Bridal makeup",
+      "transport": "e.g. Wedding car with driver",
+      "quote": "e.g. Full wedding planning"
+    },
+    "description": "Description",
+    "which": {
+      "vehicle": "Which car is this for?",
+      "venue": "Which hall is this for?",
+      "artist": "Who does this?"
+    },
+    "chooseVehicle": "Choose the car this service is for",
+    "price": "Price",
+    "model": {
+      "fixed": "Fixed",
+      "hourly": "Per hour",
+      "daily": "Per day",
+      "per_unit": "Per item",
+      "per_person": "Per person",
+      "per_trip": "Per trip",
+      "quote": "Quote on request"
+    },
+    "per": {
+      "fixed": "per booking",
+      "hourly": "per hour",
+      "daily": "per day",
+      "per_unit": "per item",
+      "per_person": "per person",
+      "per_trip": "per trip"
+    },
+    "rateLabel": {
+      "fixed": "Price for the booking",
+      "hourly": "Price per hour",
+      "daily": "Price per day",
+      "per_unit": "Price per item",
+      "per_person": "Price per person",
+      "per_trip": "Price per trip",
+      "quote": "Price"
+    },
+    "priceField": {
+      "includedHours": "Hours included",
+      "includedKm": "Km included",
+      "overtimeHourPaise": "Each extra hour",
+      "extraKmPaise": "Each extra km",
+      "driverDayPaise": "Driver allowance per day",
+      "dayRatePaise": "Rate for each extra day",
+      "earlyMorningPaise": "Early-morning start (before 7 am)",
+      "minChargePaise": "Minimum charge",
+      "travelFreeKm": "Free travel up to (km)",
+      "travelPerKmPaise": "Travel charge per km after that"
+    },
+    "numberInvalid": "Enter a number",
+    "quoteNote": "No fixed price: you enter your price when you accept each request.",
+    "gst": "GST on this service",
+    "noGst": "No GST",
+    "gstinFirst": "Add your GST number in Business details before charging GST.",
+    "addGstin": "Add GST number →",
+    "details": "Details customers see",
+    "rules": "Booking rules",
+    "rulesHint": "Leave empty to use EventSeva's usual rules for your category.",
+    "rule": {
+      "minHours": "Shortest booking (hours)",
+      "maxHours": "Longest booking (hours)",
+      "minQty": "Smallest number",
+      "maxQty": "Largest number",
+      "leadTimeHours": "Book at least (hours before)",
+      "setupHours": "Setup time before (hours)",
+      "dismantleHours": "Pack-up time after (hours)",
+      "bufferHours": "Gap before the next booking (hours)",
+      "perPersonMin": "Minutes per person",
+      "capacity": "Most guests in a day",
+      "minAge": "Driver's minimum age (self-drive)",
+      "deposit": "Refundable security deposit"
+    },
+    "ruleError": {
+      "invalid": "Check the booking rules: use whole numbers (hours can have one decimal).",
+      "range": "The largest value is less than the smallest one.",
+      "lead": "Customers must book at least {{n}} hours before for this category."
+    },
+    "approval": "New bookings",
+    "approvalVendor": "I accept each one",
+    "approvalAuto": "Confirm instantly",
+    "approvalVendorNote": "You get a request and answer it within the time shown.",
+    "approvalAutoNote": "Bookings are accepted at once when you are free; the customer pays the advance straight away.",
+    "instructions": "Instructions for customers",
+    "instructionsPlaceholder": "e.g. Power point near the stage needed",
+    "instant": "Instant",
+    "fieldRequired": "This is required",
+    "maxChars": "Up to {{n}} characters",
+    "between": "Between {{min}} and {{max}}",
+    "atLeast": "At least {{n}}",
+    "atMost": "At most {{n}}",
+    "resources": {
+      "vehicle": "Cars & drivers",
+      "driver": "Drivers",
+      "staff": "Your staff",
+      "artist": "Artists",
+      "venue": "Halls",
+      "equipment": "Equipment"
+    },
+    "resourcesEmpty": {
+      "vehicle": "No cars yet. Add a car and a driver to start taking bookings.",
+      "staff": "No staff yet. Add each worker so customers can book them.",
+      "artist": "No artists yet.",
+      "venue": "No hall yet.",
+      "driver": "No drivers yet.",
+      "equipment": "No equipment yet."
+    },
+    "addResource": {
+      "vehicle": "Add car",
+      "driver": "Add driver",
+      "staff": "Add staff member",
+      "artist": "Add artist",
+      "venue": "Add hall",
+      "equipment": "Add equipment"
+    },
+    "kind": {
+      "vehicle": "Car",
+      "driver": "Driver",
+      "staff": "Staff",
+      "artist": "Artist",
+      "venue": "Hall",
+      "equipment": "Equipment"
+    },
+    "resourceName": {
+      "vehicle": "Car name",
+      "driver": "Driver's name",
+      "staff": "Name",
+      "artist": "Name",
+      "venue": "Hall name",
+      "equipment": "Name"
+    },
+    "resourceNamePlaceholder": {
+      "vehicle": "e.g. White Innova Crysta",
+      "driver": "e.g. Ramesh Kumar",
+      "staff": "e.g. Suresh (head cook)",
+      "artist": "e.g. Priya",
+      "venue": "e.g. Shubh Mangal Hall",
+      "equipment": "e.g. 15 kVA generator"
+    },
+    "editResource": "Edit details",
+    "resourceAdded": "{{name}} added",
+    "resourceSaved": "{{name}} saved",
+    "resourceRemoved": "Removed",
+    "resourceBooked": "This has bookings ahead. Finish or cancel them first.",
+    "deleteResourceBody": "Customers can no longer book it.",
+    "chooseMode": "Choose with driver, self-drive or both.",
+    "availability": "Availability",
+    "status": {
+      "active": "Available",
+      "maintenance": "In repair",
+      "inactive": "Removed"
+    },
+    "maintenanceNote": "No new bookings while it is in repair. Bookings already made are not changed.",
+    "verification": {
+      "not_required": "No check needed",
+      "pending": "Being checked",
+      "approved": "Verified",
+      "rejected": "Not approved",
+      "suspended": "Suspended"
+    },
+    "verificationBody": {
+      "pending": "EventSeva is checking the papers. Customers can book once it is verified.",
+      "approved": "Customers can book this.",
+      "rejected": "Upload the papers again after fixing this:",
+      "suspended": "No new bookings. Contact EventSeva support:"
+    },
+    "docsMissing_one": "{{count}} paper still needed",
+    "docsMissing_other": "{{count}} papers still needed",
+    "docsAfterSave": "After saving, upload the RC and insurance (car) or the licence (driver) for EventSeva to check.",
+    "papers": "Papers",
+    "papersHint": "Private: only the EventSeva team sees them.",
+    "doc": {
+      "vehicle_rc": "RC (registration)",
+      "vehicle_insurance": "Insurance",
+      "vehicle_permit": "Permit",
+      "vehicle_puc": "PUC certificate",
+      "driver_licence": "Driving licence",
+      "police_verification": "Police verification"
+    },
+    "addons": "Extras",
+    "addonsHint": "Things customers can add to a booking, like decoration or an extra hour.",
+    "askFirst": "Ask first",
+    "newAddon": "New extra",
+    "editAddon": "Edit extra",
+    "addonName": "Name",
+    "addonNamePlaceholder": "e.g. Flower decoration on the car",
+    "addonKind": "Type",
+    "addonKinds": {
+      "extra": "Extra",
+      "decoration": "Decoration",
+      "package": "Package",
+      "equipment": "Equipment",
+      "trial": "Trial"
+    },
+    "addonPrice": "Price",
+    "addonPriceHint": "Added to the booking price. ₹0 for something free.",
+    "priceRequired": "Enter a price (₹0 is fine)",
+    "addonFor": "Offered with",
+    "allServices": "All services",
+    "includes": "What's included",
+    "excludes": "Not included",
+    "oneLineEach": "One per line",
+    "setupMinutes": "Extra setup time (minutes)",
+    "addonApproval": "When a customer picks it",
+    "addonApprovalNo": "Add it",
+    "addonApprovalYes": "Ask me",
+    "addonApprovalNoNote": "It is added to the booking straight away.",
+    "addonApprovalYesNote": "You say yes or no when you accept the request.",
+    "addonAdded": "Extra added",
+    "addonSaved": "Extra saved",
+    "addonRemoved": "Extra removed",
+    "deleteAddonBody": "Customers can no longer pick it. Bookings already made keep it.",
+    "addonStatus": {
+      "included": "Included",
+      "pending_approval": "Waiting for you",
+      "approved": "Accepted",
+      "declined": "Declined"
+    },
+    "addonsAsked": "Extras asked for",
+    "customerAnswers": "Customer's answers",
+    "bundles": "Packages of services",
+    "bundlesHint": "Services booked together, with an optional discount.",
+    "offPercent": "{{n}}% off",
+    "newBundle": "New package",
+    "editBundle": "Edit package",
+    "bundleName": "Package name",
+    "bundleNamePlaceholder": "e.g. Wedding: DJ + lights + baraat",
+    "bundleServices": "Services in this package",
+    "bundlePick": {
+      "off": "Not in it",
+      "optional": "Optional",
+      "mandatory": "Always included"
+    },
+    "bundleTwo": "Choose at least 2 services",
+    "bundleOneMandatory": "Mark at least one service “Always included”",
+    "bundleDiscount": "Discount (%)",
+    "bundleDiscountHint": "Up to 50%, on the services booked in the package.",
+    "discountMax": "At most 50%",
+    "bundleAdded": "Package added",
+    "bundleSaved": "Package saved",
+    "bundleRemoved": "Package removed",
+    "deleteBundleBody": "Customers can no longer book it as a package."
+  },
+  "carTrip": {
+    "title": "Trip",
+    "window": "{{from}} → {{until}}",
+    "mode": {
+      "with_driver": "With driver",
+      "self_drive": "Self-drive"
+    },
+    "fulfilment": {
+      "scheduled": "Scheduled",
+      "assigned": "Driver assigned",
+      "in_progress": "On the trip",
+      "closed": "Returned"
+    },
+    "pickup": "Pickup: {{place}}",
+    "drop": "Drop: {{place}}",
+    "driver": "Driver: {{name}}",
+    "chooseDriver": "Choose the driver",
+    "changeDriver": "Change the driver",
+    "noDrivers": "No verified driver yet. Add a driver and their licence in Services & bookings.",
+    "assign": "Assign driver",
+    "handoverHint": "When the car leaves: note the odometer and fuel, and take photos of all four sides.",
+    "returnHint": "When the car is back: note the odometer and fuel, and any extra charges.",
+    "odometer": "Odometer (km)",
+    "driven": "{{km}} km driven",
+    "fuel": "Fuel",
+    "empty": "Empty",
+    "full": "Full",
+    "extraCharges": "Extra charges",
+    "extraChargesHint": "Extra km and late return are worked out from the agreed rates. Add fuel, tolls, parking and damage here; the customer can accept or dispute them.",
+    "fuelCost": "Fuel",
+    "tolls": "Tolls",
+    "parking": "Parking",
+    "damage": "Damage",
+    "damagePlaceholder": "e.g. Scratch on rear door",
+    "amount": "Amount",
+    "addDamage": "+ Add damage",
+    "notesPlaceholder": "e.g. Small dent on the bumper already there",
+    "addPhotos": "Add photos of the car",
+    "chargeError": "Check the amounts: each damage needs a description and at least ₹1.",
+    "readingError": {
+      "odometer": "Enter the odometer reading in km.",
+      "fuel": "Choose the fuel level.",
+      "below": "The odometer cannot be below {{km}} km (at handover)."
+    },
+    "saveHandover": "Car handed over",
+    "saveReturn": "Save return",
+    "returnConfirmTitle": "Save the return?",
+    "returnConfirmBody": "The customer sees the readings and charges. The deposit is settled once they accept or 48 hours pass.",
+    "done": {
+      "driver": "Driver assigned. The customer is told.",
+      "handover": "Handover saved",
+      "return": "Return saved"
+    },
+    "phase": {
+      "handover": "Handover",
+      "return": "Return"
+    },
+    "readings": "Odometer {{km}} km · fuel {{fuel}}/8",
+    "ack": {
+      "agreed": "Customer agreed",
+      "disputed": "Customer disputes"
+    },
+    "customerSays": "Customer: “{{note}}”"
+  },
+  "changes": {
+    "title": "Change requests",
+    "kind": {
+      "reschedule": "Move to new times",
+      "extension": "Extend the booking"
+    },
+    "status": {
+      "requested": "Waiting for you",
+      "approved": "Approved",
+      "rejected": "Declined",
+      "cancelled": "Withdrawn"
+    },
+    "newTimes": "{{from}} → {{until}}",
+    "more": "Customer pays {{amount}} more",
+    "less": "{{amount}} goes back to the customer",
+    "same": "Same price",
+    "approve": "Approve",
+    "approved": "Change approved. The customer is told.",
+    "declined": "Change declined",
+    "declineTitle": "Decline this change?",
+    "declineBody": "The booking stays as it is. The customer sees your reason."
+  },
+  "invoice": {
+    "title": "Invoice",
+    "commissionTitle": "EventSeva commission invoice",
+    "open": "Invoice to customer",
+    "openCommission": "Commission invoice",
+    "taxInvoice": "Tax invoice",
+    "billOfSupply": "Bill of supply",
+    "number": "No. {{number}} · {{date}}",
+    "from": "From",
+    "to": "To",
+    "gstin": "GSTIN {{gstin}}",
+    "booking": "Booking {{ref}}: {{service}}",
+    "taxable": "Taxable value",
+    "cgst": "CGST",
+    "sgst": "SGST",
+    "total": "Total",
+    "paid": "Paid through EventSeva",
+    "refunded": "Refunded",
+    "share": "Share invoice"
   }
 }

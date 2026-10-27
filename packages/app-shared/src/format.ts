@@ -1,4 +1,5 @@
 import type { Language } from '@eventseva/core';
+import type { Invoice } from './types';
 
 /** ₹1,35,000 — Indian digit grouping; paise shown only when there are any. */
 export function rupees(paise: number): string {
@@ -55,4 +56,21 @@ export function timeLeft(iso: string, now = Date.now()): string | null {
   const h = Math.floor(ms / 3600_000);
   const m = Math.floor((ms % 3600_000) / 60_000);
   return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** An invoice as plain text, for the share sheet (WhatsApp, email) in both apps. */
+export function invoiceText(inv: Invoice): string {
+  const out = [`${inv.title} ${inv.number}`, `Date: ${formatDateTime(inv.issuedAt, 'en')}`, ''];
+  out.push(`From: ${inv.seller.name}${inv.seller.gstin ? ` (GSTIN ${inv.seller.gstin})` : ''}`);
+  if (inv.seller.address) out.push(inv.seller.address);
+  out.push(`To: ${inv.buyer.name}${inv.buyer.gstin ? ` (GSTIN ${inv.buyer.gstin})` : ''}`);
+  out.push('', `Booking ${inv.booking.id.slice(0, 8).toUpperCase()}: ${inv.booking.service}`);
+  for (const l of inv.lines) out.push(`${l.description}${l.qty > 1 ? ` × ${l.qty}` : ''}: ${rupees(l.amountPaise)}`);
+  out.push('', `Taxable value: ${rupees(inv.taxablePaise)}`);
+  if (inv.cgstPaise || inv.sgstPaise) out.push(`CGST: ${rupees(inv.cgstPaise)}`, `SGST: ${rupees(inv.sgstPaise)}`);
+  out.push(`Total: ${rupees(inv.totalPaise)}`);
+  if (inv.paidPaise !== undefined) out.push(`Paid through EventSeva: ${rupees(inv.paidPaise)}`);
+  if (inv.refundedPaise) out.push(`Refunded: ${rupees(inv.refundedPaise)}`);
+  out.push('', inv.note);
+  return out.join('\n');
 }

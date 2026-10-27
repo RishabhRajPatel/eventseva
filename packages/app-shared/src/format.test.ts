@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cardImage, imageWidth, wideImage } from './cloudinary.ts';
-import { addDays, formatDay, formatPhone, rupees, timeLeft, todayIst } from './format.ts';
+import { addDays, formatDay, formatPhone, invoiceText, rupees, timeLeft, todayIst } from './format.ts';
 
 test('rupees use Indian grouping', () => {
   assert.equal(rupees(13_500_000), '₹1,35,000');
@@ -25,4 +25,21 @@ test('cloudinary sizes: rounded steps, padded cards, no upscaling', () => {
   assert.equal(imageWidth(180, 3.5), 600);
   assert.equal(cardImage('demo', 'v/a', 180, 120, 2), 'https://res.cloudinary.com/demo/image/upload/w_400,h_267,c_pad,b_blurred:400:15,f_auto,q_auto:good/v/a');
   assert.match(wideImage('demo', 'v/a', 390, 3), /w_1200,c_limit/);
+});
+
+test('invoice text for the share sheet', () => {
+  const text = invoiceText({
+    title: 'Tax invoice', number: 'V1A2B3C/2026-27/0001', issuedAt: '2026-11-08T06:30:00Z',
+    seller: { name: 'Raj Cars', address: 'Civil Lines', gstin: '09ABCDE1234F1Z5' }, buyer: { name: 'Rahul', address: null, gstin: null },
+    booking: { id: 'abcdef12-0000-0000-0000-000000000000', service: 'Wedding car', from: null, until: null, day: '2026-11-07' },
+    lines: [{ description: 'Wedding car (up to 8 h, 80 km)', qty: 1, amountPaise: 500_000 }, { description: 'Extra km', qty: 20, amountPaise: 40_000 }],
+    taxablePaise: 540_000, cgstPaise: 13_500, sgstPaise: 13_500, totalPaise: 567_000, paidPaise: 567_000, note: 'Issued through EventSeva.',
+  });
+  assert.match(text, /^Tax invoice V1A2B3C\/2026-27\/0001/);
+  assert.match(text, /GSTIN 09ABCDE1234F1Z5/);
+  assert.match(text, /Booking ABCDEF12: Wedding car/);
+  assert.match(text, /Extra km × 20: ₹400/);
+  assert.match(text, /CGST: ₹135/);
+  assert.match(text, /Total: ₹5,670/);
+  assert.doesNotMatch(text, /Refunded/);
 });

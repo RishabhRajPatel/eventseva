@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime, rupees, type Booking, type RentalLine, type RentalView } from '@eventseva/app-shared';
@@ -10,9 +9,8 @@ import { errorText } from '../lib/errors';
 import { invalidateInventory, inventoryKeys, itemUnit, nextStep, useRental } from '../lib/inventory';
 import { invalidateBookings } from '../lib/queries';
 import { toast } from '../lib/toast';
-import { uploadEvidencePhoto, type SignedPhoto } from '../lib/upload';
 import { c, space } from '../lib/theme';
-import { toPicked } from '../hooks/usePhotoUpload';
+import { useEvidencePhotos } from '../hooks/useEvidencePhotos';
 import { useLang } from '../hooks/useLang';
 import { Button } from './Button';
 import { Card, CardHeader, Row } from './Card';
@@ -22,7 +20,6 @@ import { Notice } from './Notice';
 import { QueryView } from './States';
 import { Txt } from './Txt';
 
-const MAX_EVIDENCE = 10;
 type Counts = Record<string, { returned: string; damaged: string; missing: string; charge: string }>;
 const n = (v: string) => (v.trim() ? Number(v.replace(/\D/g, '')) : 0);
 
@@ -41,15 +38,14 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [counts, setCounts] = useState<Counts>({});
   const [note, setNote] = useState('');
-  const [photos, setPhotos] = useState<SignedPhoto[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const { photos, uploading, add: addPhotos, clear: clearPhotos, full } = useEvidencePhotos();
 
   const done = (r: RentalView) => {
     qc.setQueryData(inventoryKeys.rental(booking.id), r);
     invalidateBookings(qc, booking.id);
     invalidateInventory(qc);
     setNote('');
-    setPhotos([]);
+    clearPhotos();
   };
   const act = useMutation({
     mutationFn: ({ path, body }: { path: string; body?: object }) => api.post<RentalView>(`/v1/partner/bookings/${booking.id}/rental/${path}`, body ?? {}),
@@ -71,27 +67,11 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
     return n(k.returned) + n(k.damaged) + n(k.missing) !== l.dispatchedQty;
   });
 
-  async function addPhotos() {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: true, selectionLimit: MAX_EVIDENCE - photos.length, quality: 1 });
-    if (result.canceled) return;
-    setUploading(true);
-    try {
-      for (const a of result.assets) {
-        const photo = await uploadEvidencePhoto(toPicked(a));
-        setPhotos((p) => [...p, photo]);
-      }
-    } catch (e) {
-      toast.error(errorText(t, e));
-    } finally {
-      setUploading(false);
-    }
-  }
-
   const evidence = (
     <View style={{ gap: space.sm }}>
       <Field testID="rental-note" label={t('rental.note')} value={note} onChangeText={setNote} maxLength={500} placeholder={t('rental.notePlaceholder')} />
       <Button kind="outline" icon="image" testID="rental-photos" label={photos.length ? t('rental.photosAdded', { count: photos.length }) : t('rental.addPhotos')} loading={uploading}
-        disabled={photos.length >= MAX_EVIDENCE} onPress={() => void addPhotos()} />
+        disabled={full} onPress={() => void addPhotos()} />
     </View>
   );
   const body = () => ({ note: note.trim() || undefined, photos: photos.length ? photos : undefined });
