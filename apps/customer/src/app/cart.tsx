@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ApiError, formatDateTime, rupees } from '@eventseva/app-shared';
 import { api } from '../lib/api';
-import { cart, useCart } from '../lib/cart';
+import { cart, missingBundleServices, useCart } from '../lib/cart';
 import { newKey } from '../lib/engine';
 import { errorText } from '../lib/errors';
 import { keys } from '../lib/queryClient';
@@ -34,6 +34,12 @@ export default function CartScreen() {
     enabled: items.length > 0,
     retry: false,
   });
+  // A package needs its "always included" services in the same checkout.
+  const bundleInfo = useQuery({ queryKey: ['bundles', bundle?.vendorId], queryFn: () => api.bundles(bundle!.vendorId), enabled: !!bundle });
+  const bundleServices = useQuery({ queryKey: ['engineServices', bundle?.vendorId], queryFn: () => api.engineServices(bundle!.vendorId), enabled: !!bundle });
+  const bundleItems = bundleInfo.data?.items.find((b) => b.id === bundle?.id)?.items ?? [];
+  const missing = bundle ? missingBundleServices(bundleItems, items) : [];
+  const titleOf = (serviceId: string) => bundleServices.data?.items.find((x) => x.id === serviceId)?.title ?? t('engineBook.service');
   // Which line the server refused (it says itemIndex).
   const badIndex = quote.error instanceof ApiError && typeof quote.error.details.itemIndex === 'number' ? quote.error.details.itemIndex : null;
 
@@ -81,7 +87,7 @@ export default function CartScreen() {
             testID="checkout"
             label={quote.data ? t('cart.sendAll', { count: items.length }) : t('cart.sendAllShort')}
             loadingLabel={t('book.sending')}
-            disabled={!quote.data}
+            disabled={!quote.data || missing.length > 0}
             onPress={async () => {
               setError(null);
               await book.mutateAsync();
@@ -95,6 +101,20 @@ export default function CartScreen() {
         <Notice icon="star" tone="mint">
           {bundle.discountPercent ? t('cart.bundleOff', { name: bundle.name, n: bundle.discountPercent }) : t('cart.bundle', { name: bundle.name })}
         </Notice>
+      ) : null}
+      {bundle && missing.length ? (
+        <Card style={styles.card}>
+          <AppText variant="bold" size="sm">{t('cart.bundleMissing')}</AppText>
+          {missing.map((serviceId) => (
+            <Button
+              key={serviceId}
+              label={t('cart.addService', { name: titleOf(serviceId) })}
+              variant="outline"
+              size="md"
+              onPress={() => router.push({ pathname: '/vendor/[id]/engine', params: { id: bundle.vendorId, service: serviceId, bundle: bundle.id } })}
+            />
+          ))}
+        </Card>
       ) : null}
       {items.map((item, index) => {
         const q = quote.data?.items[index];

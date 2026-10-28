@@ -84,9 +84,10 @@ describe('wedding car booking', () => {
   });
 
   const customer = async (phone: string, day = inDays(12)) => {
-    const token = (await t.login(phone)).body.accessToken;
+    const login = (await t.login(phone)).body;
+    const token = login.accessToken;
     const e = (await as(token).post('/v1/events', { title: 'Shaadi', eventType: 'wedding', eventDate: day, cityId }).expect(201)).body;
-    return { token, eventId: e.id as string };
+    return { token, eventId: e.id as string, userId: login.user.id as string };
   };
   const ask = (eventId: string, from = at(inDays(12), '16:00'), until = at(inDays(13), '00:30'), svc = service, mode = 'with_driver') =>
     ({ eventId, serviceId: svc, startsAt: from, endsAt: until, route, mode });
@@ -231,7 +232,15 @@ describe('wedding car booking', () => {
     const c = await customer('9833333333');
     const body = ask(c.eventId, at(inDays(12), '10:00'), at(inDays(13), '10:00'), selfService, 'self_drive');
     expect((await as(c.token).post('/v1/quotes', body).expect(400)).body.error.code).toBe('LICENCE_REQUIRED');
-    await as(c.token).put('/v1/me/licence', { number: 'UP70 20190012345', dateOfBirth: '1995-05-05', expiresOn: '2035-01-01' }).expect(200);
+    // The licence photo: a private upload into the customer's own folder, with Cloudinary's signed reply.
+    const sign = (await as(c.token).post('/v1/me/licence/upload').expect(200)).body;
+    expect(sign.params).toMatchObject({ type: 'private', folder: `eventseva/customers/${c.userId}/licence` });
+    const lic = { number: 'UP70 20190012345', dateOfBirth: '1995-05-05', expiresOn: '2035-01-01' };
+    const photo = (publicId: string, secret = SECRET) => ({ publicId, version: 3, signature: signParams({ public_id: publicId, version: 3 }, secret), format: 'jpg' });
+    expect((await as(c.token).put('/v1/me/licence', { ...lic, photo: photo('eventseva/customers/someone-else/licence/x') }).expect(403)).body.error.code).toBe('UPLOAD_INVALID');
+    expect((await as(c.token).put('/v1/me/licence', { ...lic, photo: photo(`eventseva/customers/${c.userId}/licence/x`, 'wrong') }).expect(403)).body.error.code).toBe('UPLOAD_INVALID');
+    const saved = (await as(c.token).put('/v1/me/licence', { ...lic, photo: photo(`eventseva/customers/${c.userId}/licence/front`) }).expect(200)).body;
+    expect(saved).toMatchObject({ last4: '2345', status: 'pending', hasPhoto: true });
     const q = (await as(c.token).post('/v1/quotes', body).expect(200)).body;
     expect(q.depositPaise).toBe(500_000); // from the car category's rules
     const id = await confirmed(c, body);
@@ -240,6 +249,8 @@ describe('wedding car booking', () => {
     const verifier = await t.adminLogin('verifier', 'v2@eventseva.test');
     const pending = (await as(verifier).get('/v1/admin/licences/pending').expect(200)).body.items;
     expect(pending[0].number).toBe('UP7020190012345');
+    expect(pending[0].photoUrl).toMatch(/\/image\/download\?.*public_id=eventseva%2Fcustomers%2F.*type=private/);
+    expect((await as(verifier).get('/v1/admin/dashboard').expect(200)).body.pendingChecks).toBeGreaterThan(0);
     const userId = pending[0].userId;
     await as(verifier).post(`/v1/admin/licences/${userId}/verify`, { decision: 'verify' }).expect(200);
     expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 500, fuelEighths: 8 }).expect(409)).body.error.code).toBe('DEPOSIT_REQUIRED');
@@ -252,6 +263,7 @@ describe('wedding car booking', () => {
     expect(trip.charges.map((x: { kind: string }) => x.kind).sort()).toEqual(['damage', 'fuel']);
     await as(c.token).post(`/v1/bookings/${id}/inspections/return/ack`, { decision: 'disputed' }).expect(400);
     await as(c.token).post(`/v1/bookings/${id}/inspections/return/ack`, { decision: 'disputed', note: 'The scratch was there before' }).expect(200);
+    expect((await as(verifier).get('/v1/admin/dashboard').expect(200)).body.openDisputes).toBeGreaterThan(0);
     const dmg = trip.charges.find((x: { kind: string }) => x.kind === 'damage');
     const fuel = trip.charges.find((x: { kind: string }) => x.kind === 'fuel');
     await as(c.token).post(`/v1/bookings/${id}/charges/${fuel.id}`, { decision: 'accept' }).expect(200);

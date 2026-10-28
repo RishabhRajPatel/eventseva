@@ -905,7 +905,9 @@ CREATE TABLE public.customer_licences (
     reject_reason text,
     verified_by uuid,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT customer_licences_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text])))
+    storage_format text,
+    CONSTRAINT customer_licences_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text]))),
+    CONSTRAINT customer_licences_storage_format_check CHECK ((storage_format = ANY (ARRAY['jpg'::text, 'jpeg'::text, 'png'::text, 'pdf'::text])))
 );
 
 --
@@ -913,6 +915,12 @@ CREATE TABLE public.customer_licences (
 --
 
 COMMENT ON TABLE public.customer_licences IS 'Driving licence for self-drive cars: number encrypted (BANK_DETAILS_KEY), verified by an admin or by the vendor at handover';
+
+--
+-- Name: COLUMN customer_licences.storage_format; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.customer_licences.storage_format IS 'File type of the private licence photo in storage_key (for the expiring view link)';
 
 --
 -- Name: device_tokens; Type: TABLE; Schema: public; Owner: -

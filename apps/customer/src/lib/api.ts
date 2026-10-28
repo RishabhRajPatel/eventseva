@@ -26,6 +26,7 @@ import {
   type PublicEngineService,
   type ServiceBundle,
   type TripView,
+  type UploadSignature,
   type RentalCatalogue,
   type RentalView,
   type Review,
@@ -174,7 +175,9 @@ export const api = {
   checkout: (items: EngineBookingRequest[], bundleId: string | undefined, idempotencyKey: string) =>
     client.post<CheckoutResult>('/v1/checkouts', bundleId ? { items, bundleId } : { items }, { headers: { 'Idempotency-Key': idempotencyKey } }),
   licence: async () => (await client.get<{ licence: DriverLicence | null }>('/v1/me/licence')).licence,
-  saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string }) => client.put<DriverLicence>('/v1/me/licence', body),
+  signLicencePhoto: () => client.post<UploadSignature>('/v1/me/licence/upload'),
+  saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) =>
+    client.put<DriverLicence>('/v1/me/licence', body),
   trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),
   ackInspection: (bookingId: string, phase: 'handover' | 'return', decision: 'agreed' | 'disputed', note?: string) =>
     client.post<TripView>(`/v1/bookings/${bookingId}/inspections/${phase}/ack`, note ? { decision, note } : { decision }),

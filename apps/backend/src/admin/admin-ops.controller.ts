@@ -94,6 +94,11 @@ export class AdminOpsController {
          (SELECT count(*)::int FROM complaints WHERE status <> 'resolved') AS "openComplaints",
          (SELECT count(*)::int FROM media WHERE status = 'pending') AS "pendingMedia",
          (SELECT count(*)::int FROM payouts WHERE status = 'scheduled' AND release_after <= now()) AS "duePayouts",
+         ((SELECT count(*)::int FROM resources WHERE verification = 'pending' AND status <> 'inactive')
+          + (SELECT count(*)::int FROM customer_licences WHERE status = 'pending')) AS "pendingChecks",
+         ((SELECT count(*)::int FROM booking_charges WHERE status = 'disputed')
+          + (SELECT count(*)::int FROM booking_inspections i JOIN bookings b ON b.id = i.booking_id
+              WHERE i.customer_ack = 'disputed' AND b.status IN ('confirmed', 'completed'))) AS "openDisputes",
          (SELECT COALESCE(sum(r.discount_paise), 0)::bigint FROM coupon_redemptions r JOIN bookings b ON b.id = r.booking_id
            WHERE r.status = 'used' AND to_char(b.day, 'YYYY-MM') = $1) AS "monthDiscountPaise",
          (SELECT COALESCE(sum(amount_paise), 0)::bigint FROM featured_purchases
@@ -215,6 +220,14 @@ export class AdminOpsController {
       slot: b.slot,
       quantity: b.quantity,
       note: b.details?.note ?? null,
+      /** Engine bookings (rentals, cars, catering …): times, delivery / trip step, tax and deposit. */
+      bookingType: b.booking_type,
+      startsAt: b.starts_at,
+      endsAt: b.ends_at,
+      fulfilment: b.fulfilment,
+      taxPaise: b.tax_paise,
+      depositPaise: b.deposit_paise,
+      depositSettledAt: b.deposit_settled_at,
       amountPaise: b.amount_paise,
       advancePaise: b.advance_paise,
       commissionPaise: b.commission_paise,

@@ -340,14 +340,14 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | `POST /v1/quotes` | Any engine request → `Quote`; nothing is held |
 | `POST /v1/engine-bookings` (`Idempotency-Key`) | `{eventId, serviceId, startsAt, endsAt?, quantity? / guestCount? / people?, answers?, addons?, route?, mode?, note?}` → `{id}`. Errors: `SERVICE_NOT_FOUND`, `USE_SLOT_BOOKING`, `SERVICE_NOT_CONFIGURED`, `ANSWER_REQUIRED`, `ANSWER_INVALID`, `ADDON_NOT_FOUND`, `NOT_AVAILABLE` 409, `DATE_IN_PAST`. Cars: `ROUTE_REQUIRED`, `MODE_NOT_OFFERED`, `VEHICLE_NOT_AVAILABLE`, `NO_DRIVER`; self-drive: `LICENCE_REQUIRED`, `LICENCE_EXPIRED`, `TOO_YOUNG` |
 | `POST /v1/checkouts/quote` · `POST /v1/checkouts` (`Idempotency-Key`) · `GET /v1/checkouts/:id` | Up to 10 requests for one event, booked all or none; `details.itemIndex` says which line failed. A package: `bundleId` (`BUNDLE_NOT_FOUND`, `BUNDLE_INCOMPLETE`) |
-| `GET /v1/me/licence` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn}` | Driving licence for self-drive; EventSeva verifies it |
+| `GET /v1/me/licence` · `POST /v1/me/licence/upload` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn, photo?}` | Driving licence for self-drive; EventSeva verifies it. The photo is a private upload signed by `POST …/upload` (into the customer's own folder); send Cloudinary's reply as `photo: {publicId, version, signature, format}` (`UPLOAD_INVALID` otherwise). `hasPhoto` says one is on file |
 | `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records |
 | `GET/POST /v1/bookings/:id/changes` · `POST …/:changeId/cancel` | `{kind: reschedule / extension, startsAt?, endsAt, reason?}`; one open change at a time (`CHANGE_PENDING` 409); day + slot bookings: `CHANGE_NOT_SUPPORTED` |
 | `GET /v1/bookings/:id/invoice` · `…/invoice.html` | Invoice in the vendor's name |
 
 **Admin:** `GET /v1/admin/resources/pending`, `GET …/:id/documents`, `POST …/:id/verify {decision, reason?}` (verifier;
 approving needs the RC and insurance, or the licence: `DOCUMENTS_MISSING` 409). `GET /v1/admin/licences/pending`,
-`POST /v1/admin/licences/:userId/verify {decision, reason?}`. `GET /v1/admin/reports/summary?from&to`.
+`POST /v1/admin/licences/:userId/verify {decision, reason?}` (pending licences carry `photoUrl`, a 10-minute link). `GET /v1/admin/reports/summary?from&to`. `GET /v1/admin/dashboard` also counts `pendingChecks` and `openDisputes`. `GET /v1/admin/bookings/:id` has `bookingType`, `startsAt`, `endsAt`, `fulfilment`, `taxPaise`, `depositPaise`, `depositSettledAt`. Booking views carry `questions` (labels of the category's questions) next to `answers`.
 
 ## Admin panel (`/v1/admin/*`, admin token)
 

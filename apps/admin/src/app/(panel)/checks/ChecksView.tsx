@@ -195,6 +195,7 @@ function Licences() {
                 <tr>
                   <th scope="col">Customer</th>
                   <th scope="col">Licence number</th>
+                  <th scope="col">Photo</th>
                   <th scope="col">Date of birth</th>
                   <th scope="col">Valid till</th>
                   <th scope="col">Added</th>
@@ -208,6 +209,15 @@ function Licences() {
                     <tr key={l.userId}>
                       <td>{l.name ?? '—'}</td>
                       <td className="mono">{l.number}</td>
+                      <td>
+                        {isSafeExternalUrl(l.photoUrl) ? (
+                          <a href={l.photoUrl!} target="_blank" rel="noopener noreferrer">
+                            Open photo
+                          </a>
+                        ) : (
+                          <span className="muted">No photo</span>
+                        )}
+                      </td>
                       <td className="nowrap">
                         {formatDay(l.dateOfBirth.slice(0, 10))} · {ageOn(l.dateOfBirth, today)} yrs
                       </td>

@@ -62,11 +62,24 @@ export class CloudinaryService {
    * `params` (plus the file, api_key and signature); changing any of them breaks the signature.
    */
   signUpload(vendorId: string, kind: UploadKind) {
+    return this.signInto(this.folderFor(vendorId, kind), kind);
+  }
+
+  /** Customers' driving licence photos: private, one folder per customer. */
+  licenceFolder(userId: string) {
+    return `eventseva/customers/${userId}/licence`;
+  }
+
+  signLicenceUpload(userId: string) {
+    return this.signInto(this.licenceFolder(userId), 'document');
+  }
+
+  private signInto(folder: string, kind: UploadKind) {
     const { apiKey, apiSecret, cloudName } = this.creds;
     const rule = UPLOAD_RULES[kind];
     const params: Params = {
       allowed_formats: rule.formats,
-      folder: this.folderFor(vendorId, kind),
+      folder,
       timestamp: Math.floor(Date.now() / 1000),
       ...(kind === 'document' ? { type: 'private' } : {}),
     };

@@ -109,6 +109,10 @@ describe('engine catalogue', () => {
     expect(q.subtotalPaise).toBe(2_200_000);
     expect(q.taxPaise).toBe(396_000);
     const id = (await as(c.token).post('/v1/engine-bookings', { ...body, answers: { occasion: 'sangeet' } }).expect(201)).body.id;
+    // The vendor sees the answer with the question's labels in both languages.
+    const seen = (await as(dj.token).get(`/v1/partner/bookings/${id}`).expect(200)).body;
+    expect(seen.answers).toMatchObject({ occasion: 'sangeet' });
+    expect(seen.questions.find((q: { key: string }) => q.key === 'occasion')).toMatchObject({ label: { en: 'Occasion', hi: 'मौका' }, options: expect.arrayContaining([{ value: 'sangeet', label: { en: 'Sangeet', hi: 'संगीत' } }]) });
     // The same evening is taken for anyone else (the vendor's team is one exclusive resource).
     const c2 = await customer('9844444444');
     expect((await as(c2.token).post('/v1/engine-bookings', { ...body, eventId: c2.eventId, answers: { occasion: 'party' } }).expect(409)).body.error.code).toBe('NOT_AVAILABLE');

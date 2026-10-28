@@ -2,6 +2,7 @@
 // Query hooks, the keys mutations invalidate, and the pure rules the screens share.
 import { useQuery, type QueryClient } from '@tanstack/react-query';
 import type {
+  Booking,
   BookingChange,
   BookingType,
   EnginePricing,
@@ -375,4 +376,23 @@ export function checkReadings(odometer: string, fuel: number | null, handoverKm?
   if (fuel === null || fuel < 0 || fuel > 8) return 'fuel';
   if (handoverKm !== undefined && Number(odometer) < handoverKm) return 'below';
   return null;
+}
+
+// ---------- the customer's answers on a booking ----------
+
+/** Answers with the question and option labels in the vendor's language; internal keys (car mode, km estimate) left out. */
+export function answerRows(b: Pick<Booking, 'answers' | 'questions'>, lang: Language): { key: string; label: string; value: string | boolean | number }[] {
+  const answers = b.answers ?? {};
+  const name = (l: { en: string; hi: string }) => (lang === 'hi' ? l.hi : l.en);
+  const rows: { key: string; label: string; value: string | boolean | number }[] = [];
+  for (const q of b.questions ?? []) {
+    const v = answers[q.key];
+    if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
+    const option = (x: unknown) => {
+      const o = q.options?.find((op) => op.value === x);
+      return o ? name(o.label) : String(x);
+    };
+    rows.push({ key: q.key, label: name(q.label), value: Array.isArray(v) ? v.map(option).join(', ') : typeof v === 'boolean' || typeof v === 'number' ? v : option(v) });
+  }
+  return rows;
 }

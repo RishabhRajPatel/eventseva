@@ -165,6 +165,9 @@ importers:
       expo-device:
         specifier: ~58.0.5
         version: 58.0.5(expo@58.0.17)
+      expo-file-system:
+        specifier: ~58.0.10
+        version: 58.0.10(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))
       expo-font:
         specifier: ~58.0.9
         version: 58.0.9(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -174,6 +177,9 @@ importers:
       expo-image:
         specifier: ~58.0.16
         version: 58.0.16(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      expo-image-picker:
+        specifier: ~58.0.10
+        version: 58.0.10(expo@58.0.17)
       expo-linking:
         specifier: ~58.0.14
         version: 58.0.14(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
@@ -185,7 +191,7 @@ importers:
         version: 58.1.6(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
       expo-router:
         specifier: ~58.0.25
-        version: 58.0.25(55a3a4cf6c1dffc264d150e496cbcb8e)
+        version: 58.0.25(75c5b354c5a7908f0d73713c17ce9b84)
       expo-secure-store:
         specifier: ~58.0.2
         version: 58.0.2(expo@58.0.17)
@@ -228,7 +234,7 @@ importers:
     devDependencies:
       '@testing-library/react-native':
         specifier: ^14.1.0
-        version: 14.1.0(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
+        version: 14.1.0(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -240,7 +246,7 @@ importers:
         version: 30.5.2(@types/node@26.6.5)
       jest-expo:
         specifier: ~58.0.12
-        version: 58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+        version: 58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -312,7 +318,7 @@ importers:
         version: 58.1.6(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
       expo-router:
         specifier: ~58.0.25
-        version: 58.0.25(55a3a4cf6c1dffc264d150e496cbcb8e)
+        version: 58.0.25(75c5b354c5a7908f0d73713c17ce9b84)
       expo-secure-store:
         specifier: ~58.0.2
         version: 58.0.2(expo@58.0.17)
@@ -355,7 +361,7 @@ importers:
     devDependencies:
       '@testing-library/react-native':
         specifier: ^14.1.0
-        version: 14.1.0(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
+        version: 14.1.0(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -367,7 +373,7 @@ importers:
         version: 30.5.2(@types/node@26.6.5)
       jest-expo:
         specifier: ~58.0.12
-        version: 58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+        version: 58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       typescript:
         specifier: ~6.0.3
         version: 6.0.3
@@ -7045,7 +7051,7 @@ snapshots:
       ws: 8.22.0
       zod: 3.25.76
     optionalDependencies:
-      expo-router: 58.0.25(55a3a4cf6c1dffc264d150e496cbcb8e)
+      expo-router: 58.0.25(75c5b354c5a7908f0d73713c17ce9b84)
       react-native: 0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
     transitivePeerDependencies:
       - '@expo/dom-webview'
@@ -7346,7 +7352,7 @@ snapshots:
       react: 19.3.0
     optionalDependencies:
       '@expo/metro-runtime': 58.0.15(@expo/log-box@58.0.13)(expo@58.0.17)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
-      expo-router: 58.0.25(55a3a4cf6c1dffc264d150e496cbcb8e)
+      expo-router: 58.0.25(75c5b354c5a7908f0d73713c17ce9b84)
       react-dom: 19.3.1(react@19.3.0)
     transitivePeerDependencies:
       - supports-color
@@ -8315,7 +8321,7 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
 
-  '@testing-library/react-native@14.1.0(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))':
+  '@testing-library/react-native@14.1.0(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))':
     dependencies:
       jest-matcher-utils: 30.5.2
       picocolors: 1.1.1
@@ -10009,7 +10015,7 @@ snapshots:
       - supports-color
       - typescript
 
-  expo-router@58.0.25(55a3a4cf6c1dffc264d150e496cbcb8e):
+  expo-router@58.0.25(75c5b354c5a7908f0d73713c17ce9b84):
     dependencies:
       '@expo/log-box': 58.0.13(@expo/dom-webview@58.0.2)(expo@58.0.17)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       '@expo/metro-runtime': 58.0.15(@expo/log-box@58.0.13)(expo@58.0.17)(react-dom@19.3.1(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -10036,7 +10042,7 @@ snapshots:
       sf-symbols-typescript: 2.2.0
       standard-navigation: 0.0.5
     optionalDependencies:
-      '@testing-library/react-native': 14.1.0(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
+      '@testing-library/react-native': 14.1.0(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)(test-renderer@1.3.0(@types/react@19.3.0)(react@19.3.0))
       react-dom: 19.3.1(react@19.3.0)
       react-native-gesture-handler: 3.4.0(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
       react-native-reanimated: 4.7.1(react-native-worklets@0.13.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
@@ -10868,7 +10874,7 @@ snapshots:
       jest-util: 30.5.1
       jest-validate: 30.5.1
 
-  jest-expo@58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2(@types/node@26.6.5))(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0):
+  jest-expo@58.0.12(@babel/core@7.29.7)(@react-native/jest-preset@0.88.0(@babel/core@7.29.7)(react@19.3.0))(@types/react@19.3.0)(expo@58.0.17)(jest@30.5.2)(react-native@0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0):
     dependencies:
       '@jest/create-cache-key-function': 30.5.1
       '@jest/globals': 30.5.2
@@ -10880,7 +10886,7 @@ snapshots:
       jest-mock: 30.5.2
       jest-snapshot: 30.5.2
       jest-watch-select-projects: 2.0.0
-      jest-watch-typeahead: 3.0.1(jest@30.5.2(@types/node@26.6.5))
+      jest-watch-typeahead: 3.0.1(jest@30.5.2)
       json5: 2.2.3
       lodash: 4.18.1
       react-native: 0.88.0(@babel/core@7.29.7)(@react-native/metro-config@0.88.0(@babel/core@7.29.7))(@types/react@19.3.0)(react@19.3.0)
@@ -11124,7 +11130,7 @@ snapshots:
       chalk: 3.0.0
       prompts: 2.4.2
 
-  jest-watch-typeahead@3.0.1(jest@30.5.2(@types/node@26.6.5)):
+  jest-watch-typeahead@3.0.1(jest@30.5.2):
     dependencies:
       ansi-escapes: 7.3.0
       chalk: 5.6.2

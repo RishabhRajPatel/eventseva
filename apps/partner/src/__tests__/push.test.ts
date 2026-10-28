@@ -41,6 +41,8 @@ beforeEach(() => {
 test('tapping a notification opens the chat, the booking, or the list', () => {
   expect(routeForPush({ kind: 'chat_message', conversationId: C })).toBe(`/chat/${C}`);
   expect(routeForPush({ kind: 'booking_requested', bookingId: B })).toBe(`/booking/${B}`);
+  expect(routeForPush({ kind: 'resource_verified', resourceId: B })).toBe(`/engine/resource/${B}`);
+  expect(routeForPush({ kind: 'resource_verified', resourceId: '../login' })).toBe('/notifications');
   // A payload that is not a real id never chooses the screen.
   expect(routeForPush({ kind: 'chat_message', conversationId: '../login' })).toBe('/notifications');
   expect(routeForPush({ kind: 'booking_requested', bookingId: 'b1/../../delete-account' })).toBe('/notifications');

@@ -198,7 +198,8 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
       });
     }
     toast.success(t('cart.added', { name: s.title }));
-    router.push('/cart');
+    // Back to the cart if it is already open (adding a package's missing service).
+    router.navigate('/cart');
   }
 
   const errors = tried ? answerErrors(s.questions, form.answers) : {};

@@ -834,7 +834,12 @@
     "sendDispute": "Send dispute",
     "dueToVendor": "{{amount}} of agreed charges is more than your deposit: it is added to your balance.",
     "payBalance": "Pay balance {{amount}}",
-    "balancePaid": "Balance paid"
+    "balancePaid": "Balance paid",
+    "stepPhotos": {
+      "dispatch": "Photos when sent",
+      "delivery": "Photos at delivery",
+      "return": "Photos at pickup"
+    }
   },
   "engineBook": {
     "title": "Book",
@@ -933,7 +938,9 @@
     "sendAllShort": "Send requests",
     "booked_one": "{{count}} request sent",
     "booked_other": "{{count}} requests sent",
-    "clear": "Clear cart"
+    "clear": "Clear cart",
+    "bundleMissing": "This package needs these services too, booked together:",
+    "addService": "Add {{name}}"
   },
   "carTrip": {
     "title": "Trip",
@@ -1004,7 +1011,13 @@
     "save": "Save licence",
     "update": "Update licence",
     "saving": "Saving…",
-    "saved": "Licence saved. We will check it soon."
+    "saved": "Licence saved. We will check it soon.",
+    "photoAdd": "Add a photo of the licence",
+    "photoReplace": "Change the licence photo",
+    "photoAdded": "Photo added",
+    "photoUploading": "Uploading…",
+    "photoHint": "The front side, all text readable. It helps us check faster.",
+    "photoTooBig": "This photo is too big. Pick a smaller one."
   },
   "invoice": {
     "title": "Invoice",
@@ -1018,5 +1031,8 @@
     "taxable": "Taxable value",
     "paid": "Paid through EventSeva",
     "share": "Share invoice"
+  },
+  "photos": {
+    "evidence": "{{label}} photo {{n}} of {{total}}"
   }
 }

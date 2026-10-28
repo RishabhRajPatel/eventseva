@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { ApiError, type LoginResult, type Me } from '@eventseva/app-shared';
 import { setLanguage } from '../i18n';
 import { api, onSessionEnded } from './api';
+import { cart } from './cart';
 import { unregisterPush } from './push';
 import { queryClient } from './queryClient';
 import { cachedMe, secureTokens } from './tokens';
@@ -39,6 +40,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(async () => {
     setState({ status: 'signedOut' });
     queryClient.clear();
+    // The cart belongs to this login.
+    cart.clear();
     await cachedMe.set(null).catch(() => undefined);
     await setLanguage('en');
   }, []);

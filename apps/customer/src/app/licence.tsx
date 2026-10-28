@@ -9,6 +9,7 @@ import { formatDay } from '@eventseva/app-shared';
 import { api } from '../lib/api';
 import { errorText } from '../lib/errors';
 import { licenceProblem } from '../lib/engine';
+import { LicencePhotoError, pickAndUploadLicence, type LicencePhoto } from '../lib/licencePhoto';
 import { c, space } from '../lib/theme';
 import { useLanguage } from '../hooks/useLanguage';
 import { AppText } from '../components/AppText';
@@ -30,9 +31,12 @@ export default function LicenceScreen() {
   const [dob, setDob] = useState('');
   const [expires, setExpires] = useState('');
   const [tried, setTried] = useState(false);
+  const [photo, setPhoto] = useState<LicencePhoto | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const problem = licenceProblem(number, dob, expires);
   const save = useMutation({
-    mutationFn: () => api.saveLicence({ number: number.trim(), dateOfBirth: dob.trim(), expiresOn: expires.trim() }),
+    mutationFn: () => api.saveLicence({ number: number.trim(), dateOfBirth: dob.trim(), expiresOn: expires.trim(), ...(photo ? { photo } : {}) }),
     onSuccess: (saved) => {
       qc.setQueryData(['licence'], saved);
       toast.success(t('licence.saved'));
@@ -91,6 +95,30 @@ export default function LicenceScreen() {
         error={tried && problem === 'dob' ? t('licence.dateError') : null} />
       <TextField label={t('licence.expires')} placeholder="2034-04-22" value={expires} onChangeText={setExpires} keyboardType="numbers-and-punctuation" maxLength={10}
         error={tried && problem === 'expires' ? t('licence.dateError') : tried && problem === 'expired' ? t('licence.expired') : null} />
+      <View style={styles.photo}>
+        <Button
+          label={photo ? t('licence.photoAdded') : current?.hasPhoto ? t('licence.photoReplace') : t('licence.photoAdd')}
+          icon={photo ? 'checkCircle' : 'plus'}
+          variant="outline"
+          size="md"
+          loading={uploading}
+          loadingLabel={t('licence.photoUploading')}
+          onPress={async () => {
+            setPhotoError(null);
+            setUploading(true);
+            try {
+              const p = await pickAndUploadLicence();
+              if (p) setPhoto(p);
+            } catch (e) {
+              setPhotoError(e instanceof LicencePhotoError && e.code === 'FILE_TOO_BIG' ? t('licence.photoTooBig') : errorText(t, e));
+            } finally {
+              setUploading(false);
+            }
+          }}
+        />
+        <AppText size="xs" color={c.textMuted}>{t('licence.photoHint')}</AppText>
+        {photoError ? <AppText size="sm" color={c.danger}>{photoError}</AppText> : null}
+      </View>
       <Notice icon="lock">{t('licence.privacy')}</Notice>
       {save.error ? <AppText size="sm" color={c.danger}>{errorText(t, save.error)}</AppText> : null}
     </Screen>
@@ -101,4 +129,5 @@ const styles = StyleSheet.create({
   current: { gap: space.xs, padding: space.md, borderRadius: 12, backgroundColor: c.white },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   flex: { flex: 1 },
+  photo: { gap: space.xs },
 });

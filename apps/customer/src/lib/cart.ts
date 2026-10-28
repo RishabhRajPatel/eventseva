@@ -1,5 +1,6 @@
 // The cart: services from one or more vendors for the same event, booked together in one checkout
-// (all or none). Kept in memory while the app is open; the server prices and checks everything again.
+// (all or none). Saved on the phone (see cartStorage.ts) so it survives closing the app; the server
+// prices and checks everything again.
 import { useSyncExternalStore } from 'react';
 import type { EngineBookingRequest } from '@eventseva/app-shared';
 
@@ -22,15 +23,53 @@ export interface CartState {
 
 let state: CartState = { items: [], bundle: null };
 const listeners = new Set<() => void>();
+
+/** Where the cart is kept between app starts; set once at startup (tests leave it unset). */
+export interface CartStorage {
+  load(): string | null;
+  save(json: string): void;
+}
+let storage: CartStorage | null = null;
+
 const emit = (next: CartState) => {
   state = next;
+  try {
+    storage?.save(JSON.stringify(state));
+  } catch {
+    // A full or locked disk only means the cart is not kept after closing the app.
+  }
   for (const l of listeners) l();
 };
+
+/** Saved cart, without services whose start has passed (they could not be booked any more). */
+export function restoreCart(json: string | null, now = Date.now()): CartState {
+  if (!json) return { items: [], bundle: null };
+  try {
+    const saved = JSON.parse(json) as CartState;
+    if (!Array.isArray(saved.items)) return { items: [], bundle: null };
+    const items = saved.items.filter((i) => i?.request?.eventId && Date.parse(i.request.startsAt) > now).slice(0, MAX_CART_ITEMS);
+    const bundle = saved.bundle && items.some((i) => i.vendorId === saved.bundle!.vendorId) ? saved.bundle : null;
+    return { items, bundle };
+  } catch {
+    return { items: [], bundle: null };
+  }
+}
 
 export type AddResult = 'added' | 'full' | 'otherEvent';
 
 export const cart = {
   get: () => state,
+  /** Called once when the app starts. */
+  attachStorage(s: CartStorage) {
+    storage = s;
+    let saved: string | null = null;
+    try {
+      saved = s.load();
+    } catch {
+      saved = null;
+    }
+    emit(restoreCart(saved));
+  },
   subscribe(l: () => void) {
     listeners.add(l);
     return () => listeners.delete(l);
@@ -58,4 +97,10 @@ export const cart = {
 
 export function useCart(): CartState {
   return useSyncExternalStore(cart.subscribe, cart.get, cart.get);
+}
+
+/** A package's "always included" services not yet in the cart: the checkout would refuse it (BUNDLE_INCOMPLETE). */
+export function missingBundleServices(bundleItems: { serviceId: string; mandatory: boolean }[], items: Pick<CartItem, 'request'>[]): string[] {
+  const inCart = new Set(items.map((i) => i.request.serviceId));
+  return bundleItems.filter((i) => i.mandatory && !inCart.has(i.serviceId)).map((i) => i.serviceId);
 }

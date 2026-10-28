@@ -13,6 +13,7 @@ import { AppText } from './AppText';
 import { Card, Divider, Pill } from './Bits';
 import { Button } from './Button';
 import { TextField } from './Form';
+import { EvidencePhotos } from './EvidencePhotos';
 import { Balance, Charges, Deposit } from './RentalSection';
 
 export const tripKey = (bookingId: string) => ['trip', bookingId] as const;
@@ -76,6 +77,7 @@ function Inspection({ booking, inspection: i }: { booking: Booking; inspection: 
         {i.readings.km !== undefined ? ` · ${t('carTrip.driven', { km: i.readings.km })}` : ''}
       </AppText>
       {i.notes ? <AppText size="xs" color={c.textMuted}>{`“${i.notes}”`}</AppText> : null}
+      <EvidencePhotos ids={i.photoIds} label={t(`carTrip.phase.${i.phase}`)} />
       {i.customerAck ? (
         <AppText size="xs" color={i.customerAck === 'disputed' ? c.warningText : c.successText}>
           {t(`carTrip.ack.${i.customerAck}`)}

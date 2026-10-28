@@ -91,6 +91,10 @@ describe('invoices, refunds and reports', () => {
     await as(other).get(`/v1/bookings/${id}/invoice`).expect(404);
     const admin = await t.adminLogin('finance');
     expect((await as(admin).get(`/v1/admin/bookings/${id}/invoices`).expect(200)).body.customer.number).toBe(inv.number);
+    // The admin booking page gets the engine fields it needs to show the booking.
+    const detail = (await as(admin).get(`/v1/admin/bookings/${id}`).expect(200)).body;
+    expect(detail).toMatchObject({ bookingType: 'time_window', taxPaise: expect.any(Number), depositPaise: 0 });
+    expect(detail.startsAt).toBeTruthy();
   });
 
   it('a vendor without a GST number issues a bill of supply', async () => {

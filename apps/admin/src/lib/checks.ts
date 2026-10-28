@@ -28,6 +28,8 @@ export interface PendingLicence {
   dateOfBirth: string;
   expiresOn: string;
   createdAt: string;
+  /** Expiring link (10 minutes) to the customer's licence photo, if they added one. */
+  photoUrl: string | null;
 }
 
 export const RESOURCE_DOCS: Record<string, string> = {

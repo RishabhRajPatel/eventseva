@@ -14,6 +14,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Matches,
   MaxLength,
   Max,
   Min,
@@ -22,6 +23,7 @@ import {
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { AppError } from '../common/errors';
+import { CloudinaryService } from '../media/cloudinary.service';
 import { EngineService } from './engine.service';
 import type { EngineRequest } from './types';
 
@@ -64,10 +66,19 @@ export class EngineRequestDto implements EngineRequest {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
 }
 
+class LicencePhotoDto {
+  @IsString() @MaxLength(255) publicId: string;
+  @IsInt() @Min(1) version: number;
+  @IsString() @Matches(/^[0-9a-f]{40}$/i) signature: string;
+  @Matches(/^(jpg|jpeg|png|pdf)$/) format: string;
+}
+
 class LicenceDto {
   @IsString() @Length(8, 25) number: string;
   @IsDateString({ strict: true }) @Length(10, 10) dateOfBirth: string;
   @IsDateString({ strict: true }) @Length(10, 10) expiresOn: string;
+  /** Cloudinary's signed reply for the licence photo (POST /v1/me/licence/upload first). */
+  @IsOptional() @ValidateNested() @Type(() => LicencePhotoDto) photo?: LicencePhotoDto;
 }
 
 /**
@@ -77,7 +88,10 @@ class LicenceDto {
 @UseGuards(AuthGuard)
 @Controller('v1')
 export class EngineController {
-  constructor(private readonly engine: EngineService) {}
+  constructor(
+    private readonly engine: EngineService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post('quotes')
@@ -98,6 +112,13 @@ export class EngineController {
   @Get('me/licence')
   async licence(@Auth() auth: AuthContext) {
     return { licence: await this.engine.licence(auth.userId) };
+  }
+
+  /** A signed, private upload for the licence photo. */
+  @Post('me/licence/upload')
+  @HttpCode(HttpStatus.OK)
+  signLicencePhoto(@Auth() auth: AuthContext) {
+    return this.cloudinary.signLicenceUpload(auth.userId);
   }
 
   @Put('me/licence')

@@ -11,6 +11,7 @@ import type { AdminBooking } from '@/lib/admin-types';
 import { BOOKING_STATUS, humanize, PAYMENT_STATUS, PAYOUT_STATUS, REFUND_REASON, REFUND_STATUS, shortId, SLOT_LABELS } from '@/lib/labels';
 import { maxRefundablePaise, paidAdvancePaise } from '@/lib/money';
 import { can, canView } from '@/lib/roles';
+import { BookingEngine } from './BookingEngine';
 
 // Finance only, opened on demand: its own chunk.
 const RefundDialog = dynamic(() => import('./RefundDialog').then((m) => m.RefundDialog));
@@ -154,6 +155,8 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
           )}
         </section>
       </div>
+
+      <BookingEngine booking={b} role={role} />
 
       <section className="box stack" aria-labelledby="payments-title">
         <h2 id="payments-title">Payments and refunds</h2>

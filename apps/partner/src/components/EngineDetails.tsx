@@ -1,26 +1,18 @@
 import { View } from 'react-native';
-import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { rupees, type Booking } from '@eventseva/app-shared';
+import { answerRows } from '../lib/engine';
 import { c, space } from '../lib/theme';
+import { useLang } from '../hooks/useLang';
 import { Card, CardHeader, Row } from './Card';
 import { Pill } from './Chip';
 import { Txt } from './Txt';
 
-/** "power_at_venue" → "Power at venue"; the template label is not in the booking, the key reads well enough. */
-export const answerLabel = (key: string) => key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
-
-export function answerValue(t: TFunction, v: unknown): string {
-  if (v === true) return t('common.yes');
-  if (v === false) return t('common.no');
-  if (Array.isArray(v)) return v.map((x) => answerLabel(String(x))).join(', ');
-  return typeof v === 'string' ? answerLabel(v) : String(v);
-}
-
 /** Engine bookings: what the customer answered (menu, occasion …) and the extras asked for. */
 export function EngineDetails({ booking: b }: { booking: Booking }) {
   const { t } = useTranslation();
-  const answers = Object.entries(b.answers ?? {}).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && !v.length));
+  const lang = useLang();
+  const answers = answerRows(b, lang);
   const addons = b.addons ?? [];
   if (!answers.length && !addons.length) return null;
   return (
@@ -28,10 +20,12 @@ export function EngineDetails({ booking: b }: { booking: Booking }) {
       {answers.length ? (
         <>
           <CardHeader title={t('engine.customerAnswers')} />
-          {answers.map(([k, v], i) => (
-            <Row key={k} first={i === 0}>
-              <Txt size="sm" color={c.textMuted} style={{ flex: 1 }}>{answerLabel(k)}</Txt>
-              <Txt size="sm" variant="bold" style={{ flexShrink: 1 }} align="right">{answerValue(t, v)}</Txt>
+          {answers.map((a, i) => (
+            <Row key={a.key} first={i === 0}>
+              <Txt size="sm" color={c.textMuted} style={{ flex: 1 }}>{a.label}</Txt>
+              <Txt size="sm" variant="bold" style={{ flexShrink: 1 }} align="right">
+                {a.value === true ? t('common.yes') : a.value === false ? t('common.no') : String(a.value)}
+              </Txt>
             </Row>
           ))}
         </>

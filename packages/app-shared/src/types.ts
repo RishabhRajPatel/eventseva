@@ -323,6 +323,8 @@ export interface Booking {
   depositSettledAt: string | null;
   /** Engine bookings: the customer's answers (menu, occasion, requirements …). */
   answers?: Record<string, unknown> | null;
+  /** Labels of the category's questions, to show `answers` in the app language. */
+  questions?: { key: string; label: Bilingual; options?: { value: string; label: Bilingual }[] }[];
   /** Extras asked for; ones needing approval wait for the vendor's answer when accepting. */
   addons?: { addonId: string; name: string; pricePaise: number; status: 'included' | 'pending_approval' | 'approved' | 'declined'; note: string | null }[];
   /** Car bookings, once the vendor may see the venue. */
@@ -961,6 +963,8 @@ export interface BookingChange {
 
 export interface DriverLicence {
   last4: string;
+  /** A photo of the licence was uploaded (the verifier compares it with the details). */
+  hasPhoto?: boolean;
   dateOfBirth: string;
   expiresOn: string;
   status: 'pending' | 'verified' | 'rejected';

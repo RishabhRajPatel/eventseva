@@ -9,7 +9,7 @@ const SELECT = `
   SELECT b.id, b.status, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
          b.progress, b.progress_at, b.eta_at, b.booking_type, b.starts_at, b.ends_at, b.fulfilment, b.deposit_paise, b.tax_paise,
-         b.charges_paise, b.deposit_settled_at, b.snapshot->'answers' AS answers, b.snapshot->'route' AS route,
+         b.charges_paise, b.deposit_settled_at, b.snapshot->'answers' AS answers, b.snapshot->'route' AS route, cat.template->'questions' AS questions,
          (SELECT json_agg(json_build_object('addonId', ba.addon_id, 'name', a.name, 'pricePaise', ba.price_paise, 'status', ba.status, 'note', ba.request_note)
                           ORDER BY a.name)
             FROM booking_addons ba JOIN service_addons a ON a.id = ba.addon_id WHERE ba.booking_id = b.id) AS addons,
@@ -31,6 +31,16 @@ const SELECT = `
     JOIN users cu ON cu.id = b.customer_id
     LEFT JOIN services s ON s.id = b.service_id
     LEFT JOIN packages p ON p.id = b.package_id`;
+
+type Bilingual = { en: string; hi: string };
+
+/** Labels only (key, question and option names), from the category template. */
+function questionLabels(raw: unknown): { key: string; label: Bilingual; options?: { value: string; label: Bilingual }[] }[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((q): q is { key: string; label: Bilingual; options?: { value: string; label: Bilingual }[] } => !!q && typeof q.key === 'string' && !!q.label)
+    .map((q) => ({ key: q.key, label: q.label, ...(q.options?.length ? { options: q.options.map((o) => ({ value: o.value, label: o.label })) } : {}) }));
+}
 
 /**
  * One word for where a booking is, for the apps' status chip. Rentals go through their delivery steps:
@@ -101,6 +111,8 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     depositSettledAt: r.deposit_settled_at,
     /** Engine bookings: what the customer answered (menu, occasion, needs …), extras asked for, and the trip route. */
     answers: r.answers ?? null,
+    /** The category's questions, so the apps show the customer's answers with their labels (both languages). */
+    questions: r.answers ? questionLabels(r.questions) : [],
     addons: r.addons ?? [],
     route: showVenue ? (r.route ?? null) : null,
     // Coupon discount, paid by EventSeva: lowers what is paid in the app, never the vendor's share.

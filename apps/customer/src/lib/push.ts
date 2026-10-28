@@ -68,6 +68,7 @@ export function routeForPush(data: Record<string, unknown> | undefined): Href {
   // Only real ids become paths: a payload like "../login" must never pick the screen.
   if (isUuid(data?.conversationId)) return `/chat/${data.conversationId}`;
   if (isUuid(data?.bookingId)) return `/booking/${data.bookingId}`;
+  if (data?.screen === 'licence') return '/licence';
   return '/notifications';
 }
 

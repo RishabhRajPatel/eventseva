@@ -260,3 +260,23 @@ describe('engine bookings', () => {
     expect(await screen.findByText('Approved')).toBeTruthy();
   });
 });
+
+describe('customer answers on a booking', () => {
+  it('shows the question and option labels in the vendor language, and skips internal keys', () => {
+    const { answerRows } = jest.requireActual<typeof import('../lib/engine')>('../lib/engine');
+    const b = {
+      answers: { occasion: 'baraat', power_at_venue: false, area: ['stage', 'mandap'], mode: 'with_driver', estKm: 12 },
+      questions: [
+        { key: 'occasion', label: { en: 'Occasion', hi: 'मौका' }, options: [{ value: 'baraat', label: { en: 'Baraat', hi: 'बारात' } }] },
+        { key: 'power_at_venue', label: { en: 'Power available at the venue', hi: 'वेन्यू पर बिजली है' } },
+        { key: 'area', label: { en: 'Area to decorate', hi: 'सजाने की जगह' }, options: [{ value: 'stage', label: { en: 'Stage', hi: 'स्टेज' } }, { value: 'mandap', label: { en: 'Mandap', hi: 'मंडप' } }] },
+      ],
+    };
+    expect(answerRows(b, 'en')).toEqual([
+      { key: 'occasion', label: 'Occasion', value: 'Baraat' },
+      { key: 'power_at_venue', label: 'Power available at the venue', value: false },
+      { key: 'area', label: 'Area to decorate', value: 'Stage, Mandap' },
+    ]);
+    expect(answerRows(b, 'hi')[0]).toEqual({ key: 'occasion', label: 'मौका', value: 'बारात' });
+  });
+});

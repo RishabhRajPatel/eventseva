@@ -38,7 +38,7 @@ export interface NavItem {
   href: `/${string}`;
   label: string;
   /** Dashboard count shown as a badge next to the link. */
-  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts' | 'openAlerts';
+  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts' | 'openAlerts' | 'pendingChecks' | 'openDisputes';
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -47,11 +47,11 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'vendors', href: '/vendors', label: 'Vendors', badge: 'pendingVendors' },
   { section: 'photos', href: '/photos', label: 'Photos', badge: 'pendingMedia' },
   // Vehicles, drivers and customers' driving licences waiting for a check.
-  { section: 'checks', href: '/checks', label: 'Car checks' },
+  { section: 'checks', href: '/checks', label: 'Car checks', badge: 'pendingChecks' },
   { section: 'bookings', href: '/bookings', label: 'Bookings' },
   { section: 'payouts', href: '/payouts', label: 'Payouts', badge: 'duePayouts' },
   // Rental / car charges the customer disputes, and refunds with their Razorpay result.
-  { section: 'disputes', href: '/disputes', label: 'Disputes' },
+  { section: 'disputes', href: '/disputes', label: 'Disputes', badge: 'openDisputes' },
   { section: 'refunds', href: '/refunds', label: 'Refunds' },
   { section: 'reports', href: '/reports', label: 'Reports' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },

@@ -15,6 +15,7 @@ import { useLanguage } from '../hooks/useLanguage';
 import { AppText } from './AppText';
 import { Card, Divider, MoneyRow, Notice, Pill } from './Bits';
 import { Button } from './Button';
+import { EvidencePhotos } from './EvidencePhotos';
 import { TextField } from './Form';
 import { useToast } from './Toast';
 
@@ -66,6 +67,12 @@ export function RentalSection({ booking }: { booking: Booking }) {
         </View>
       ))}
 
+      {r.steps.filter((st) => st.photoIds.length).map((st) => (
+        <View key={st.phase} style={{ gap: 2 }}>
+          <AppText size="xs" color={c.textMuted}>{t(`rent.stepPhotos.${st.phase}`)}</AppText>
+          <EvidencePhotos ids={st.photoIds} label={t(`rent.stepPhotos.${st.phase}`)} />
+        </View>
+      ))}
       <Divider />
       <Deposit booking={booking} deposit={r.deposit} closed={r.fulfilment === 'closed'} queryKey={rentalKey(booking.id)} />
       {r.charges.length ? <Charges booking={booking} charges={r.charges} queryKey={rentalKey(booking.id)} /> : null}

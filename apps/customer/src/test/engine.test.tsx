@@ -4,7 +4,7 @@ import BookingScreen from '../app/booking/[id]';
 import CartScreen from '../app/cart';
 import EngineBookScreen from '../app/vendor/[id]/engine';
 import { api } from '../lib/api';
-import { cart } from '../lib/cart';
+import { cart, missingBundleServices, restoreCart } from '../lib/cart';
 import { carModes, countKind, durationChoices, extendedEnd, formProblem, licenceProblem, movedTimes, perModel, toRequest, type EngineForm } from '../lib/engine';
 import { istIso } from '../lib/rental';
 import { booking, event, inDays, vendor } from './fixtures';
@@ -92,6 +92,30 @@ describe('engine booking rules', () => {
     cart.setBundle({ id: 'bd1', vendorId: 'v1', name: 'Wedding', discountPercent: 10 });
     cart.remove(cart.get().items[0].key);
     expect(cart.get()).toEqual({ items: [], bundle: null });
+  });
+});
+
+describe('cart kept on the phone', () => {
+  it('drops services that have started and a package without its vendor', () => {
+    const now = Date.parse('2026-11-01T00:00:00Z');
+    const item = (key: string, startsAt: string, vendorId = 'v1') => ({ key, vendorId, vendorName: 'V', serviceTitle: 'S', request: { eventId: 'e1', serviceId: `s-${key}`, startsAt } });
+    const saved = JSON.stringify({ items: [item('a', '2026-10-31T10:00:00Z'), item('b', '2026-11-05T10:00:00Z')], bundle: { id: 'bd', vendorId: 'v9', name: 'P', discountPercent: 5 } });
+    expect(restoreCart(saved, now)).toEqual({ items: [item('b', '2026-11-05T10:00:00Z')], bundle: null });
+    expect(restoreCart('not json', now)).toEqual({ items: [], bundle: null });
+    expect(restoreCart(null, now)).toEqual({ items: [], bundle: null });
+  });
+
+  it('saves every change and reads it back at start', () => {
+    const files: Record<string, string> = { cart: JSON.stringify({ items: [], bundle: null }) };
+    cart.attachStorage({ load: () => files.cart, save: (json) => (files.cart = json) });
+    cart.add({ vendorId: 'v1', vendorName: 'V', serviceTitle: 'S', request: { eventId: 'e1', serviceId: 's1', startsAt: '2099-01-01T00:00:00Z' } });
+    expect(JSON.parse(files.cart).items).toHaveLength(1);
+    cart.clear();
+    expect(JSON.parse(files.cart).items).toHaveLength(0);
+  });
+
+  it('knows which "always included" package services are missing', () => {
+    expect(missingBundleServices([{ serviceId: 'a', mandatory: true }, { serviceId: 'b', mandatory: true }, { serviceId: 'c', mandatory: false }], [{ request: { eventId: 'e1', serviceId: 'a', startsAt: '' } }])).toEqual(['b']);
   });
 });
 
@@ -202,5 +226,23 @@ describe('after booking', () => {
     await waitFor(() => expect(mockedApi.checkout).toHaveBeenCalledWith([req], undefined, expect.stringMatching(/^cart-/)));
     await waitFor(() => expect(view.getPathname()).toBe('/bookings'));
     expect(cart.get().items).toHaveLength(0);
+  });
+});
+
+describe('licence photo upload', () => {
+  it('sends exactly the signed params and returns Cloudinary\'s signed reply', async () => {
+    const { uploadSigned, LicencePhotoError } = jest.requireActual<typeof import('../lib/licencePhoto')>('../lib/licencePhoto');
+    const sig = { uploadUrl: 'https://api.cloudinary.com/v1_1/demo/image/upload', cloudName: 'demo', apiKey: 'k1', params: { folder: 'eventseva/customers/u1/licence', type: 'private', timestamp: 1 }, signature: 'sig', maxBytes: 10 };
+    const sent: Record<string, unknown> = {};
+    const fakeFetch = jest.fn(async (_url: string, init: { body: FormData }) => {
+      const body = init.body as unknown as { entries?: () => Iterable<[string, unknown]>; _parts?: [string, unknown][] };
+      for (const [k, v] of body._parts ?? (body.entries ? Array.from(body.entries()) : [])) sent[k] = v;
+      return { ok: true, json: async () => ({ public_id: 'eventseva/customers/u1/licence/abc', version: 7, signature: 'cloud-sig', format: 'jpeg' }) };
+    });
+    const out = await uploadSigned({ uri: 'file:///l.jpg', name: 'l.jpg', type: 'image/jpeg' }, sig, fakeFetch as unknown as typeof fetch);
+    expect(out).toEqual({ publicId: 'eventseva/customers/u1/licence/abc', version: 7, signature: 'cloud-sig', format: 'jpg' });
+    expect(sent).toMatchObject({ api_key: 'k1', signature: 'sig', folder: 'eventseva/customers/u1/licence', type: 'private', timestamp: '1' });
+    const failing = jest.fn(async () => ({ ok: false, json: async () => ({ error: { message: 'x' } }) }));
+    await expect(uploadSigned({ uri: 'u', name: 'n', type: 't' }, sig, failing as unknown as typeof fetch)).rejects.toBeInstanceOf(LicencePhotoError);
   });
 });

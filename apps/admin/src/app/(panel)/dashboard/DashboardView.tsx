@@ -117,6 +117,8 @@ function NeedsAction({ data, role }: { data: Dashboard; role: AdminRole }) {
     { section: 'photos' as const, href: '/photos', label: 'Photos to review', n: data.pendingMedia, warn: false },
     { section: 'complaints' as const, href: '/complaints', label: 'Open complaints', n: data.openComplaints, warn: true },
     { section: 'payouts' as const, href: '/payouts?status=scheduled&due=true', label: 'Payouts due', n: data.duePayouts, warn: true },
+    { section: 'checks' as const, href: '/checks', label: 'Cars, drivers and licences to check', n: data.pendingChecks, warn: false },
+    { section: 'disputes' as const, href: '/disputes', label: 'Disputed charges', n: data.openDisputes, warn: true },
   ].filter((item) => canView(role, item.section) && item.n > 0);
 
   return (

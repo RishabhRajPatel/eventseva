@@ -789,10 +789,12 @@ Driving licence for self-drive cars: number encrypted (BANK_DETAILS_KEY), verifi
 | `reject_reason` | text |  |  |  |
 | `verified_by` | uuid |  |  |  |
 | `updated_at` | timestamp with time zone | yes | `now()` |  |
+| `storage_format` | text |  |  | File type of the private licence photo in storage_key (for the expiring view link) |
 
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK ((status = ANY (ARRAY['pending'::text, 'verified'::text, 'rejected'::text])))`
+- Check: `CHECK ((storage_format = ANY (ARRAY['jpg'::text, 'jpeg'::text, 'png'::text, 'pdf'::text])))`
 
 </details>
 

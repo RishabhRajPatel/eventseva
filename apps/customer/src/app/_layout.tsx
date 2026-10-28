@@ -13,6 +13,8 @@ import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display/700
 import { NotoSansDevanagari_400Regular } from '@expo-google-fonts/noto-sans-devanagari/400Regular';
 import { NotoSansDevanagari_700Bold } from '@expo-google-fonts/noto-sans-devanagari/700Bold';
 import { NotoSerifDevanagari_700Bold } from '@expo-google-fonts/noto-serif-devanagari/700Bold';
+import { cart } from '../lib/cart';
+import { fileCartStorage } from '../lib/cartStorage';
 import { queryClient } from '../lib/queryClient';
 import { SessionProvider, useSession } from '../lib/session';
 import { usePush } from '../lib/push';
@@ -26,7 +28,15 @@ import { ToastProvider } from '../components/Toast';
 // The native splash (royal blue, Splash board) stays up until fonts and the login state are ready.
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
+// The cart is read back once per app start.
+let cartAttached = false;
+
 export default function RootLayout() {
+  useEffect(() => {
+    if (cartAttached) return;
+    cartAttached = true;
+    cart.attachStorage(fileCartStorage());
+  }, []);
   const [fontsLoaded, fontError] = useFonts({
     Lato_400Regular,
     Lato_700Bold,

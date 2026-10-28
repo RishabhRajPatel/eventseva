@@ -24,6 +24,10 @@ export interface Dashboard {
   openComplaints: number;
   pendingMedia: number;
   duePayouts: number;
+  /** Cars, drivers and customers' licences waiting for a check. */
+  pendingChecks: number;
+  /** Disputed charges and inspection records. */
+  openDisputes: number;
   bookingsByStatus: Partial<Record<BookingStatus, number>>;
   last14Days: Array<{ day: string; bookings: number }>;
   topCategories: Array<{ slug: string; name: string; bookings: number }>;
@@ -111,6 +115,13 @@ export interface AdminBooking {
   slot: Slot;
   quantity: number;
   note: string | null;
+  bookingType: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  fulfilment: string | null;
+  taxPaise: number;
+  depositPaise: number;
+  depositSettledAt: string | null;
   amountPaise: number;
   advancePaise: number;
   commissionPaise: number;

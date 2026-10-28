@@ -4,6 +4,7 @@
 // engine's holds renewed, activated and released at each step.
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
+import { CloudinaryService } from '../media/cloudinary.service';
 import { AppError } from '../common/errors';
 import { decrypt } from '../common/crypto';
 import { Db, Queryable } from '../db/db.service';
@@ -51,6 +52,7 @@ export class EngineService {
   constructor(
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   /** Everything needed to price and hold one request. Throws clear errors for anything not bookable. */
@@ -400,17 +402,28 @@ export class EngineService {
   }
 
   /** Licence for self-drive: the number is encrypted; only the last 4 digits are ever shown. */
-  async saveLicence(userId: string, body: { number: string; dateOfBirth: string; expiresOn: string; storageKey?: string }) {
+  async saveLicence(userId: string, body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) {
     const number = body.number.replace(/[\s-]/g, '').toUpperCase();
     if (!/^[A-Z]{2}\d{2}[A-Z0-9]{8,14}$/.test(number)) throw new AppError('VALIDATION', 'Enter the licence number as printed (e.g. UP70 20190012345).', HttpStatus.BAD_REQUEST, { field: 'number' });
+    // Only the customer's own private upload, with Cloudinary's signed reply.
+    if (body.photo) {
+      const p = body.photo;
+      if (!p.publicId.startsWith(this.cloudinary.licenceFolder(userId) + '/') || p.publicId.includes('..') || !this.cloudinary.verifyUploadResponse(p.publicId, p.version, p.signature)) {
+        throw new AppError('UPLOAD_INVALID', 'We could not verify this upload. Please try again.', HttpStatus.FORBIDDEN);
+      }
+    }
     const { encrypt } = await import('../common/crypto');
+    const old = await this.db.one<{ storage_key: string | null }>(this.db, 'SELECT storage_key FROM customer_licences WHERE user_id = $1', [userId]);
     await this.db.query(
-      `INSERT INTO customer_licences (user_id, number_enc, number_last4, date_of_birth, expires_on, storage_key, status, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, 'pending', now())
+      `INSERT INTO customer_licences (user_id, number_enc, number_last4, date_of_birth, expires_on, storage_key, storage_format, status, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', now())
        ON CONFLICT (user_id) DO UPDATE SET number_enc = $2, number_last4 = $3, date_of_birth = $4, expires_on = $5,
-         storage_key = COALESCE($6, customer_licences.storage_key), status = 'pending', reject_reason = NULL, updated_at = now()`,
-      [userId, encrypt(number, this.config.bankDetailsKey), number.slice(-4), body.dateOfBirth, body.expiresOn, body.storageKey ?? null],
+         storage_key = COALESCE($6, customer_licences.storage_key), storage_format = COALESCE($7, customer_licences.storage_format),
+         status = 'pending', reject_reason = NULL, updated_at = now()`,
+      [userId, encrypt(number, this.config.bankDetailsKey), number.slice(-4), body.dateOfBirth, body.expiresOn, body.photo?.publicId ?? null, body.photo?.format ?? null],
     );
+    // A new photo replaces the old one.
+    if (body.photo && old?.storage_key && old.storage_key !== body.photo.publicId) await this.cloudinary.destroy(old.storage_key, 'image', 'private');
     return this.licence(userId);
   }
 
@@ -418,7 +431,8 @@ export class EngineService {
     return (
       (await this.db.one(
         this.db,
-        `SELECT number_last4 AS "last4", date_of_birth AS "dateOfBirth", expires_on AS "expiresOn", status, reject_reason AS "rejectReason"
+        `SELECT number_last4 AS "last4", date_of_birth AS "dateOfBirth", expires_on AS "expiresOn", status, reject_reason AS "rejectReason",
+                storage_key IS NOT NULL AS "hasPhoto"
            FROM customer_licences WHERE user_id = $1`,
         [userId],
       )) ?? null
@@ -427,11 +441,17 @@ export class EngineService {
 
   /** Licences waiting for a verifier, oldest first, with the full number (verifiers only). */
   async pendingLicences() {
-    const { rows } = await this.db.query<{ userId: string; name: string | null; number_enc: string; dateOfBirth: string; expiresOn: string; createdAt: Date }>(
-      `SELECT l.user_id AS "userId", u.name, l.number_enc, l.date_of_birth AS "dateOfBirth", l.expires_on AS "expiresOn", l.updated_at AS "createdAt"
+    const { rows } = await this.db.query<{ userId: string; name: string | null; number_enc: string; dateOfBirth: string; expiresOn: string; createdAt: Date; storage_key: string | null; storage_format: string | null }>(
+      `SELECT l.user_id AS "userId", u.name, l.number_enc, l.date_of_birth AS "dateOfBirth", l.expires_on AS "expiresOn", l.updated_at AS "createdAt",
+              l.storage_key, l.storage_format
          FROM customer_licences l JOIN users u ON u.id = l.user_id WHERE l.status = 'pending' ORDER BY l.updated_at LIMIT 200`,
     );
-    return rows.map(({ number_enc, ...r }) => ({ ...r, number: decrypt(number_enc, this.config.bankDetailsKey) }));
+    return rows.map(({ number_enc, storage_key, storage_format, ...r }) => ({
+      ...r,
+      number: decrypt(number_enc, this.config.bankDetailsKey),
+      // An expiring link to the private photo (10 minutes).
+      photoUrl: storage_key ? this.cloudinary.privateDownloadUrl(storage_key, storage_format ?? 'jpg') : null,
+    }));
   }
 
   async verifyLicence(adminId: string, userId: string, decision: 'verify' | 'reject', reason?: string) {
@@ -448,7 +468,8 @@ export class EngineService {
       await notify(client, userId, 'licence_checked', decision === 'verify'
         ? { en: { title: 'Licence verified', body: 'You can now take self-drive cars.' }, hi: { title: 'लाइसेंस सत्यापित', body: 'अब आप खुद चलाने वाली गाड़ियाँ ले सकते हैं।' } }
         : { en: { title: 'Licence not accepted', body: `${reason}. Please check and add it again.` }, hi: { title: 'लाइसेंस स्वीकार नहीं', body: `${reason}। कृपया जाँचकर दोबारा जोड़ें।` } },
-      {}, 'customer');
+      // Opens the licence screen in the customer app.
+      { screen: 'licence' }, 'customer');
       return { userId, status };
     });
   }
