@@ -99,6 +99,7 @@ export class AdminOpsController {
          ((SELECT count(*)::int FROM booking_charges WHERE status = 'disputed')
           + (SELECT count(*)::int FROM booking_inspections i JOIN bookings b ON b.id = i.booking_id
               WHERE i.customer_ack = 'disputed' AND b.status IN ('confirmed', 'completed'))) AS "openDisputes",
+         (SELECT COALESCE(sum(remaining_paise), 0)::bigint FROM commission_dues WHERE status = 'open') AS "openCommissionDuesPaise",
          (SELECT count(*)::int FROM webhook_events WHERE received_at > now() - interval '7 days'
            AND (status = 'failed' OR result IN ('amount_mismatch', 'not_captured'))) AS "paymentProblems",
          (SELECT COALESCE(sum(r.discount_paise), 0)::bigint FROM coupon_redemptions r JOIN bookings b ON b.id = r.booking_id
@@ -131,6 +132,7 @@ export class AdminOpsController {
       month,
       ...stats,
       monthGmvPaise: Number(stats!.monthGmvPaise),
+      openCommissionDuesPaise: Number(stats!.openCommissionDuesPaise),
       monthCommissionPaise: Number(stats!.monthCommissionPaise),
       smsBudgetPerDay: this.config.smsBudget.perDay,
       monthDiscountPaise: Number(stats!.monthDiscountPaise),
@@ -220,10 +222,25 @@ export class AdminOpsController {
          FROM booking_state_history WHERE booking_id = $1 ORDER BY id`,
       [id],
     );
+    const cash = b.pay_mode === 'cash'
+      ? (await this.db.query(
+          `SELECT kind, amount_paise AS "amountPaise", note, created_at AS "createdAt" FROM cash_receipts WHERE booking_id = $1 ORDER BY created_at`,
+          [id],
+        )).rows
+      : [];
+    const due = await this.db.one(
+      this.db,
+      `SELECT id, amount_paise AS "amountPaise", remaining_paise AS "remainingPaise", status, reference FROM commission_dues WHERE booking_id = $1`,
+      [id],
+    );
     return {
       id: b.id,
       status: b.status,
       state: b.state,
+      /** online, or cash: paid to the vendor in person; `cashReceipts` is what the vendor recorded. */
+      payMode: b.pay_mode,
+      cashReceipts: cash,
+      commissionDue: due ?? null,
       day: b.day,
       slot: b.slot,
       quantity: b.quantity,

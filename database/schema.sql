@@ -690,10 +690,12 @@ CREATE TABLE public.bookings (
     deposit_settled_at timestamp with time zone,
     group_id uuid,
     state public.booking_state NOT NULL,
+    pay_mode text DEFAULT 'online'::text NOT NULL,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
     CONSTRAINT bookings_deposit_paise_check CHECK ((deposit_paise >= 0)),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
     CONSTRAINT bookings_fulfilment_check CHECK ((fulfilment = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'assigned'::text, 'ready'::text, 'dispatched'::text, 'delivered'::text, 'in_progress'::text, 'return_pending'::text, 'closed'::text]))),
+    CONSTRAINT bookings_pay_mode_check CHECK ((pay_mode = ANY (ARRAY['online'::text, 'cash'::text]))),
     CONSTRAINT bookings_payout_deduction_paise_check CHECK ((payout_deduction_paise >= 0)),
     CONSTRAINT bookings_progress_check CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text]))),
     CONSTRAINT bookings_quantity_check CHECK ((quantity > 0)),
@@ -781,6 +783,12 @@ COMMENT ON COLUMN public.bookings.group_id IS 'The checkout this booking was mad
 COMMENT ON COLUMN public.bookings.state IS 'Lifecycle state, set by the database from status, fulfilment and disputed charges; see booking_state_moves';
 
 --
+-- Name: COLUMN bookings.pay_mode; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.pay_mode IS 'online: advance, balance and deposit through Razorpay. cash: everything is paid to the vendor in person; confirmed when the vendor accepts';
+
+--
 -- Name: capacity_holds; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -819,6 +827,29 @@ COMMENT ON COLUMN public.capacity_holds.until_returned IS 'Stock dispatched and 
 --
 
 COMMENT ON COLUMN public.capacity_holds.note IS 'A vendor''s own block (no booking): why the stock is unavailable';
+
+--
+-- Name: cash_receipts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cash_receipts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    kind text NOT NULL,
+    amount_paise integer NOT NULL,
+    note text,
+    recorded_by uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT cash_receipts_amount_paise_check CHECK ((amount_paise > 0)),
+    CONSTRAINT cash_receipts_kind_check CHECK ((kind = ANY (ARRAY['advance'::text, 'balance'::text, 'deposit'::text, 'deposit_return'::text, 'refund'::text]))),
+    CONSTRAINT cash_receipts_note_check CHECK ((length(note) <= 300))
+);
+
+--
+-- Name: TABLE cash_receipts; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.cash_receipts IS 'Cash the vendor took from the customer (advance, balance, deposit) or gave back (deposit_return, refund), as the vendor recorded it; the customer is told each time';
 
 --
 -- Name: categories; Type: TABLE; Schema: public; Owner: -
@@ -929,6 +960,42 @@ CREATE SEQUENCE public.cities_id_seq
 --
 
 ALTER SEQUENCE public.cities_id_seq OWNED BY public.cities.id;
+
+--
+-- Name: commission_dues; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.commission_dues (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    vendor_id uuid NOT NULL,
+    amount_paise integer NOT NULL,
+    remaining_paise integer NOT NULL,
+    status text DEFAULT 'open'::text NOT NULL,
+    reference text,
+    settled_by uuid,
+    settled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT commission_dues_amount_paise_check CHECK ((amount_paise > 0)),
+    CONSTRAINT commission_dues_check CHECK ((remaining_paise <= amount_paise)),
+    CONSTRAINT commission_dues_check1 CHECK (((status = 'open'::text) = (settled_at IS NULL))),
+    CONSTRAINT commission_dues_check2 CHECK (((status <> 'settled'::text) OR (remaining_paise = 0))),
+    CONSTRAINT commission_dues_reference_check CHECK ((length(reference) <= 200)),
+    CONSTRAINT commission_dues_remaining_paise_check CHECK ((remaining_paise >= 0)),
+    CONSTRAINT commission_dues_status_check CHECK ((status = ANY (ARRAY['open'::text, 'settled'::text, 'waived'::text])))
+);
+
+--
+-- Name: TABLE commission_dues; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.commission_dues IS 'EventSeva commission on completed cash bookings, owed by the vendor: taken from their next online payouts, or settled / waived by finance';
+
+--
+-- Name: COLUMN commission_dues.reference; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.commission_dues.reference IS 'How it was settled: a payout id, a UPI/bank reference from finance, or the reason it was waived';
 
 --
 -- Name: complaints; Type: TABLE; Schema: public; Owner: -
@@ -1589,6 +1656,7 @@ CREATE TABLE public.packages (
     price_paise integer NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    cash_allowed boolean DEFAULT false NOT NULL,
     CONSTRAINT packages_price_paise_check CHECK ((price_paise > 0))
 );
 
@@ -1597,6 +1665,12 @@ CREATE TABLE public.packages (
 --
 
 COMMENT ON TABLE public.packages IS 'Fixed-price bundles a vendor offers ("Gold: DJ + lights + 5 hours").';
+
+--
+-- Name: COLUMN packages.cash_allowed; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.packages.cash_allowed IS 'The vendor accepts cash for this package';
 
 --
 -- Name: payments; Type: TABLE; Schema: public; Owner: -
@@ -1642,7 +1716,9 @@ CREATE TABLE public.payouts (
     release_after timestamp with time zone NOT NULL,
     razorpay_transfer_id text,
     status public.payout_status DEFAULT 'scheduled'::public.payout_status NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    dues_deducted_paise integer DEFAULT 0 NOT NULL,
+    CONSTRAINT payouts_dues_deducted_paise_check CHECK ((dues_deducted_paise >= 0))
 );
 
 --
@@ -1650,6 +1726,12 @@ CREATE TABLE public.payouts (
 --
 
 COMMENT ON TABLE public.payouts IS 'What EventSeva owes a vendor for a completed booking (advance − commission − deductions), and when it was paid.';
+
+--
+-- Name: COLUMN payouts.dues_deducted_paise; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.payouts.dues_deducted_paise IS 'Commission owed on cash bookings taken off this payout';
 
 --
 -- Name: refunds; Type: TABLE; Schema: public; Owner: -
@@ -1840,6 +1922,7 @@ CREATE TABLE public.services (
     rules jsonb DEFAULT '{}'::jsonb NOT NULL,
     attributes jsonb DEFAULT '{}'::jsonb NOT NULL,
     resource_id uuid,
+    cash_allowed boolean DEFAULT false NOT NULL,
     CONSTRAINT services_price_paise_check CHECK ((price_paise > 0))
 );
 
@@ -1872,6 +1955,12 @@ COMMENT ON COLUMN public.services.rules IS 'Vendor overrides of the category rul
 --
 
 COMMENT ON COLUMN public.services.resource_id IS 'For a service that is one specific resource (a car, a hall): that resource';
+
+--
+-- Name: COLUMN services.cash_allowed; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.cash_allowed IS 'The vendor accepts cash for this service: customers may choose to pay the whole booking to the vendor';
 
 --
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -
@@ -2309,6 +2398,13 @@ ALTER TABLE ONLY public.capacity_holds
     ADD CONSTRAINT capacity_holds_pkey PRIMARY KEY (id);
 
 --
+-- Name: cash_receipts cash_receipts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cash_receipts
+    ADD CONSTRAINT cash_receipts_pkey PRIMARY KEY (id);
+
+--
 -- Name: categories categories_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2342,6 +2438,20 @@ ALTER TABLE ONLY public.cities
 
 ALTER TABLE ONLY public.cities
     ADD CONSTRAINT cities_pkey PRIMARY KEY (id);
+
+--
+-- Name: commission_dues commission_dues_booking_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commission_dues
+    ADD CONSTRAINT commission_dues_booking_id_key UNIQUE (booking_id);
+
+--
+-- Name: commission_dues commission_dues_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commission_dues
+    ADD CONSTRAINT commission_dues_pkey PRIMARY KEY (id);
 
 --
 -- Name: complaints complaints_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -2874,10 +2984,22 @@ CREATE INDEX capacity_holds_booking_idx ON public.capacity_holds USING btree (bo
 CREATE INDEX capacity_holds_pool_idx ON public.capacity_holds USING gist (pool_key, period) WHERE (status = ANY (ARRAY['hold'::text, 'active'::text]));
 
 --
+-- Name: cash_receipts_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX cash_receipts_booking_idx ON public.cash_receipts USING btree (booking_id, created_at);
+
+--
 -- Name: checkouts_idempotency_key; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX checkouts_idempotency_key ON public.checkouts USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL);
+
+--
+-- Name: commission_dues_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX commission_dues_open_idx ON public.commission_dues USING btree (vendor_id, created_at) WHERE (status = 'open'::text);
 
 --
 -- Name: complaints_raised_by_idx; Type: INDEX; Schema: public; Owner: -
@@ -3376,6 +3498,20 @@ ALTER TABLE ONLY public.capacity_holds
     ADD CONSTRAINT capacity_holds_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
+-- Name: cash_receipts cash_receipts_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cash_receipts
+    ADD CONSTRAINT cash_receipts_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: cash_receipts cash_receipts_recorded_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cash_receipts
+    ADD CONSTRAINT cash_receipts_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.users(id);
+
+--
 -- Name: checkouts checkouts_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3388,6 +3524,27 @@ ALTER TABLE ONLY public.checkouts
 
 ALTER TABLE ONLY public.checkouts
     ADD CONSTRAINT checkouts_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.events(id);
+
+--
+-- Name: commission_dues commission_dues_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commission_dues
+    ADD CONSTRAINT commission_dues_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: commission_dues commission_dues_settled_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commission_dues
+    ADD CONSTRAINT commission_dues_settled_by_fkey FOREIGN KEY (settled_by) REFERENCES public.admin_users(id);
+
+--
+-- Name: commission_dues commission_dues_vendor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.commission_dues
+    ADD CONSTRAINT commission_dues_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
 -- Name: complaints complaints_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

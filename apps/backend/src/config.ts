@@ -17,6 +17,8 @@ export interface AppConfig {
   advancePercent: number;
   /** EventSeva's cut, taken out of the advance before the vendor payout. */
   commissionPercent: number;
+  /** Cash bookings stop for a vendor whose open commission dues pass this (paise) or are older than 30 days. */
+  cashDuesLimitPaise: number;
   paymentProvider: 'fake' | 'razorpay';
   razorpayKeyId?: string;
   razorpayKeySecret?: string;
@@ -122,6 +124,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     authRateLimitPerMin: Number(env.AUTH_RATE_LIMIT_PER_MIN || 10),
     advancePercent,
     commissionPercent,
+    cashDuesLimitPaise: Number(env.CASH_DUES_LIMIT_PAISE ?? 500_000),
     paymentProvider,
     razorpayKeyId: env.RAZORPAY_KEY_ID || undefined,
     razorpayKeySecret: env.RAZORPAY_KEY_SECRET || undefined,

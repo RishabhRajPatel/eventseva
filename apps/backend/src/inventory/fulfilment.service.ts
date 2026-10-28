@@ -4,6 +4,7 @@
 // leave the stock. Charges for damage or loss are proposed item by item; the customer accepts or
 // disputes them (silence for 48 h counts as accepted, an admin settles disputes), and the agreed
 // amount comes out of the security deposit before the rest is refunded.
+import { depositHeldSql } from '../bookings/cash.service';
 import { HandoverCodes } from '../engine/handover-code';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
@@ -367,7 +368,7 @@ export class FulfilmentService {
   private async depositPaid(q: Queryable, bookingId: string): Promise<number> {
     return (await this.db.one<{ paid: number }>(
       q,
-      `SELECT COALESCE(sum(amount_paise), 0)::int AS paid FROM payments WHERE booking_id = $1 AND type = 'deposit' AND status = 'paid'`,
+      `SELECT ${depositHeldSql('$1')} AS paid`,
       [bookingId],
     ))!.paid;
   }
@@ -401,6 +402,7 @@ export class FulfilmentService {
           [id],
         );
         if (!b || b.deposit_settled_at || b.fulfilment !== 'closed') return false;
+        if ((b as { pay_mode?: string }).pay_mode === 'cash') return this.settleCash(client, b);
         const deposit = await this.db.one<{ id: string; razorpay_payment_id: string; amount_paise: number }>(
           client,
           `SELECT id, razorpay_payment_id, amount_paise FROM payments WHERE booking_id = $1 AND type = 'deposit' AND status = 'paid' FOR UPDATE`,
@@ -433,14 +435,42 @@ export class FulfilmentService {
     return settled;
   }
 
+  /**
+   * A cash booking's deposit is in the vendor's hands: agreed charges are kept from it and the vendor
+   * gives the rest back in cash. Both sides are told how much.
+   */
+  private async settleCash(client: Queryable, b: RentalBooking): Promise<boolean> {
+    const held = (await this.db.one<{ held: number }>(client, `SELECT ${depositHeldSql('$1')} AS held`, [b.id]))!.held;
+    const agreed = (await this.db.one<{ sum: number }>(
+      client,
+      `SELECT COALESCE(sum(amount_paise), 0)::int AS sum FROM booking_charges WHERE booking_id = $1 AND status IN ('accepted', 'resolved') AND from_deposit`,
+      [b.id],
+    ))!.sum;
+    const kept = Math.min(agreed, held);
+    const back = held - kept;
+    await client.query('UPDATE bookings SET charges_paise = $2, deposit_settled_at = now(), updated_at = now() WHERE id = $1', [b.id, kept]);
+    await this.event(client, b, 'deposit_settled', null, { keptPaise: kept, cashToReturnPaise: back });
+    if (back > 0) {
+      await notify(client, b.vendor_user_id, 'cash_refund_due', {
+        en: { title: 'Give back the deposit', body: `Give the customer ${rupees(back)} of the cash deposit back${kept ? ` (${rupees(kept)} kept for agreed charges)` : ''}, then record it in the booking.` },
+        hi: { title: 'डिपॉज़िट लौटाएँ', body: `ग्राहक को नकद डिपॉज़िट में से ${rupees(back)} लौटाएँ${kept ? ` (${rupees(kept)} तय चार्ज के लिए रखे)` : ''}, फिर बुकिंग में दर्ज करें।` },
+      }, { bookingId: b.id }, 'partner');
+      await notify(client, b.customer_id, 'deposit_settled', {
+        en: { title: 'Deposit settled', body: `The vendor gives you back ${rupees(back)} of your cash deposit${kept ? `; ${rupees(kept)} was kept for agreed charges` : ''}.` },
+        hi: { title: 'डिपॉज़िट का हिसाब', body: `वेंडर आपके नकद डिपॉज़िट में से ${rupees(back)} लौटाएँगे${kept ? `; ${rupees(kept)} तय चार्ज के लिए रखे गए` : ''}।` },
+      }, { bookingId: b.id }, 'customer');
+    }
+    return true;
+  }
+
   // ---------- reading ----------
 
   /** Items, counts, photos and charges of one rental booking, for its customer or its vendor. */
   async view(bookingId: string, who: { vendorUserId?: string; customerId?: string }) {
-    const b = await this.db.one<RentalBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; return_due_at: Date | null; amount_paise: number; advance_paise: number }>(
+    const b = await this.db.one<RentalBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; return_due_at: Date | null; amount_paise: number; advance_paise: number; pay_mode: string; deposit_held: number }>(
       this.db,
       `SELECT b.id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.return_due_at, b.deposit_paise, b.charges_paise, b.deposit_settled_at,
-              b.amount_paise, b.advance_paise
+              b.amount_paise, b.advance_paise, b.pay_mode, ${depositHeldSql('b.id')} AS deposit_held
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
         WHERE b.id = $1 AND ($2::uuid IS NULL OR v.user_id = $2) AND ($3::uuid IS NULL OR b.customer_id = $3)`,
       [bookingId, who.vendorUserId ?? null, who.customerId ?? null],
@@ -472,7 +502,10 @@ export class FulfilmentService {
     const agreed = charges.rows
       .filter((c: { status: string }) => ['accepted', 'resolved'].includes(c.status))
       .reduce((s: number, c: { amountPaise: number }) => s + c.amountPaise, 0);
+    // Cash bookings: the customer pays the vendor in person, so nothing is due in the app.
+    const cash = b.pay_mode === 'cash';
     return {
+      payMode: b.pay_mode,
       fulfilment: b.fulfilment,
       startsAt: b.starts_at,
       endsAt: b.ends_at,
@@ -482,15 +515,15 @@ export class FulfilmentService {
       charges: charges.rows,
       deposit: {
         requiredPaise: b.deposit_paise,
-        paidPaise: paidOf('deposit'),
+        paidPaise: cash ? b.deposit_held : paidOf('deposit'),
         keptPaise: b.charges_paise,
         settledAt: b.deposit_settled_at,
       },
       balancePaidPaise: paidOf('final'),
       /** Agreed charges the deposit does not cover; they are added to the balance. */
-      dueToVendorPaise: Math.max(0, agreed - paidOf('deposit')),
+      dueToVendorPaise: Math.max(0, agreed - (cash ? b.deposit_held : paidOf('deposit'))),
       /** What "Pay balance" charges now: the rest of the price plus charges beyond the deposit. */
-      balanceDuePaise: ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - paidOf('deposit')) - paidOf('final')) : 0,
+      balanceDuePaise: !cash && ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - paidOf('deposit')) - paidOf('final')) : 0,
     };
   }
 }

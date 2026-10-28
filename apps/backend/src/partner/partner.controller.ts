@@ -14,21 +14,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsIn,
-  IsInt,
-  IsLatitude,
-  IsLongitude,
-  IsOptional,
-  IsString,
-  Length,
-  Matches,
-  Max,
-  Min,
-  ValidateIf,
-} from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsLatitude, IsLongitude, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 import type { Language, VendorStatus } from '@eventseva/core';
 import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
@@ -87,6 +73,8 @@ class ServiceDto {
   @IsIn(PRICING_UNITS) unit: PricingUnit;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) minGuests?: number;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) maxGuests?: number;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class UpdateServiceDto {
@@ -96,18 +84,24 @@ class UpdateServiceDto {
   @IsOptional() @IsIn(PRICING_UNITS) unit?: PricingUnit;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) minGuests?: number;
   @IsOptional() @IsInt() @Min(1) @Max(100_000) maxGuests?: number;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class PackageDto {
   @IsString() @Length(2, 80) title: string;
   @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @Length(1, 60, { each: true }) items: string[];
   @IsInt() @Min(100) @Max(MAX_PRICE_PAISE) pricePaise: number;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class UpdatePackageDto {
   @IsOptional() @IsString() @Length(2, 80) title?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @Length(1, 60, { each: true }) items?: string[];
   @IsOptional() @IsInt() @Min(100) @Max(MAX_PRICE_PAISE) pricePaise?: number;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 interface OwnVendor {
@@ -244,9 +238,9 @@ export class PartnerController {
       if (count!.n >= MAX_SERVICES) throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_SERVICES} services.`);
       return this.db.one(
         client,
-        `INSERT INTO services (vendor_id, title, description, price_paise, unit, min_guests, max_guests)
-         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${SERVICE_COLUMNS}`,
-        [v.id, body.title.trim(), body.description?.trim() || null, body.pricePaise, body.unit, body.minGuests ?? null, body.maxGuests ?? null],
+        `INSERT INTO services (vendor_id, title, description, price_paise, unit, min_guests, max_guests, cash_allowed)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING ${SERVICE_COLUMNS}`,
+        [v.id, body.title.trim(), body.description?.trim() || null, body.pricePaise, body.unit, body.minGuests ?? null, body.maxGuests ?? null, body.cashAllowed ?? false],
       );
     });
   }
@@ -266,10 +260,10 @@ export class PartnerController {
         client,
         `UPDATE services SET title = COALESCE($3, title), description = COALESCE($4, description),
                 price_paise = COALESCE($5, price_paise), unit = COALESCE($6, unit),
-                min_guests = COALESCE($7, min_guests), max_guests = COALESCE($8, max_guests)
+                min_guests = COALESCE($7, min_guests), max_guests = COALESCE($8, max_guests), cash_allowed = COALESCE($9, cash_allowed)
           WHERE id = $1 AND vendor_id = $2 RETURNING ${SERVICE_COLUMNS}`,
         [id, v.id, body.title?.trim() ?? null, body.description?.trim() ?? null, body.pricePaise ?? null, body.unit ?? null,
-          body.minGuests ?? null, body.maxGuests ?? null],
+          body.minGuests ?? null, body.maxGuests ?? null, body.cashAllowed ?? null],
       );
     });
   }
@@ -295,8 +289,8 @@ export class PartnerController {
       if (count!.n >= MAX_PACKAGES) throw new AppError('LIMIT_REACHED', `You can add up to ${MAX_PACKAGES} packages.`);
       return this.db.one(
         client,
-        `INSERT INTO packages (vendor_id, title, items, price_paise) VALUES ($1, $2, $3, $4) RETURNING ${PACKAGE_COLUMNS}`,
-        [v.id, body.title.trim(), JSON.stringify(body.items.map((i) => i.trim())), body.pricePaise],
+        `INSERT INTO packages (vendor_id, title, items, price_paise, cash_allowed) VALUES ($1, $2, $3, $4, $5) RETURNING ${PACKAGE_COLUMNS}`,
+        [v.id, body.title.trim(), JSON.stringify(body.items.map((i) => i.trim())), body.pricePaise, body.cashAllowed ?? false],
       );
     });
   }
@@ -307,9 +301,10 @@ export class PartnerController {
       const v = await this.editable(client, auth.userId);
       const row = await this.db.one(
         client,
-        `UPDATE packages SET title = COALESCE($3, title), items = COALESCE($4, items), price_paise = COALESCE($5, price_paise)
+        `UPDATE packages SET title = COALESCE($3, title), items = COALESCE($4, items), price_paise = COALESCE($5, price_paise),
+                cash_allowed = COALESCE($6, cash_allowed)
           WHERE id = $1 AND vendor_id = $2 AND is_active RETURNING ${PACKAGE_COLUMNS}`,
-        [id, v.id, body.title?.trim() ?? null, body.items ? JSON.stringify(body.items.map((i) => i.trim())) : null, body.pricePaise ?? null],
+        [id, v.id, body.title?.trim() ?? null, body.items ? JSON.stringify(body.items.map((i) => i.trim())) : null, body.pricePaise ?? null, body.cashAllowed ?? null],
       );
       if (!row) throw new AppError('NOT_FOUND', 'Package not found.', HttpStatus.NOT_FOUND);
       return row;
@@ -328,8 +323,8 @@ export class PartnerController {
 }
 
 const SERVICE_COLUMNS = `id, title, description, price_paise AS "pricePaise", unit, min_guests AS "minGuests",
-  max_guests AS "maxGuests", is_active AS "isActive"`;
-const PACKAGE_COLUMNS = `id, title, items, price_paise AS "pricePaise", is_active AS "isActive"`;
+  max_guests AS "maxGuests", is_active AS "isActive", cash_allowed AS "cashAllowed"`;
+const PACKAGE_COLUMNS = `id, title, items, price_paise AS "pricePaise", is_active AS "isActive", cash_allowed AS "cashAllowed"`;
 
 function checkGuests(min?: number, max?: number) {
   if (min !== undefined && max !== undefined && min > max) {

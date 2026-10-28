@@ -3,6 +3,7 @@
 // extra hours, fuel, tolls or damage are proposed as charges from what was agreed in the booking.
 // The customer can agree to or dispute each inspection and charge; the deposit is then settled by the
 // same steps as rentals (FulfilmentService.settle).
+import { depositHeldSql } from '../bookings/cash.service';
 import { HandoverCodes } from './handover-code';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
@@ -149,8 +150,7 @@ export class TripService {
         if (!lic || lic.status !== 'verified') throw bad('LICENCE_NOT_VERIFIED', "The customer's driving licence is not verified yet.");
         const deposit = await this.db.one<{ due: number }>(
           client,
-          `SELECT (b.deposit_paise - COALESCE((SELECT sum(amount_paise) FROM payments p WHERE p.booking_id = b.id AND p.type = 'deposit' AND p.status = 'paid'), 0))::int AS due
-             FROM bookings b WHERE b.id = $1`,
+          `SELECT (b.deposit_paise - ${depositHeldSql('b.id')})::int AS due FROM bookings b WHERE b.id = $1`,
           [b.id],
         );
         if (deposit!.due > 0) throw bad('DEPOSIT_REQUIRED', `The customer must pay the ${rupees(deposit!.due)} deposit before taking the car.`, { duePaise: deposit!.due });
@@ -196,7 +196,7 @@ export class TripService {
       const includedKm = p.includedKm !== undefined ? p.includedKm * (p.model === 'daily' || days > 1 ? days : 1) : null;
       const deposit = (await this.db.one<{ paid: number }>(
         client,
-        `SELECT COALESCE(sum(amount_paise), 0)::int AS paid FROM payments WHERE booking_id = $1 AND type = 'deposit' AND status = 'paid'`,
+        `SELECT ${depositHeldSql('$1')} AS paid`,
         [b.id],
       ))!.paid;
       const charges: { kind: string; description: string; qty: number; amount: number }[] = [];
@@ -260,10 +260,10 @@ export class TripService {
 
   /** Driver, car, inspections and charges, for the customer, the vendor or an admin. */
   async view(bookingId: string, who: { vendorUserId?: string; customerId?: string }) {
-    const b = await this.db.one<TripBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; registration: string | null; amount_paise: number; advance_paise: number }>(
+    const b = await this.db.one<TripBooking & { deposit_paise: number; charges_paise: number; deposit_settled_at: Date | null; registration: string | null; amount_paise: number; advance_paise: number; pay_mode: string; deposit_held: number }>(
       this.db,
       `SELECT b.id, b.status, b.fulfilment, b.booking_type, b.starts_at, b.ends_at, b.snapshot, b.deposit_paise, b.charges_paise, b.deposit_settled_at,
-              b.amount_paise, b.advance_paise,
+              b.amount_paise, b.advance_paise, b.pay_mode, ${depositHeldSql('b.id')} AS deposit_held,
               r.attributes->>'registration' AS registration
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
          LEFT JOIN resources r ON r.id = (b.snapshot->'resource'->>'id')::uuid
@@ -286,13 +286,16 @@ export class TripService {
       `SELECT type, COALESCE(sum(amount_paise), 0)::int AS paid FROM payments WHERE booking_id = $1 AND status IN ('paid', 'refunded') GROUP BY type`,
       [bookingId],
     )).rows;
-    const depositPaid = paid.find((x) => x.type === 'deposit')?.paid ?? 0;
+    // Cash bookings: the customer pays the vendor in person, so nothing is due in the app.
+    const cash = b.pay_mode === 'cash';
+    const depositPaid = cash ? b.deposit_held : (paid.find((x) => x.type === 'deposit')?.paid ?? 0);
     const finalPaid = paid.find((x) => x.type === 'final')?.paid ?? 0;
     const agreed = charges.filter((c: { status: string }) => ['accepted', 'resolved'].includes(c.status)).reduce((s: number, c: { amountPaise: number }) => s + c.amountPaise, 0);
     const snap = b.snapshot as TripBooking['snapshot'] & { driver?: { id: string; name: string }; route?: unknown };
     // The full registration only once the booking is confirmed.
     const showReg = who.vendorUserId || ['confirmed', 'completed'].includes(b.status);
     return {
+      payMode: b.pay_mode,
       fulfilment: b.fulfilment,
       mode: this.mode(b),
       startsAt: b.starts_at,
@@ -305,7 +308,7 @@ export class TripService {
       deposit: { requiredPaise: b.deposit_paise, paidPaise: depositPaid, keptPaise: b.charges_paise, settledAt: b.deposit_settled_at },
       balancePaidPaise: finalPaid,
       /** What "Pay balance" charges now: the rest of the price plus agreed extras the deposit does not cover. */
-      balanceDuePaise: ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - depositPaid) - finalPaid) : 0,
+      balanceDuePaise: !cash && ['confirmed', 'completed'].includes(b.status) ? Math.max(0, b.amount_paise - b.advance_paise + Math.max(0, agreed - depositPaid) - finalPaid) : 0,
     };
   }
 

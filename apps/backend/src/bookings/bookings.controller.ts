@@ -44,6 +44,8 @@ class CreateBookingDto {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   /** When the vendor should be at the venue, 'HH:MM' (24 h, India time). */
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'arriveBy must look like 17:30' }) arriveBy?: string;
+  /** cash: pay the whole booking to the vendor in person (only where the vendor accepts cash). */
+  @IsOptional() @IsIn(['online', 'cash']) payMode?: 'online' | 'cash';
 }
 
 class BookingListQuery {

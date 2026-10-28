@@ -64,6 +64,7 @@ export class EngineRequestDto implements EngineRequest {
   @IsOptional() @ValidateNested() @Type(() => RouteDto) route?: RouteDto;
   @IsOptional() @IsIn(['with_driver', 'self_drive']) mode?: 'with_driver' | 'self_drive';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @IsIn(['online', 'cash']) payMode?: 'online' | 'cash';
 }
 
 class LicencePhotoDto {

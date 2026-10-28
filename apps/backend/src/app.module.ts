@@ -21,6 +21,8 @@ import { AdminController } from './admin/admin.controller';
 import { AdminGuard } from './admin/admin-auth';
 import { BookingsController } from './bookings/bookings.controller';
 import { PartnerBookingsController } from './bookings/partner-bookings.controller';
+import { CashService } from './bookings/cash.service';
+import { AdminCashController, CustomerCashController, PartnerCashController } from './bookings/cash.controller';
 import { BookingsService } from './bookings/bookings.service';
 import { PaymentWebhookController } from './payments/webhook.controller';
 import { PaymentEventsService } from './payments/payment-events.service';
@@ -127,6 +129,9 @@ class ConfigModule {}
     PartnerRentalController,
     RentalsController,
     AdminRentalController,
+    PartnerCashController,
+    CustomerCashController,
+    AdminCashController,
   ],
   providers: [
     { provide: OTP_SENDER, useClass: ConsoleOtpSender },
@@ -139,6 +144,7 @@ class ConfigModule {}
     PartnerAppGuard,
     AdminGuard,
     BookingsService,
+    CashService,
     EngineService,
     EngineCatalogService,
     TripService,

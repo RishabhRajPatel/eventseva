@@ -69,12 +69,12 @@ export async function loadVendor(
 
   const services = await q.query(
     `SELECT id, title, description, price_paise AS "pricePaise", unit, min_guests AS "minGuests",
-            max_guests AS "maxGuests", is_active AS "isActive"
+            max_guests AS "maxGuests", is_active AS "isActive", cash_allowed AS "cashAllowed"
        FROM services WHERE vendor_id = $1 AND is_active AND booking_type = 'slot' ORDER BY created_at`,
     [vendorId],
   );
   const packages = await q.query(
-    `SELECT id, title, items, price_paise AS "pricePaise", is_active AS "isActive"
+    `SELECT id, title, items, price_paise AS "pricePaise", is_active AS "isActive", cash_allowed AS "cashAllowed"
        FROM packages WHERE vendor_id = $1 AND is_active ORDER BY price_paise, created_at`,
     [vendorId],
   );

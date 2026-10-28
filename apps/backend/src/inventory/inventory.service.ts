@@ -55,6 +55,8 @@ export interface RentalSettings {
   bufferAfterMin?: number;
   approval?: 'vendor' | 'auto';
   instructions?: string;
+  /** Customers may choose to pay the whole rental to the vendor in cash. */
+  cashAllowed?: boolean;
 }
 
 interface ItemRow {
@@ -413,9 +415,9 @@ export class InventoryService {
   }
 
   async settings(vendorId: string) {
-    const s = await this.db.one<{ id: string; pricing: Pricing; rules: RuleSet; template: Record<string, unknown> }>(
+    const s = await this.db.one<{ id: string; pricing: Pricing; rules: RuleSet; template: Record<string, unknown>; cash_allowed: boolean }>(
       this.db,
-      `SELECT s.id, s.pricing, s.rules, c.template FROM services s JOIN vendors v ON v.id = s.vendor_id JOIN categories c ON c.id = v.category_id
+      `SELECT s.id, s.pricing, s.rules, s.cash_allowed, c.template FROM services s JOIN vendors v ON v.id = s.vendor_id JOIN categories c ON c.id = v.category_id
         WHERE s.vendor_id = $1 AND s.booking_type = 'rental' ORDER BY s.created_at LIMIT 1`,
       [vendorId],
     );
@@ -435,6 +437,7 @@ export class InventoryService {
       approval: rules.approval ?? 'vendor',
       instructions: rules.instructions ?? null,
       cancellation: rules.cancellation ?? null,
+      cashAllowed: s?.cash_allowed ?? false,
     };
   }
 
@@ -461,7 +464,7 @@ export class InventoryService {
     });
     await this.db.tx(async (client) => {
       const id = await this.ensureRentalService(client, vendorId);
-      await client.query('UPDATE services SET pricing = $2, rules = $3 WHERE id = $1', [id, pricing, rules]);
+      await client.query('UPDATE services SET pricing = $2, rules = $3, cash_allowed = COALESCE($4, cash_allowed) WHERE id = $1', [id, pricing, rules, body.cashAllowed ?? null]);
     });
     return this.settings(vendorId);
   }

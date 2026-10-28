@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-52 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+54 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,7 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [checkouts](#checkouts), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
+- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
 
 ## Allowed values (enums)
 
@@ -309,6 +309,7 @@ What a vendor sells, priced per unit (per event, per plate, per day …). Soft-d
 | `rules` | jsonb | yes | `'{}'::jsonb` | Vendor overrides of the category rule defaults (durations, buffers, quantities, advance, deposit, approval) |
 | `attributes` | jsonb | yes | `'{}'::jsonb` |  |
 | `resource_id` | uuid |  |  | → [resources](#resources).id; For a service that is one specific resource (a car, a hall): that resource |
+| `cash_allowed` | boolean | yes | `false` | The vendor accepts cash for this service: customers may choose to pay the whole booking to the vendor |
 
 <details><summary>Rules and indexes</summary>
 
@@ -330,6 +331,7 @@ Fixed-price bundles a vendor offers ("Gold: DJ + lights + 5 hours").
 | `price_paise` | integer | yes |  |  |
 | `is_active` | boolean | yes | `true` |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `cash_allowed` | boolean | yes | `false` | The vendor accepts cash for this package |
 
 <details><summary>Rules and indexes</summary>
 
@@ -473,6 +475,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `deposit_settled_at` | timestamp with time zone |  |  | When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this |
 | `group_id` | uuid |  |  | → [checkouts](#checkouts).id; The checkout this booking was made in, with the others booked at the same time |
 | `state` | booking_state | yes |  | Lifecycle state, set by the database from status, fulfilment and disputed charges; see booking_state_moves |
+| `pay_mode` | text | yes | `'online'::text` | online: advance, balance and deposit through Razorpay. cash: everything is paid to the vendor in person; confirmed when the vendor accepts |
 
 <details><summary>Rules and indexes</summary>
 
@@ -481,6 +484,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Check: `CHECK ((deposit_paise >= 0))`
 - Check: `CHECK ((discount_paise >= 0))`
 - Check: `CHECK ((fulfilment = ANY (ARRAY['scheduled'::text, 'preparing'::text, 'assigned'::text, 'ready'::text, 'dispatched'::text, 'delivered'::text, 'in_progress'::text, 'return_pending'::text, 'closed'::text])))`
+- Check: `CHECK ((pay_mode = ANY (ARRAY['online'::text, 'cash'::text])))`
 - Check: `CHECK ((payout_deduction_paise >= 0))`
 - Check: `CHECK ((progress = ANY (ARRAY['on_the_way'::text, 'reached'::text])))`
 - Check: `CHECK ((quantity > 0))`
@@ -1031,9 +1035,11 @@ What EventSeva owes a vendor for a completed booking (advance − commission −
 | `razorpay_transfer_id` | text |  |  |  |
 | `status` | payout_status | yes | `'scheduled'::payout_status` |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `dues_deducted_paise` | integer | yes | `0` | Commission owed on cash bookings taken off this payout |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK ((dues_deducted_paise >= 0))`
 - Unique: `UNIQUE (razorpay_transfer_id)`
 - Index: `CREATE UNIQUE INDEX ON payouts USING btree (booking_id)`
 - Index: `CREATE INDEX ON payouts USING btree (status, release_after)`
@@ -1338,6 +1344,29 @@ The booking state machine: every allowed move (from_state NULL = a new booking)
 
 </details>
 
+### cash_receipts
+
+Cash the vendor took from the customer (advance, balance, deposit) or gave back (deposit_return, refund), as the vendor recorded it; the customer is told each time
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `kind` | text | yes |  |  |
+| `amount_paise` | integer | yes |  |  |
+| `note` | text |  |  |  |
+| `recorded_by` | uuid | yes |  | → [users](#users).id |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((amount_paise > 0))`
+- Check: `CHECK ((kind = ANY (ARRAY['advance'::text, 'balance'::text, 'deposit'::text, 'deposit_return'::text, 'refund'::text])))`
+- Check: `CHECK ((length(note) <= 300))`
+- Index: `CREATE INDEX ON cash_receipts USING btree (booking_id, created_at)`
+
+</details>
+
 ### checkouts
 
 One customer action that booked several services (possibly several vendors) at once
@@ -1353,6 +1382,37 @@ One customer action that booked several services (possibly several vendors) at o
 <details><summary>Rules and indexes</summary>
 
 - Index: `CREATE UNIQUE INDEX ON checkouts USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
+
+</details>
+
+### commission_dues
+
+EventSeva commission on completed cash bookings, owed by the vendor: taken from their next online payouts, or settled / waived by finance
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `amount_paise` | integer | yes |  |  |
+| `remaining_paise` | integer | yes |  |  |
+| `status` | text | yes | `'open'::text` |  |
+| `reference` | text |  |  | How it was settled: a payout id, a UPI/bank reference from finance, or the reason it was waived |
+| `settled_by` | uuid |  |  | → [admin_users](#admin_users).id |
+| `settled_at` | timestamp with time zone |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((status <> 'settled'::text) OR (remaining_paise = 0)))`
+- Check: `CHECK (((status = 'open'::text) = (settled_at IS NULL)))`
+- Check: `CHECK ((amount_paise > 0))`
+- Check: `CHECK ((length(reference) <= 200))`
+- Check: `CHECK ((remaining_paise <= amount_paise))`
+- Check: `CHECK ((remaining_paise >= 0))`
+- Check: `CHECK ((status = ANY (ARRAY['open'::text, 'settled'::text, 'waived'::text])))`
+- Unique: `UNIQUE (booking_id)`
+- Index: `CREATE INDEX ON commission_dues USING btree (vendor_id, created_at) WHERE (status = 'open'::text)`
 
 </details>
 

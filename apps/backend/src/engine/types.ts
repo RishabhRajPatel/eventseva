@@ -115,6 +115,8 @@ export interface EngineRequest {
   route?: { pickup: Place; destination: Place; stops?: Place[] };
   mode?: 'with_driver' | 'self_drive';
   note?: string;
+  /** cash: the whole booking is paid to the vendor in person (only where the vendor accepts cash). */
+  payMode?: 'online' | 'cash';
 }
 
 export interface QuoteLine {

@@ -90,6 +90,7 @@ class RentalSettingsDto {
   @IsOptional() @IsInt() @Min(0) @Max(2880) bufferAfterMin?: number;
   @IsOptional() @IsIn(['vendor', 'auto']) approval?: 'vendor' | 'auto';
   @IsOptional() @IsString() @MaxLength(1000) instructions?: string;
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class LineQtyDto {

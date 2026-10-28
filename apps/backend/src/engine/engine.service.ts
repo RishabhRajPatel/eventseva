@@ -2,6 +2,7 @@
 // one (which stays in BookingsService.request). After the request, the existing BookingsService
 // lifecycle (accept → pay → confirm → complete, cancel, expire, refunds, payouts) carries on, with the
 // engine's holds renewed, activated and released at each step.
+import { CashService } from '../bookings/cash.service';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
 import { CloudinaryService } from '../media/cloudinary.service';
@@ -53,6 +54,7 @@ export class EngineService {
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly cloudinary: CloudinaryService,
+    private readonly cash: CashService,
   ) {}
 
   /** Everything needed to price and hold one request. Throws clear errors for anything not bookable. */
@@ -298,7 +300,15 @@ export class EngineService {
     await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
     const respondBy = engineRespondBy(plan.starts, now);
     if (!respondBy) throw new AppError('TOO_LATE_TO_BOOK', 'This starts too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
-    const auto = quote.approval === 'auto';
+    const payMode = req.payMode ?? 'online';
+    if (payMode === 'cash') {
+      if (opts.groupId) throw new AppError('CASH_NOT_IN_CART', 'Cart checkout is paid online. Book this one on its own to pay in cash.', HttpStatus.BAD_REQUEST);
+      const svc = await this.db.one<{ cash_allowed: boolean }>(client, 'SELECT cash_allowed FROM services WHERE id = $1', [loaded.ctx.service.id]);
+      if (!svc?.cash_allowed) throw new AppError('CASH_NOT_ACCEPTED', 'This vendor takes only online payment for this.', HttpStatus.BAD_REQUEST);
+      await this.cash.assertVendorMayTakeCash(client, loaded.vendor.id);
+    }
+    // A cash booking always waits for the vendor: their yes confirms it, with no advance to wait for.
+    const auto = quote.approval === 'auto' && payMode === 'online';
     const payBy = auto ? enginePayBy(plan.starts, now) : null;
     const snapshot = {
       bookingType: loaded.ctx.type,
@@ -319,13 +329,13 @@ export class EngineService {
       client,
       `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, day, slot, quantity, details, amount_paise, advance_paise,
                              commission_paise, tax_paise, deposit_paise, respond_by, pay_by, status, booking_type, starts_at, ends_at,
-                             occupy_from, occupy_until, return_due_at, snapshot, cancellation_policy, idempotency_key)
-       VALUES ($1, $2, $3, $4, $5, 'full', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::booking_status, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                             occupy_from, occupy_until, return_due_at, snapshot, cancellation_policy, idempotency_key, pay_mode)
+       VALUES ($1, $2, $3, $4, $5, 'full', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::booking_status, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        RETURNING id`,
       [req.eventId, customerId, loaded.vendor.id, loaded.ctx.service.id, istDay(plan.starts), plan.quantity,
         { note: req.note?.trim().slice(0, 500) || null }, quote.totalPaise, quote.advancePaise, p.commissionPaise, quote.taxPaise, quote.depositPaise,
         respondBy, payBy, auto ? 'accepted' : 'requested', loaded.ctx.type, plan.starts, plan.ends, plan.occupyFrom, plan.occupyUntil,
-        plan.returnDue, snapshot, quote.cancellation, idempotencyKey ?? null],
+        plan.returnDue, snapshot, quote.cancellation, idempotencyKey ?? null, payMode],
     );
     const id = booking!.id;
     if (opts.groupId) await client.query('UPDATE bookings SET group_id = $2 WHERE id = $1', [id, opts.groupId]);

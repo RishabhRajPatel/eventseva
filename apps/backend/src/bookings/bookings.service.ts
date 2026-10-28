@@ -15,6 +15,7 @@ import { pointOf, progressAllowed, REMINDER_HOUR_IST, travelBetween } from './tr
 import type { PricingUnit } from '../vendors/vendor.queries';
 import { enginePayBy } from '../engine/engine.service';
 import { releaseAll, renewAll, Unavailable } from '../engine/reservations';
+import { CashService } from './cash.service';
 import { daysBefore, refundPercentFrom } from '../engine/rules';
 import type { BookingTypeKey, CancellationPolicy, Need } from '../engine/types';
 import {
@@ -44,7 +45,11 @@ export interface BookingRequest {
   slot: Slot;
   quantity?: number;
   note?: string;
+  /** cash: the whole booking is paid to the vendor in person (only where the vendor accepts cash). */
+  payMode?: PayMode;
 }
+
+export type PayMode = 'online' | 'cash';
 
 export interface AcceptOptions {
   /** quote bookings: the vendor's price for the whole job (before tax), in paise. */
@@ -80,6 +85,7 @@ interface BookingRow {
   deposit_paise: number;
   tax_paise: number;
   fulfilment: string;
+  pay_mode: PayMode;
 }
 
 /** Holds stored in the snapshot come back as JSON: dates are strings again. */
@@ -134,6 +140,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     private readonly refunds: RefundsService,
     private readonly fulfilment: FulfilmentService,
     private readonly trips: TripService,
+    private readonly cash: CashService,
   ) {}
 
   onModuleInit() {
@@ -187,17 +194,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       if (vendor.user_id === customerId) throw new AppError('OWN_VENDOR', 'You cannot book your own business.');
 
       const item = body.serviceId
-        ? await this.db.one<{ title: string; price_paise: number; unit: PricingUnit; min_guests: number | null; max_guests: number | null }>(
+        ? await this.db.one<{ title: string; price_paise: number; unit: PricingUnit; min_guests: number | null; max_guests: number | null; cash_allowed: boolean }>(
             client,
-            `SELECT title, price_paise, unit, min_guests, max_guests FROM services WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type = 'slot'`,
+            `SELECT title, price_paise, unit, min_guests, max_guests, cash_allowed FROM services WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type = 'slot'`,
             [body.serviceId, body.vendorId],
           )
-        : await this.db.one<{ title: string; price_paise: number; unit: 'package'; min_guests: null; max_guests: null }>(
+        : await this.db.one<{ title: string; price_paise: number; unit: 'package'; min_guests: null; max_guests: null; cash_allowed: boolean }>(
             client,
-            `SELECT title, price_paise, 'package' AS unit, NULL AS min_guests, NULL AS max_guests FROM packages WHERE id = $1 AND vendor_id = $2 AND is_active`,
+            `SELECT title, price_paise, 'package' AS unit, NULL AS min_guests, NULL AS max_guests, cash_allowed FROM packages WHERE id = $1 AND vendor_id = $2 AND is_active`,
             [body.packageId, body.vendorId],
           );
       if (!item) throw new AppError('ITEM_NOT_FOUND', 'This service or package is no longer offered.', HttpStatus.NOT_FOUND);
+      const payMode = body.payMode ?? 'online';
+      if (payMode === 'cash') {
+        if (!item.cash_allowed) throw new AppError('CASH_NOT_ACCEPTED', 'This vendor takes only online payment for this.', HttpStatus.BAD_REQUEST);
+        await this.cash.assertVendorMayTakeCash(client, body.vendorId);
+      }
 
       let quantity = 1;
       if (needsQuantity(item.unit)) {
@@ -226,15 +238,15 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         client,
         `INSERT INTO bookings (event_id, customer_id, vendor_id, service_id, package_id, day, slot, quantity, details,
                                amount_paise, advance_paise, commission_paise, respond_by, starts_at, ends_at, occupy_from, occupy_until,
-                               cancellation_policy)
-         SELECT v.*, t.s, t.e, t.s, t.e, $14::jsonb FROM (VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::date, $7, $8::int, $9::jsonb,
+                               cancellation_policy, pay_mode)
+         SELECT v.*, t.s, t.e, t.s, t.e, $14::jsonb, $15 FROM (VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::date, $7, $8::int, $9::jsonb,
                  $10::int, $11::int, $12::int, $13::timestamptz)) v,
            LATERAL (SELECT ($6::date + CASE $7 WHEN 'day' THEN time '10:00' WHEN 'night' THEN time '18:00' ELSE time '06:00' END) AT TIME ZONE 'Asia/Kolkata' AS s,
                            ($6::date + CASE $7 WHEN 'day' THEN time '16:00' WHEN 'night' THEN time '23:00' ELSE time '23:59' END) AT TIME ZONE 'Asia/Kolkata' AS e) t
          RETURNING id`,
         [body.eventId, customerId, body.vendorId, body.serviceId ?? null, body.packageId ?? null, event.event_date, body.slot,
           quantity, { note: body.note?.trim() || null, arriveBy: body.arriveBy ?? null }, money.amountPaise, money.advancePaise, money.commissionPaise, respondBy,
-          DEFAULT_CANCELLATION],
+          DEFAULT_CANCELLATION, payMode],
       );
       await notify(client, vendor.user_id, 'booking_requested', {
         en: { title: 'New booking request', body: `${item.title} on ${niceDay(event.event_date, 'en')}. Reply within ${hoursLeft(respondBy)} hours.` },
@@ -256,6 +268,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   async startPayment(customerId: string, bookingId: string, part: 'advance' | 'balance' | 'deposit' = 'advance') {
     return this.db.tx(async (client) => {
       const b = await this.lockBooking(client, bookingId, { customerId });
+      if (b.pay_mode === 'cash') throw new AppError('CASH_BOOKING', 'This booking is paid in cash to the vendor.', HttpStatus.CONFLICT);
       const type = part === 'advance' ? 'advance' : part === 'balance' ? 'final' : 'deposit';
       let payNow: number;
       if (part === 'advance') {
@@ -428,9 +441,11 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new AppError('BOOKING_IN_PROGRESS', 'This booking is already being delivered. Please talk to the vendor.', HttpStatus.CONFLICT);
       }
       const percent = isEngine(b) ? refundPercentFrom(b.cancellation_policy, 'customer', daysLeft(b)) : refundPercent('customer', daysLeft(b));
-      const refunded = b.status === 'confirmed' ? await this.refundAdvance(client, b, percent) : 0;
+      const online = b.status === 'confirmed' && b.pay_mode === 'online';
+      const refunded = online ? await this.refundAdvance(client, b, percent) : 0;
       await this.close(client, b.id, 'cancelled_by_customer', reason);
-      const compensation = b.status === 'confirmed' ? await this.cancellationPayout(client, b, percent) : 0;
+      const compensation = online ? await this.cancellationPayout(client, b, percent) : 0;
+      if (b.pay_mode === 'cash') await this.cashCancelled(client, b, percent);
       await notify(client, b.vendor_user_id, 'booking_cancelled', {
         en: {
           title: 'Booking cancelled',
@@ -446,6 +461,26 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       await postBookingEvent(client, b, 'cancelled_by_customer', b.customer_id, { reason, refundPaise: refunded });
       return { refundPaise: refunded };
     }));
+  }
+
+  /**
+   * A cancelled cash booking: no money passed through EventSeva, so the vendor gives back the share of
+   * the cash they took that the cancellation tier refunds. Both sides are told the amount.
+   */
+  private async cashCancelled(q: Queryable, b: BookingRow, refundPercentOfCash: number) {
+    const { receivedPaise } = await this.cash.summary(q, b.id);
+    const back = refundPaise(receivedPaise, refundPercentOfCash);
+    if (back <= 0) return;
+    const msg = {
+      en: { title: 'Cash to give back', body: `${rupees(back)} of the cash paid for ${niceDay(b.day, 'en')} goes back to the customer. Record it in the booking once given.` },
+      hi: { title: 'नकद लौटाना है', body: `${niceDay(b.day, 'hi')} के लिए दिए नकद में से ${rupees(back)} ग्राहक को लौटाने हैं। देने के बाद बुकिंग में दर्ज करें।` },
+    };
+    await notify(q, b.vendor_user_id, 'cash_refund_due', msg, { bookingId: b.id }, 'partner');
+    await notify(q, b.customer_id, 'cash_refund_due', {
+      en: { title: 'Cash refund', body: `The vendor gives you back ${rupees(back)} in cash for ${niceDay(b.day, 'en')}. Tell us from the booking if it does not reach you.` },
+      hi: { title: 'नकद वापसी', body: `वेंडर ${niceDay(b.day, 'hi')} के लिए आपको ${rupees(back)} नकद लौटाएँगे। न मिले तो बुकिंग से हमें बताएँ।` },
+    }, { bookingId: b.id }, 'customer');
+    await q.query(`INSERT INTO booking_events (booking_id, event, data) VALUES ($1, 'cash_refund_due', $2)`, [b.id, { amountPaise: back }]);
   }
 
   /**
@@ -504,7 +539,18 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       } else {
         advance = await this.settleOnAccept(client, b, opts);
         payBy = enginePayBy(b.starts_at);
-        await renewAll(client, needsOf(b.needs), { ...this.holding(b), status: 'hold', expiresAt: payBy });
+        // Cash: nothing to wait for, so the holds become the booking now.
+        await renewAll(client, needsOf(b.needs), b.pay_mode === 'cash' ? { ...this.holding(b), status: 'active', expiresAt: null } : { ...this.holding(b), status: 'hold', expiresAt: payBy });
+      }
+      if (b.pay_mode === 'cash') {
+        await client.query(`UPDATE bookings SET status = 'confirmed', pay_by = NULL, updated_at = now() WHERE id = $1`, [b.id]);
+        const total = (await this.db.one<{ amount: number }>(client, 'SELECT amount_paise AS amount FROM bookings WHERE id = $1', [b.id]))!.amount;
+        await notify(client, b.customer_id, 'booking_confirmed', {
+          en: { title: 'Booking confirmed', body: `The vendor accepted ${niceDay(b.day, 'en')}. Pay ${rupees(total)} to the vendor in cash, as you agree with them.` },
+          hi: { title: 'बुकिंग पक्की हो गई', body: `वेंडर ने ${niceDay(b.day, 'hi')} मंज़ूर किया। ${rupees(total)} वेंडर को नकद दें, जैसे आप दोनों तय करें।` },
+        }, { bookingId: b.id }, 'customer');
+        await postBookingEvent(client, b, 'confirmed', vendorUserId, { payMode: 'cash' });
+        return;
       }
       await client.query(`UPDATE bookings SET status = 'accepted', pay_by = $2, updated_at = now() WHERE id = $1`, [b.id, payBy]);
       await notify(client, b.customer_id, 'booking_accepted', {
@@ -596,8 +642,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         throw new AppError('BOOKING_IN_PROGRESS', 'Items are already on the way. Contact EventSeva support to cancel.', HttpStatus.CONFLICT);
       }
       const percent = isEngine(b) ? refundPercentFrom(b.cancellation_policy, 'vendor', daysLeft(b)) : refundPercent('vendor', daysLeft(b));
-      const refunded = b.status === 'confirmed' ? await this.refundAdvance(client, b, percent) : 0;
+      const refunded = b.status === 'confirmed' && b.pay_mode === 'online' ? await this.refundAdvance(client, b, percent) : 0;
       await this.close(client, b.id, 'cancelled_by_vendor', reason);
+      if (b.pay_mode === 'cash') await this.cashCancelled(client, b, percent);
       await notify(client, b.customer_id, 'booking_cancelled', {
         en: {
           title: 'Vendor cancelled',
@@ -717,10 +764,16 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
                   -- Rentals and vehicles end when the return is checked, not by the clock.
                OR (booking_type NOT IN ('slot', 'rental', 'transport') AND ends_at < now())
                OR (booking_type IN ('rental', 'transport') AND fulfilment = 'closed' AND deposit_settled_at IS NOT NULL))
-          RETURNING id, vendor_id, day,
+          RETURNING id, vendor_id, day, pay_mode, commission_paise,
+                    -- Cash bookings: the vendor already has the money; EventSeva's commission becomes a due.
+                    CASE WHEN pay_mode = 'cash' THEN 0 ELSE
                     advance_paise + charges_paise - commission_paise - payout_deduction_paise
                       + COALESCE((SELECT sum(p.amount_paise) FROM payments p WHERE p.booking_id = bookings.id AND p.type = 'final' AND p.status = 'paid'), 0)::int
-                      AS payout_paise
+                    END AS payout_paise
+       ), d AS (
+         INSERT INTO commission_dues (booking_id, vendor_id, amount_paise, remaining_paise)
+         SELECT id, vendor_id, commission_paise, commission_paise FROM c WHERE pay_mode = 'cash' AND commission_paise > 0
+         ON CONFLICT (booking_id) DO NOTHING
        ), p AS (
          INSERT INTO payouts (booking_id, vendor_id, amount_paise, release_after)
          SELECT c.id, c.vendor_id, c.payout_paise,
@@ -742,6 +795,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
       }, { bookingId: b.id }, 'partner');
     }
+    // Commission owed on cash bookings comes off the vendor's payouts that are not sent yet.
+    await this.cash.applyDuesToPayouts();
     // Coupons held by bookings that ended unpaid (expired above) can be used again.
     await this.db.query(
       `WITH r AS (
@@ -882,7 +937,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       `SELECT b.id, b.event_id, b.customer_id, b.vendor_id, v.user_id AS vendor_user_id, b.status, b.day, b.slot,
               b.amount_paise, b.advance_paise, b.commission_paise, b.discount_paise, b.refund_paise, b.payout_deduction_paise, b.respond_by, b.pay_by,
               b.booking_type, b.starts_at, b.ends_at, b.occupy_from, b.occupy_until, b.snapshot->'needs' AS needs, b.cancellation_policy,
-              b.deposit_paise, b.tax_paise, b.fulfilment
+              b.deposit_paise, b.tax_paise, b.fulfilment, b.pay_mode
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id
         WHERE b.id = $1 AND ($2::uuid IS NULL OR b.customer_id = $2) AND ($3::uuid IS NULL OR v.user_id = $3)
         FOR UPDATE OF b`,

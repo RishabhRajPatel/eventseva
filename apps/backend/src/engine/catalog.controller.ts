@@ -1,21 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsIn,
-  IsInt,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Length,
-  Matches,
-  Max,
-  MaxLength,
-  Min,
-  ValidateIf,
-} from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
@@ -34,6 +18,8 @@ class EngineServiceDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() resourceId?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) minGuests?: number | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class UpdateEngineServiceDto {
@@ -45,6 +31,8 @@ class UpdateEngineServiceDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsUUID() resourceId?: string | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) minGuests?: number | null;
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
+  /** Customers may choose to pay the whole booking to you in cash. */
+  @IsOptional() @IsBoolean() cashAllowed?: boolean;
 }
 
 class ResourceDto {

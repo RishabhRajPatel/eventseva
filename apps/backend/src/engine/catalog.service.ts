@@ -73,6 +73,8 @@ export interface EngineServiceInput {
   minGuests?: number | null;
   maxGuests?: number | null;
   isActive?: boolean;
+  /** Customers may choose to pay the whole booking to the vendor in cash. */
+  cashAllowed?: boolean;
 }
 
 export interface ResourceInput {
@@ -105,7 +107,7 @@ interface VendorCategory {
 }
 
 const SERVICE_COLUMNS = `s.id, s.title, s.description, s.booking_type AS "bookingType", s.pricing, s.rules, s.attributes, s.resource_id AS "resourceId",
-  s.min_guests AS "minGuests", s.max_guests AS "maxGuests", s.is_active AS "isActive", s.created_at AS "createdAt"`;
+  s.min_guests AS "minGuests", s.max_guests AS "maxGuests", s.is_active AS "isActive", s.cash_allowed AS "cashAllowed", s.created_at AS "createdAt"`;
 const RESOURCE_COLUMNS = `r.id, r.kind, r.name, r.attributes, r.status, r.verification, r.reject_reason AS "rejectReason", r.created_at AS "createdAt",
   COALESCE((SELECT json_agg(json_build_object('id', d.id, 'docType', d.doc_type, 'status', d.status, 'rejectReason', d.reject_reason) ORDER BY d.created_at)
      FROM vendor_documents d WHERE d.resource_id = r.id), '[]') AS documents`;
@@ -204,10 +206,10 @@ export class EngineCatalogService {
       const c = await this.checkService(client, v, body);
       const row = await this.db.one<{ id: string }>(
         client,
-        `INSERT INTO services (vendor_id, title, description, price_paise, unit, booking_type, pricing, rules, attributes, resource_id, min_guests, max_guests)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
+        `INSERT INTO services (vendor_id, title, description, price_paise, unit, booking_type, pricing, rules, attributes, resource_id, min_guests, max_guests, cash_allowed)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
         [v.id, body.title.trim(), body.description?.trim() || null, Math.max(100, c.pricing!.ratePaise), v.default_unit, v.booking_type, c.pricing,
-          c.rules ?? {}, c.attributes ?? {}, c.resourceId, body.minGuests ?? null, body.maxGuests ?? null],
+          c.rules ?? {}, c.attributes ?? {}, c.resourceId, body.minGuests ?? null, body.maxGuests ?? null, body.cashAllowed ?? false],
       );
       return this.db.one(client, `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.id = $1`, [row!.id]);
     });
@@ -228,11 +230,12 @@ export class EngineCatalogService {
         `UPDATE services SET title = COALESCE($3, title), description = CASE WHEN $4 THEN $5 ELSE description END,
                 pricing = COALESCE($6, pricing), price_paise = COALESCE($7, price_paise), rules = COALESCE($8, rules),
                 attributes = COALESCE($9, attributes), resource_id = $10,
-                min_guests = CASE WHEN $11 THEN $12 ELSE min_guests END, max_guests = CASE WHEN $13 THEN $14 ELSE max_guests END
+                min_guests = CASE WHEN $11 THEN $12 ELSE min_guests END, max_guests = CASE WHEN $13 THEN $14 ELSE max_guests END,
+                cash_allowed = COALESCE($15, cash_allowed)
           WHERE id = $1 AND vendor_id = $2`,
         [id, v.id, body.title?.trim() ?? null, body.description !== undefined, body.description?.trim() || null, c.pricing ?? null,
           c.pricing ? Math.max(100, c.pricing.ratePaise) : null, c.rules ?? null, c.attributes ?? null, c.resourceId,
-          body.minGuests !== undefined, body.minGuests ?? null, body.maxGuests !== undefined, body.maxGuests ?? null],
+          body.minGuests !== undefined, body.minGuests ?? null, body.maxGuests !== undefined, body.maxGuests ?? null, body.cashAllowed ?? null],
       );
       return this.db.one(client, `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.id = $1`, [id]);
     });
@@ -509,8 +512,8 @@ export class EngineCatalogService {
     );
     if (!v) throw new AppError('VENDOR_NOT_FOUND', 'This vendor is not available.', HttpStatus.NOT_FOUND);
     const { rows } = await this.db.query<{ id: string; title: string; description: string | null; booking_type: BookingTypeKey; pricing: Pricing; rules: RuleSet;
-      attributes: Record<string, unknown>; min_guests: number | null; max_guests: number | null; resource: Record<string, unknown> | null }>(
-      `SELECT s.id, s.title, s.description, s.booking_type, s.pricing, s.rules, s.attributes, s.min_guests, s.max_guests,
+      attributes: Record<string, unknown>; min_guests: number | null; max_guests: number | null; resource: Record<string, unknown> | null; cash_allowed: boolean }>(
+      `SELECT s.id, s.title, s.description, s.booking_type, s.pricing, s.rules, s.attributes, s.min_guests, s.max_guests, s.cash_allowed,
               CASE WHEN r.id IS NULL THEN NULL ELSE json_build_object('id', r.id, 'kind', r.kind, 'name', r.name, 'attributes', r.attributes,
                 'bookable', r.status = 'active' AND r.verification IN ('approved', 'not_required'),
                 'photos', COALESCE((SELECT json_agg(json_build_object('publicId', m.public_id, 'width', m.width, 'height', m.height, 'blurhash', m.blurhash) ORDER BY m.sort_order)
@@ -537,6 +540,8 @@ export class EngineCatalogService {
           attributes: s.attributes,
           minGuests: s.min_guests,
           maxGuests: s.max_guests,
+          /** The vendor accepts cash: the customer may choose to pay the whole booking in person. */
+          cashAllowed: s.cash_allowed,
           rules: {
             minDurationMin: rules.minDurationMin ?? null, maxDurationMin: rules.maxDurationMin ?? null, minQty: rules.minQty ?? null, maxQty: rules.maxQty ?? null,
             workingHours: rules.workingHours ?? null, leadTimeHours: rules.leadTimeHours ?? null, perPersonMin: rules.perPersonMin ?? null, minAge: rules.minAge ?? null,
