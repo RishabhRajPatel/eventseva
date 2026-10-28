@@ -14,6 +14,8 @@ approves vendors and handles money and complaints from an admin panel.
 | `packages/app-shared` | API client, types, theme, formatting, Cloudinary URLs | TypeScript |
 | `packages/core` | Shared constants | TypeScript |
 | `docs/API.md` | Every API route, error code and status | |
+| `docs/DEPLOY.md` | Server setup with Docker, HTTPS, backups, smoke test | |
+| `docs/PHONE_TEST.md` | Checklist for testing both apps on a real phone before a release | |
 | `design/` | Design boards (open the `.dc.html` files in a browser) | |
 
 ## Run it locally

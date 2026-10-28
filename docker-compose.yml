@@ -1,0 +1,51 @@
+# Database, API and admin panel on one machine. See docs/DEPLOY.md.
+#   cp apps/backend/.env.example apps/backend/.env   # then fill it in
+#   POSTGRES_PASSWORD=... docker compose up -d --build
+# The API (3000) and the panel (3001) listen on this machine only; put HTTPS (Caddy, Nginx) in front of both.
+# For a phone test on the same Wi-Fi, start with BIND=0.0.0.0 so the phone can reach them.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eventseva
+      POSTGRES_DB: eventseva
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U eventseva']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    restart: unless-stopped
+    env_file: apps/backend/.env
+    environment:
+      DATABASE_URL: postgres://eventseva:${POSTGRES_PASSWORD}@db:5432/eventseva
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '${BIND:-127.0.0.1}:3000:3000'
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        # The panel's server forwards /api to the API inside this network.
+        API_URL: http://api:3000
+        NEXT_PUBLIC_SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@eventseva.in}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${BIND:-127.0.0.1}:3001:3001'
+
+volumes:
+  db-data:

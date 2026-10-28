@@ -10,7 +10,8 @@
     "test": "jest --runInBand",
     "lint": "tsc --noEmit -p tsconfig.json",
     "create-admin": "tsx scripts/create-admin.ts",
-    "db:docs": "tsx scripts/db-docs.ts"
+    "db:docs": "tsx scripts/db-docs.ts",
+    "smoke": "tsx scripts/smoke.ts"
   },
   "dependencies": {
     "@eventseva/core": "workspace:*",

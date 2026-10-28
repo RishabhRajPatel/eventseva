@@ -1,0 +1,15 @@
+# Used instead of the root .dockerignore when building apps/admin/Dockerfile.
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/.env
+**/.env.*
+!**/.env.example
+**/tsconfig.tsbuildinfo
+.git
+design
+apps/customer
+apps/partner
+apps/backend
+database

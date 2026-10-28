@@ -4,6 +4,8 @@
 # On start it applies pending migrations, then serves on $PORT (default 3000).
 FROM node:22-slim
 
+# pnpm is fetched once here, into a folder the runtime user can read, so starting needs no download.
+ENV COREPACK_HOME=/opt/corepack
 RUN corepack enable
 WORKDIR /app
 

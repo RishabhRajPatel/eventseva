@@ -8,7 +8,7 @@ export default function PrivacyPage() {
   return (
     <>
       <h1>Privacy policy</h1>
-      <p className="muted">Last updated: 22 October 2026</p>
+      <p className="muted">Last updated: 28 October 2026</p>
       <p>
         EventSeva connects people planning events in Prayagraj with local vendors. This policy covers the EventSeva app, the EventSeva
         Partner app and eventseva.in.
@@ -27,7 +27,12 @@ export default function PrivacyPage() {
         </li>
         <li>
           <b>Vendors also give:</b> business details, photos and videos, ID documents (only the last 4 digits of Aadhaar are stored) and
-          bank details for payouts (stored encrypted).
+          bank details for payouts (stored encrypted). Vendors who list cars, staff or drivers also add the car’s registration
+          number and papers (RC, insurance, permit, PUC), and each driver’s licence and police verification. These are private files like ID documents.
+        </li>
+        <li>
+          <b>Handover photos:</b> photos the vendor takes when equipment or a car is handed over and returned, shared with the customer of
+          that booking as a record.
         </li>
         <li>
           <b>Location:</b> only when you tap “I’m at the venue”, “Use my location” or “Use my current location”, to pin a venue, a car pickup or a
@@ -35,10 +40,11 @@ export default function PrivacyPage() {
         </li>
         <li>
           <b>Self-drive cars:</b> your driving licence number (stored encrypted), date of birth, expiry date and, if you add one, a photo of
-          the licence. Only EventSeva’s checking team sees the full number and the photo.
+          the licence. Only EventSeva’s checking team sees the full number and the photo. Self-drive needs a driver aged 21 or more.
         </li>
         <li>
-          <b>Device:</b> a notification token so we can send booking updates.
+          <b>Device:</b> a notification token so we can send booking updates. Your cart is saved on your phone only and is cleared when you
+          log out.
         </li>
       </ul>
 
