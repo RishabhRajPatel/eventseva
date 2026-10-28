@@ -6,7 +6,7 @@ import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
-import { breakPeriods, checkPricing, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
+import { breakPeriods, checkPricing, daysBefore, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
 import { servicePoolKey } from './booking-types';
 import { recordConfigChange } from './config-history';
 import { allQuestions, checkEventTypes, checkPlans, checkVendorQuestions, pickPlan } from './service-config';
@@ -630,7 +630,7 @@ export class EngineCatalogService {
       [s.id, date],
     ))!.n;
     const reason = date < today ? 'past'
-      : dayStart.getTime() > now.getTime() + maxDays * 86_400_000 ? 'too_far'
+      : daysBefore(dayStart, now) > maxDays ? 'too_far'
       : rules.blockedDates?.includes(date) ? 'blocked'
       : rules.workingDays && !rules.workingDays.includes(new Date(`${date}T00:00:00Z`).getUTCDay()) ? 'closed'
       : rules.maxPerDay && booked >= rules.maxPerDay ? 'full'

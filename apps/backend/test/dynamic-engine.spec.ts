@@ -54,6 +54,13 @@ describe('service config rules (pure)', () => {
     expect(() => checkTimes(sat, new Date(sat.getTime() + 3_600_000), { blockedDates: ['2026-12-05'] }, now)).toThrow(/this date/);
     expect(() => checkTimes(sat, new Date(sat.getTime() + 3_600_000), { maxAdvanceDays: 30 }, now)).toThrow(/30 days/);
     expect(() => checkTimes(sat, new Date(sat.getTime() + 3_600_000), { maxAdvanceDays: 40, workingDays: [6] }, now)).not.toThrow();
+    // How far ahead is counted in India calendar days, whatever the time now: at 00:01 the 21st day at
+    // 19:00 is still within "21 days" (an hour-based check refused it, and failed CI at night).
+    const justAfterMidnight = new Date('2026-11-01T00:01:00+05:30');
+    const day21 = new Date('2026-11-22T19:00:00+05:30');
+    expect(() => checkTimes(day21, new Date(day21.getTime() + 3_600_000), { maxAdvanceDays: 21 }, justAfterMidnight)).not.toThrow();
+    const day22 = new Date('2026-11-23T06:00:00+05:30');
+    expect(() => checkTimes(day22, new Date(day22.getTime() + 3_600_000), { maxAdvanceDays: 21 }, new Date('2026-11-01T23:59:00+05:30'))).toThrow(/21 days/);
     const q = [{ key: 'a', label: bi('A'), type: 'text' as const }];
     expect(schemaVersion(q)).toBe(schemaVersion([...q]));
     expect(schemaVersion(q)).not.toBe(schemaVersion([{ ...q[0], required: true }]));

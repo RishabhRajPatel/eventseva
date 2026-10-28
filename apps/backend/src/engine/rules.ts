@@ -305,8 +305,10 @@ export function checkTimes(starts: Date, ends: Date, rules: RuleSet, now = new D
   if (starts.getTime() < now.getTime() + lead) {
     throw new AppError('TOO_SOON', `This needs at least ${rules.leadTimeHours ?? 0} hours' notice.`, HttpStatus.BAD_REQUEST, { leadTimeHours: rules.leadTimeHours ?? 0 });
   }
+  // Counted in India calendar days, not hours: "up to 21 days ahead" allows any time on the 21st day,
+  // whatever the time of day the customer asks.
   const maxDays = Math.min(rules.maxAdvanceDays ?? 730, 730);
-  if (starts.getTime() > now.getTime() + maxDays * 86_400_000) {
+  if (daysBefore(starts, now) > maxDays) {
     throw new AppError('DATE_TOO_FAR', `This can be booked up to ${maxDays} days ahead.`, HttpStatus.BAD_REQUEST, { maxAdvanceDays: maxDays });
   }
   const day = istDay(starts);
