@@ -2,7 +2,7 @@
 // in one transaction, so either all of them hold their times and stock, or none does. Vendor bundles
 // group services that must be booked together (mandatory items) and may give a discount on them.
 import { HttpStatus, Injectable } from '@nestjs/common';
-import { AppError } from '../common/errors';
+import { AppError, assertExpectedTotal } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { EngineService } from './engine.service';
 import type { EngineRequest, Quote } from './types';
@@ -147,7 +147,7 @@ export class CheckoutService {
    * conflict (`itemIndex` in the error) rolls the whole checkout back. The same Idempotency-Key
    * returns the same checkout.
    */
-  async checkout(customerId: string, items: EngineRequest[], bundleId?: string, idempotencyKey?: string) {
+  async checkout(customerId: string, items: EngineRequest[], bundleId?: string, idempotencyKey?: string, expectedTotalPaise?: number) {
     this.checkCart(items);
     if (idempotencyKey) {
       const existing = await this.db.one<{ id: string }>(this.db, 'SELECT id FROM checkouts WHERE customer_id = $1 AND idempotency_key = $2', [customerId, idempotencyKey]);
@@ -169,6 +169,9 @@ export class CheckoutService {
             ...(inBundle ? { bundleId: bundle!.id, discountPercent: bundle!.percent } : {}),
           }));
         }
+        // The whole cart as priced now must be what the customer saw, or nothing is booked.
+        const total = (await this.db.one<{ total: number }>(client, 'SELECT COALESCE(sum(amount_paise), 0)::int AS total FROM bookings WHERE group_id = $1', [row!.id]))!.total;
+        assertExpectedTotal(expectedTotalPaise, total);
         return row!.id;
       });
     } catch (err) {
@@ -185,12 +188,15 @@ export class CheckoutService {
     const c = await this.db.one(this.db, 'SELECT id, event_id AS "eventId", created_at AS "createdAt" FROM checkouts WHERE id = $1 AND customer_id = $2', [checkoutId, customerId]);
     if (!c) throw new AppError('NOT_FOUND', 'Not found.', HttpStatus.NOT_FOUND);
     const { rows } = await this.db.query(
-      `SELECT b.id, b.status, b.vendor_id AS "vendorId", v.business_name AS "businessName", s.title, b.amount_paise AS "amountPaise",
-              b.advance_paise AS "advancePaise", b.deposit_paise AS "depositPaise", b.starts_at AS "startsAt", b.ends_at AS "endsAt"
+      `SELECT b.id, b.status, b.state, b.pay_mode AS "payMode", b.pay_by AS "payBy", b.vendor_id AS "vendorId", v.business_name AS "businessName", s.title,
+              b.amount_paise AS "amountPaise", b.advance_paise AS "advancePaise", (b.advance_paise - b.discount_paise) AS "payNowPaise",
+              b.deposit_paise AS "depositPaise", b.starts_at AS "startsAt", b.ends_at AS "endsAt"
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id LEFT JOIN services s ON s.id = b.service_id
         WHERE b.group_id = $1 ORDER BY b.created_at`,
       [checkoutId],
     );
-    return { ...c, bookings: rows };
+    // What "Pay together" would charge now: accepted online bookings still inside their payment time.
+    const payable = rows.filter((r) => r.status === 'accepted' && r.payMode === 'online' && (!r.payBy || new Date(r.payBy) > new Date()));
+    return { ...c, bookings: rows, payableNowPaise: payable.reduce((sum, r) => sum + Number(r.payNowPaise), 0), payableCount: payable.length };
   }
 }

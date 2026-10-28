@@ -247,11 +247,12 @@ CREATE FUNCTION public.booking_state_log() RETURNS trigger
     AS $$
 BEGIN
   IF TG_OP = 'INSERT' OR (OLD.state IS NOT NULL AND OLD.state IS DISTINCT FROM NEW.state) THEN
-    INSERT INTO booking_state_history (booking_id, from_state, to_state, status, fulfilment, actor_kind, actor_id, reason)
+    INSERT INTO booking_state_history (booking_id, from_state, to_state, status, fulfilment, actor_kind, actor_id, reason, request_id)
     VALUES (NEW.id, CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.state END, NEW.state, NEW.status, NEW.fulfilment,
             booking_actor_kind(), NULLIF(current_setting('eventseva.actor_id', true), '')::uuid,
             COALESCE(NULLIF(current_setting('eventseva.reason', true), ''),
-                     CASE WHEN NEW.state IN ('cancelled', 'expired') THEN NEW.cancel_reason END));
+                     CASE WHEN NEW.state IN ('cancelled', 'expired') THEN NEW.cancel_reason END),
+            NULLIF(current_setting('eventseva.request_id', true), ''));
   END IF;
   RETURN NULL;
 END $$;
@@ -600,6 +601,7 @@ CREATE TABLE public.booking_state_history (
     actor_id uuid,
     reason text,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    request_id text,
     CONSTRAINT booking_state_history_actor_kind_check CHECK ((actor_kind = ANY (ARRAY['customer'::text, 'vendor'::text, 'admin'::text, 'system'::text, 'gateway'::text])))
 );
 
@@ -1303,6 +1305,29 @@ COMMENT ON TABLE public.featured_purchases IS 'Each featured purchase or free gr
 COMMENT ON COLUMN public.featured_purchases.checked_at IS 'Last time the reconciliation job asked the provider about this unpaid order';
 
 --
+-- Name: handover_codes; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.handover_codes (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    booking_id uuid NOT NULL,
+    phase text NOT NULL,
+    code_hash text NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    attempts integer DEFAULT 0 NOT NULL,
+    used_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT handover_codes_attempts_check CHECK ((attempts >= 0)),
+    CONSTRAINT handover_codes_phase_check CHECK ((phase = ANY (ARRAY['handover'::text, 'delivery'::text, 'return'::text])))
+);
+
+--
+-- Name: TABLE handover_codes; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.handover_codes IS 'One-time codes the customer reads out at a handover, delivery or return; a new one replaces the unused one';
+
+--
 -- Name: inventory_items; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1673,6 +1698,33 @@ COMMENT ON TABLE public.packages IS 'Fixed-price bundles a vendor offers ("Gold:
 COMMENT ON COLUMN public.packages.cash_allowed IS 'The vendor accepts cash for this package';
 
 --
+-- Name: payment_orders; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payment_orders (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    checkout_id uuid NOT NULL,
+    razorpay_order_id text NOT NULL,
+    razorpay_payment_id text,
+    amount_paise integer NOT NULL,
+    currency text DEFAULT 'INR'::text NOT NULL,
+    status text DEFAULT 'created'::text NOT NULL,
+    checked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    paid_at timestamp with time zone,
+    CONSTRAINT payment_orders_amount_paise_check CHECK ((amount_paise > 0)),
+    CONSTRAINT payment_orders_currency_check CHECK ((currency = 'INR'::text)),
+    CONSTRAINT payment_orders_status_check CHECK ((status = ANY (ARRAY['created'::text, 'paid'::text, 'replaced'::text])))
+);
+
+--
+-- Name: TABLE payment_orders; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.payment_orders IS 'A Razorpay order paying several bookings of one checkout at once; payments rows with order_group_id are its share per booking';
+
+--
 -- Name: payments; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1688,8 +1740,9 @@ CREATE TABLE public.payments (
     paid_at timestamp with time zone,
     razorpay_refund_id text,
     checked_at timestamp with time zone,
+    order_group_id uuid,
     CONSTRAINT payments_check CHECK (((type = 'refund'::public.payment_type) = (razorpay_refund_id IS NOT NULL))),
-    CONSTRAINT payments_check1 CHECK (((type = 'refund'::public.payment_type) OR (razorpay_order_id IS NOT NULL)))
+    CONSTRAINT payments_order_check CHECK (((type = 'refund'::public.payment_type) OR (razorpay_order_id IS NOT NULL) OR (order_group_id IS NOT NULL)))
 );
 
 --
@@ -1703,6 +1756,12 @@ COMMENT ON TABLE public.payments IS 'Razorpay orders and payments for booking ad
 --
 
 COMMENT ON COLUMN public.payments.checked_at IS 'Last time the reconciliation job asked the provider about this unpaid order';
+
+--
+-- Name: COLUMN payments.order_group_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.payments.order_group_id IS 'Set when this booking was paid as part of one order for its checkout; razorpay_payment_id is then shared';
 
 --
 -- Name: payouts; Type: TABLE; Schema: public; Owner: -
@@ -2552,6 +2611,13 @@ ALTER TABLE ONLY public.featured_purchases
     ADD CONSTRAINT featured_purchases_razorpay_payment_id_key UNIQUE (razorpay_payment_id);
 
 --
+-- Name: handover_codes handover_codes_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.handover_codes
+    ADD CONSTRAINT handover_codes_pkey PRIMARY KEY (id);
+
+--
 -- Name: inventory_items inventory_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2650,6 +2716,27 @@ ALTER TABLE ONLY public.packages
     ADD CONSTRAINT packages_pkey PRIMARY KEY (id);
 
 --
+-- Name: payment_orders payment_orders_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_orders
+    ADD CONSTRAINT payment_orders_pkey PRIMARY KEY (id);
+
+--
+-- Name: payment_orders payment_orders_razorpay_order_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_orders
+    ADD CONSTRAINT payment_orders_razorpay_order_id_key UNIQUE (razorpay_order_id);
+
+--
+-- Name: payment_orders payment_orders_razorpay_payment_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_orders
+    ADD CONSTRAINT payment_orders_razorpay_payment_id_key UNIQUE (razorpay_payment_id);
+
+--
 -- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2662,13 +2749,6 @@ ALTER TABLE ONLY public.payments
 
 ALTER TABLE ONLY public.payments
     ADD CONSTRAINT payments_razorpay_order_id_key UNIQUE (razorpay_order_id);
-
---
--- Name: payments payments_razorpay_payment_id_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.payments
-    ADD CONSTRAINT payments_razorpay_payment_id_key UNIQUE (razorpay_payment_id);
 
 --
 -- Name: payments payments_razorpay_refund_id_key; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3068,6 +3148,12 @@ CREATE INDEX featured_purchases_status_paid_at_idx ON public.featured_purchases 
 CREATE INDEX featured_purchases_vendor_id_created_at_idx ON public.featured_purchases USING btree (vendor_id, created_at DESC);
 
 --
+-- Name: handover_codes_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX handover_codes_open_idx ON public.handover_codes USING btree (booking_id, phase) WHERE (used_at IS NULL);
+
+--
 -- Name: inventory_items_category_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -3182,16 +3268,40 @@ CREATE INDEX otp_requests_sms_sent_idx ON public.otp_requests USING btree (creat
 CREATE INDEX packages_vendor_id_idx ON public.packages USING btree (vendor_id);
 
 --
+-- Name: payment_orders_checkout_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_orders_checkout_idx ON public.payment_orders USING btree (checkout_id);
+
+--
+-- Name: payment_orders_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payment_orders_open_idx ON public.payment_orders USING btree (created_at) WHERE (status = 'created'::text);
+
+--
 -- Name: payments_booking_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX payments_booking_id_idx ON public.payments USING btree (booking_id);
 
 --
+-- Name: payments_group_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX payments_group_booking_idx ON public.payments USING btree (order_group_id, booking_id) WHERE (order_group_id IS NOT NULL);
+
+--
 -- Name: payments_open_idx; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX payments_open_idx ON public.payments USING btree (created_at) WHERE (status = 'created'::public.payment_status);
+
+--
+-- Name: payments_razorpay_payment_id_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX payments_razorpay_payment_id_key ON public.payments USING btree (razorpay_payment_id) WHERE (order_group_id IS NULL);
 
 --
 -- Name: payouts_one_per_booking; Type: INDEX; Schema: public; Owner: -
@@ -3652,6 +3762,13 @@ ALTER TABLE ONLY public.featured_purchases
     ADD CONSTRAINT featured_purchases_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
+-- Name: handover_codes handover_codes_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.handover_codes
+    ADD CONSTRAINT handover_codes_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
 -- Name: inventory_items inventory_items_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3750,11 +3867,32 @@ ALTER TABLE ONLY public.packages
     ADD CONSTRAINT packages_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
 
 --
+-- Name: payment_orders payment_orders_checkout_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_orders
+    ADD CONSTRAINT payment_orders_checkout_id_fkey FOREIGN KEY (checkout_id) REFERENCES public.checkouts(id);
+
+--
+-- Name: payment_orders payment_orders_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payment_orders
+    ADD CONSTRAINT payment_orders_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.users(id);
+
+--
 -- Name: payments payments_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.payments
     ADD CONSTRAINT payments_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
+
+--
+-- Name: payments payments_order_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_order_group_id_fkey FOREIGN KEY (order_group_id) REFERENCES public.payment_orders(id);
 
 --
 -- Name: payouts payouts_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

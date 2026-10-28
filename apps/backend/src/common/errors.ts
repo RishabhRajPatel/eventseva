@@ -1,3 +1,4 @@
+import { currentRequestId } from '../db/actor';
 import {
   ArgumentsHost,
   BadRequestException,
@@ -20,6 +21,20 @@ export class AppError extends HttpException {
   ) {
     super(message, status);
   }
+}
+
+/**
+ * The server's price differs from the total the customer saw: nothing is booked, and the app shows the
+ * new total for the customer to accept (by sending it again as `expectedTotalPaise`).
+ */
+export function assertExpectedTotal(expected: number | undefined, totalPaise: number, details: Record<string, unknown> = {}) {
+  if (expected === undefined || expected === totalPaise) return;
+  throw new AppError('PRICE_CHANGED', 'The price has changed. Please check the new total.', HttpStatus.CONFLICT, {
+    expectedTotalPaise: expected,
+    totalPaise,
+    differencePaise: totalPaise - expected,
+    ...details,
+  });
 }
 
 /** Every error leaves the API as `{ "error": { "code", "message", ...details } }`. */
@@ -57,7 +72,7 @@ export class ErrorFilter implements ExceptionFilter {
 
     // The database refused a booking state move (see booking_state_guard): a race lost, never a 500.
     if ((exception as { constraint?: string } | null)?.constraint === 'booking_state_move') {
-      this.logger.warn((exception as Error).message);
+      this.logger.warn(`[${currentRequestId() ?? '-'}] ${(exception as Error).message}`);
       res.status(HttpStatus.CONFLICT).json({
         error: { code: 'BOOKING_BAD_TRANSITION', message: 'This booking has changed. Please refresh and try again.' },
       });
@@ -65,7 +80,7 @@ export class ErrorFilter implements ExceptionFilter {
     }
 
     // Stack traces stay in the logs; the user only gets a simple message.
-    this.logger.error(exception instanceof Error ? exception.stack : String(exception));
+    this.logger.error(`[${currentRequestId() ?? '-'}] ${exception instanceof Error ? exception.stack : String(exception)}`);
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       error: { code: 'INTERNAL', message: 'Something went wrong. Please try again.' },
     });

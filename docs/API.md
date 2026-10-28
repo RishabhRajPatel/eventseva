@@ -23,6 +23,12 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   `confirmed`, `in_progress`, `return_pending`, `completed`, `cancelled`, `expired` or `disputed` (`draft` is
   reserved). `status` and `stage` stay as before. A change that lost a race with another one gets
   `BOOKING_BAD_TRANSITION` 409: refresh and try again.
+- **Request id:** every answer carries `X-Request-Id`. Send your own (8–64 letters, digits, `-` or `_`) to
+  trace a call; anything else is replaced. It is in the server's error logs and on each booking state change.
+- **Price changed:** `POST /v1/bookings`, `POST /v1/engine-bookings` and `POST /v1/checkouts` take
+  `expectedTotalPaise`, the total the customer saw. When the server's total differs (a vendor changed the price
+  meanwhile), nothing is booked and the answer is `PRICE_CHANGED` 409 with `expectedTotalPaise`, `totalPaise` and
+  `differencePaise`; show the new total and send again with it.
 - **Data formats:**
   - **Money** is integer **paise** (₹1 = 100). Never send amounts for bookings; the server prices them.
   - **Days** are `YYYY-MM-DD` India dates. Timestamps are ISO strings.
@@ -163,6 +169,21 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 - **Other fields:** `vendor.categorySlug` is used for the icon. `reviewed` tells whether a completed booking already has a review.
 - **Money shown:** `amountPaise` total, `advancePaise` paid in the app (25%), `balancePaise` paid to the vendor
   after the event.
+- **Cart bookings:** `checkoutId` is the checkout the booking was made in (customer view; null otherwise).
+
+**Booking money, cancel estimate, paying a cart together**
+
+| Route | Notes |
+|---|---|
+| `GET /v1/bookings/:id/money` · `GET /v1/partner/bookings/:id/money` | One booking's money: `{payMode, pricePaise, chargesPaise, advancePaise, couponPaise, paidOnline: {advancePaise, balancePaise, depositPaise, sharedOrder}, cash, deposit: {requiredPaise, heldPaise, keptPaise}, refunds: {refundedPaise, pendingPaise, failedPaise}, outstandingPaise, paymentState, refundState}`. `paymentState`: `not_due`, `awaiting_payment`, `unpaid`, `partly_paid`, `paid`, `closed`; `refundState`: `none`, `pending`, `refunded`, `failed`. The admin booking page has it as `money` |
+| `GET /v1/bookings/:id/cancel-preview` | What cancelling now would mean, by the same rules as the cancel (per-category policy): `{allowed, reason, payMode, daysBefore, percent, paidPaise, refundPaise, keptPaise, depositBackPaise, refundBy}`. `refundBy`: `original_payment` or `vendor_cash`. Changes nothing |
+| `GET /v1/checkouts/:id` | The checkout with each booking's `status`, `state`, `payMode`, `payBy`, `payNowPaise`, plus `payableNowPaise` / `payableCount`: what "Pay together" charges now |
+| `POST /v1/checkouts/:id/pay` | One Razorpay order for every booking of the checkout that a vendor accepted and that waits for its advance → `{orderId, amountPaise, currency, keyId, bookings: [{bookingId, amountPaise}]}`. Same bookings and amounts: the same order; a changed set replaces it. `NOTHING_TO_PAY` 409 |
+| `POST /v1/checkouts/:id/pay/verify` | `{razorpayOrderId, razorpayPaymentId, razorpaySignature}` → the checkout view. Each booking is confirmed on its own; one that can no longer be confirmed (expired, cancelled) gets its own share refunded. `PAYMENT_INVALID` 400 |
+| `POST /v1/checkouts/:id/pay/dev` | Development only (`PAYMENT_PROVIDER=fake`) |
+
+- A failed payment attempt (`payment.failed` webhook) sends the customer a `payment_failed` notification; the
+  same order can be paid again until the payment time runs out.
 
 **Saved, chat, help, notifications**
 
@@ -324,8 +345,11 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
   Cloudinary returned them for the vendor's own evidence upload; a wrong folder or a forged signature is
   refused (`UPLOAD_INVALID` 403). The same applies to car handover / return photos.
 - **Handover code:** `customerCode` is the 6 digits the customer reads out from their app
-  (`GET /v1/bookings/:id/handover-code`). With it the delivery / return record counts as agreed by the customer
-  (`confirmedBy: "code"`). A wrong code: `CODE_INVALID` 400; after 5 wrong codes in an hour: `TOO_MANY_ATTEMPTS` 429.
+  (`GET /v1/bookings/:id/handover-code` → `{code, phase, expiresAt}`). Each step (`handover` for a car,
+  `delivery` for a rental, `return`) has its own random code, valid 30 minutes and once only; opening it again
+  makes a new code and the old one stops working. Only a keyed hash is stored. With it the record counts as
+  agreed by the customer (`confirmedBy: "code"`). A wrong code: `CODE_INVALID` 400; expired, replaced or no code
+  open: `CODE_EXPIRED` 400; after 5 wrong tries: `TOO_MANY_ATTEMPTS` 429 (the customer opens a new code).
   Without a code the step is still recorded and the customer answers it in the app.
 - Cancelling once items are on the way: `BOOKING_IN_PROGRESS` 409 (customers from `preparing`, vendors from
   `dispatched`).
@@ -382,7 +406,7 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | `POST /v1/checkouts/quote` · `POST /v1/checkouts` (`Idempotency-Key`) · `GET /v1/checkouts/:id` | Up to 10 requests for one event, booked all or none; `details.itemIndex` says which line failed. A package: `bundleId` (`BUNDLE_NOT_FOUND`, `BUNDLE_INCOMPLETE`) |
 | `GET /v1/me/licence` · `POST /v1/me/licence/upload` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn, photo?}` | Driving licence for self-drive; EventSeva verifies it. The photo is a private upload signed by `POST …/upload` (into the customer's own folder); send Cloudinary's reply as `photo: {publicId, version, signature, format}` (`UPLOAD_INVALID` otherwise). `hasPhoto` says one is on file |
 | `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records (`confirmedBy: "code"` when the customer's code was entered) |
-| `GET /v1/bookings/:id/handover-code` | `{code}`: 6 digits for confirmed car and rental bookings, read out to the vendor at the handover / delivery and the return (see "Handover code" under Rentals) |
+| `GET /v1/bookings/:id/handover-code` | `{code, phase, expiresAt}`: a fresh 6-digit code for the next step of a confirmed car or rental booking, valid 30 minutes, once (see "Handover code" under Rentals) |
 | `GET/POST /v1/bookings/:id/changes` · `POST …/:changeId/cancel` | `{kind: reschedule / extension, startsAt?, endsAt, reason?}`; one open change at a time (`CHANGE_PENDING` 409); day + slot bookings: `CHANGE_NOT_SUPPORTED` |
 | `GET /v1/bookings/:id/invoice` · `…/invoice.html` | Invoice in the vendor's name |
 

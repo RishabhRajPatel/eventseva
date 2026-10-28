@@ -4,6 +4,7 @@ import { BookingsService } from '../bookings/bookings.service';
 import { AppConfig, CONFIG } from '../config';
 import { runAs } from '../db/actor';
 import { Db } from '../db/db.service';
+import { notify } from '../notifications/notify';
 import { FeaturedService } from '../featured/featured.service';
 import { PAYMENT_GATEWAY, PaymentGateway } from './gateway';
 import { RefundsService } from './refunds.service';
@@ -107,12 +108,30 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
       return (await this.refunds.failedAtProvider(refund.id, reason)) ? 'refund_failed' : 'unknown_refund';
     }
     const payment = body.payload?.payment?.entity;
+    // A failed attempt changes nothing: the order stays open and the customer can try again on it.
+    if (body.event === 'payment.failed' && payment?.order_id) return this.failed(payment.order_id);
     if (body.event === 'payment.captured' && payment?.id && payment.order_id) {
       // The event must say the money was captured, for the amount of the order.
       if (payment.status && payment.status !== 'captured') return 'not_captured';
       return this.captured(payment.order_id, payment.id, payment.amount);
     }
     return 'ignored';
+  }
+
+  /** Tells the customer a payment attempt failed and that they can pay again. Returns 'payment_failed'. */
+  private async failed(orderId: string): Promise<string> {
+    const who = await this.db.one<{ customer_id: string; booking_id: string | null }>(
+      this.db,
+      `SELECT b.customer_id, b.id AS booking_id FROM payments p JOIN bookings b ON b.id = p.booking_id WHERE p.razorpay_order_id = $1 AND p.status = 'created'
+        UNION ALL SELECT o.customer_id, NULL FROM payment_orders o WHERE o.razorpay_order_id = $1 AND o.status = 'created'`,
+      [orderId],
+    );
+    if (!who) return 'ignored';
+    await notify(this.db, who.customer_id, 'payment_failed', {
+      en: { title: 'Payment did not go through', body: 'No money was taken. Open the booking and try again before the payment time runs out.' },
+      hi: { title: 'भुगतान नहीं हुआ', body: 'कोई पैसा नहीं कटा। समय रहते बुकिंग खोलकर दोबारा भुगतान करें।' },
+    }, who.booking_id ? { bookingId: who.booking_id } : {}, 'customer');
+    return 'payment_failed';
   }
 
   /**
@@ -124,6 +143,7 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
       const order = await this.db.one<{ amount: number }>(
         this.db,
         `SELECT amount_paise AS amount FROM payments WHERE razorpay_order_id = $1
+          UNION ALL SELECT amount_paise FROM payment_orders WHERE razorpay_order_id = $1
           UNION ALL SELECT amount_paise FROM featured_purchases WHERE razorpay_order_id = $1`,
         [orderId],
       );
@@ -151,6 +171,10 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
     const { rows } = await this.db.query<{ order_id: string; kind: string }>(
       `WITH due AS (
          SELECT razorpay_order_id AS order_id, 'booking' AS kind, created_at FROM payments
+          WHERE status = 'created' AND razorpay_order_id IS NOT NULL AND created_at < now() - interval '${RECONCILE_AFTER_MIN} minutes' AND created_at > now() - interval '${RECONCILE_MAX_AGE}'
+            AND (checked_at IS NULL OR checked_at < now() - interval '${RECONCILE_AFTER_MIN} minutes')
+         UNION ALL
+         SELECT razorpay_order_id, 'checkout', created_at FROM payment_orders
           WHERE status = 'created' AND created_at < now() - interval '${RECONCILE_AFTER_MIN} minutes' AND created_at > now() - interval '${RECONCILE_MAX_AGE}'
             AND (checked_at IS NULL OR checked_at < now() - interval '${RECONCILE_AFTER_MIN} minutes')
          UNION ALL
@@ -162,7 +186,7 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
     );
     let found = 0;
     for (const r of rows) {
-      const table = r.kind === 'booking' ? 'payments' : 'featured_purchases';
+      const table = r.kind === 'booking' ? 'payments' : r.kind === 'checkout' ? 'payment_orders' : 'featured_purchases';
       await this.db.query(`UPDATE ${table} SET checked_at = now() WHERE razorpay_order_id = $1`, [r.order_id]);
       try {
         const paid = await this.gateway.capturedPayment(r.order_id);

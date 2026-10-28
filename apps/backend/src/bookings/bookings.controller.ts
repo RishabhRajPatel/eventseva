@@ -46,6 +46,7 @@ class CreateBookingDto {
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, { message: 'arriveBy must look like 17:30' }) arriveBy?: string;
   /** cash: pay the whole booking to the vendor in person (only where the vendor accepts cash). */
   @IsOptional() @IsIn(['online', 'cash']) payMode?: 'online' | 'cash';
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) expectedTotalPaise?: number;
 }
 
 class BookingListQuery {
@@ -199,6 +200,18 @@ export class BookingsController {
   async devPay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: PayQuery) {
     await this.bookings.devPay(auth.userId, id, q.part);
     return this.one(auth.userId, id);
+  }
+
+  /** Due, paid, deposit, refunds and cash of the booking, in one place. */
+  @Get('bookings/:id/money')
+  money(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.moneySummary(id, { customerId: auth.userId });
+  }
+
+  /** The refund (or cash to get back) cancelling now would give, by the booking's own rules. */
+  @Get('bookings/:id/cancel-preview')
+  cancelPreview(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.cancelPreview(auth.userId, id);
   }
 
   @Post('bookings/:id/cancel')

@@ -5,6 +5,7 @@ import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { AppError } from '../common/errors';
 import { PartnerAppGuard } from '../partner/partner.controller';
+import { BookingsService } from '../bookings/bookings.service';
 import { CheckoutService, MAX_CHECKOUT_ITEMS } from './checkout.service';
 import { EngineRequestDto } from './engine.controller';
 
@@ -27,9 +28,17 @@ class UpdateBundleDto {
   @IsOptional() @IsArray() @ArrayMinSize(2) @ArrayMaxSize(MAX_CHECKOUT_ITEMS) @ValidateNested({ each: true }) @Type(() => BundleItemDto) items?: BundleItemDto[];
 }
 
+class VerifyDto {
+  @IsString() @MaxLength(64) razorpayOrderId: string;
+  @IsString() @MaxLength(64) razorpayPaymentId: string;
+  @IsString() @MaxLength(128) razorpaySignature: string;
+}
+
 class CheckoutDto {
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(MAX_CHECKOUT_ITEMS) @ValidateNested({ each: true }) @Type(() => EngineRequestDto) items: EngineRequestDto[];
   @IsOptional() @IsUUID() bundleId?: string;
+  /** The cart total the customer saw (all lines); a different server total answers PRICE_CHANGED. */
+  @IsOptional() @IsInt() @Min(0) @Max(1_000_000_000) expectedTotalPaise?: number;
 }
 
 /** Partner app: bundles of services booked together. */
@@ -62,7 +71,10 @@ export class PartnerBundlesController {
 
 @Controller('v1')
 export class CheckoutController {
-  constructor(private readonly checkout: CheckoutService) {}
+  constructor(
+    private readonly checkout: CheckoutService,
+    private readonly bookings: BookingsService,
+  ) {}
 
   @Get('vendors/:id/bundles')
   async bundles(@Param('id', ParseUUIDPipe) id: string) {
@@ -83,12 +95,37 @@ export class CheckoutController {
     if (key !== undefined && !/^[A-Za-z0-9_-]{8,64}$/.test(key)) {
       throw new AppError('VALIDATION', 'Idempotency-Key: 8 to 64 letters, digits, - or _.', HttpStatus.BAD_REQUEST, { field: 'Idempotency-Key' });
     }
-    return this.checkout.checkout(auth.userId, body.items, body.bundleId, key);
+    return this.checkout.checkout(auth.userId, body.items, body.bundleId, key, body.expectedTotalPaise);
   }
 
   @UseGuards(AuthGuard)
   @Get('checkouts/:id')
   get(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.checkout.view(auth.userId, id);
+  }
+
+  /** One Razorpay order for every accepted booking of the checkout still waiting for its advance. */
+  @UseGuards(AuthGuard)
+  @Post('checkouts/:id/pay')
+  @HttpCode(HttpStatus.OK)
+  pay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.startCheckoutPayment(auth.userId, id);
+  }
+
+  @UseGuards(AuthGuard)
+  @Post('checkouts/:id/pay/verify')
+  @HttpCode(HttpStatus.OK)
+  async verify(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: VerifyDto) {
+    await this.bookings.verifyCheckoutPayment(auth.userId, id, body.razorpayOrderId, body.razorpayPaymentId, body.razorpaySignature);
+    return this.checkout.view(auth.userId, id);
+  }
+
+  /** Development only (PAYMENT_PROVIDER=fake). */
+  @UseGuards(AuthGuard)
+  @Post('checkouts/:id/pay/dev')
+  @HttpCode(HttpStatus.OK)
+  async devPay(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.bookings.devPayCheckout(auth.userId, id);
     return this.checkout.view(auth.userId, id);
   }
 }

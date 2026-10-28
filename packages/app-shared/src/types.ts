@@ -327,6 +327,8 @@ export interface Booking {
   state?: BookingState;
   /** online (Razorpay), or cash: the whole booking is paid to the vendor in person. */
   payMode?: PayMode;
+  /** Customer view: the cart checkout it was booked in, if any (its accepted bookings can be paid together). */
+  checkoutId?: string | null;
   /** Engine bookings: exact start and end (ISO); null for slot bookings. */
   startsAt: string | null;
   endsAt: string | null;
@@ -1018,6 +1020,50 @@ export interface DriverLicence {
   expiresOn: string;
   status: 'pending' | 'verified' | 'rejected';
   rejectReason: string | null;
+}
+
+/** GET /v1/bookings/:id/cancel-preview: what cancelling now would mean, by the server's rules. */
+export interface CancelPreview {
+  allowed: boolean;
+  reason: string | null;
+  payMode: PayMode;
+  daysBefore: number;
+  percent: number;
+  paidPaise: number;
+  refundPaise: number;
+  keptPaise: number;
+  depositBackPaise: number;
+  refundBy: 'original_payment' | 'vendor_cash';
+}
+
+/** GET /v1/bookings/:id/money (and the Partner and admin versions): one booking's money in one place. */
+export interface MoneySummary {
+  currency: 'INR';
+  payMode: PayMode;
+  pricePaise: number;
+  chargesPaise: number;
+  advancePaise: number;
+  couponPaise: number;
+  paidOnline: { advancePaise: number; balancePaise: number; depositPaise: number; sharedOrder: boolean };
+  cash: { receivedPaise: number; depositHeldPaise: number } | null;
+  deposit: { requiredPaise: number; heldPaise: number; keptPaise: number };
+  refunds: { refundedPaise: number; pendingPaise: number; failedPaise: number };
+  outstandingPaise: number;
+  paymentState: 'not_due' | 'awaiting_payment' | 'unpaid' | 'partly_paid' | 'paid' | 'closed';
+  refundState: 'none' | 'pending' | 'refunded' | 'failed';
+}
+
+/** POST /v1/checkouts/:id/pay: one order for every accepted booking of the checkout waiting for its advance. */
+export interface CheckoutPaymentOrder extends PaymentOrder {
+  bookings: { bookingId: string; amountPaise: number }[];
+}
+
+/** GET /v1/checkouts/:id */
+export interface CheckoutView extends CheckoutResult {
+  bookings: (CheckoutResult['bookings'][number] & { state: string; payMode: PayMode; payBy: string | null; payNowPaise: number })[];
+  /** What "Pay together" charges now, and for how many bookings. */
+  payableNowPaise: number;
+  payableCount: number;
 }
 
 /** POST /v1/checkouts */

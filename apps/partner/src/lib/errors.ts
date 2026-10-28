@@ -27,6 +27,8 @@ const KNOWN: Record<string, string> = {
   BOOKING_BAD_TRANSITION: 'errors.bookingChanged',
   CODE_INVALID: 'errors.codeInvalid',
   TOO_MANY_ATTEMPTS: 'errors.codeTooManyAttempts',
+  CODE_EXPIRED: 'errors.codeExpired',
+  PRICE_CHANGED: 'errors.priceChanged',
   EVIDENCE_REQUIRED: 'errors.evidenceRequired',
   VENDOR_UNDER_REVIEW: 'errors.underReview',
   CATEGORY_LOCKED: 'errors.categoryLocked',

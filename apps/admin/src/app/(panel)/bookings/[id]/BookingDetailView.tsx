@@ -139,6 +139,16 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
               ) : null}
             </tbody>
           </table>
+          {b.money ? (
+            <p className="muted" aria-label="Payment and refund state">
+              Payment: <strong>{humanize(b.money.paymentState)}</strong>
+              {b.money.outstandingPaise ? ` · ${rupees(b.money.outstandingPaise)} still to pay` : ''}
+              {b.money.paidOnline.sharedOrder ? ' · paid in one cart payment' : ''}
+              {' · '}Refund: <strong>{humanize(b.money.refundState)}</strong>
+              {b.money.refunds.pendingPaise ? ` (${rupees(b.money.refunds.pendingPaise)} pending)` : ''}
+              {b.money.refunds.failedPaise ? ` (${rupees(b.money.refunds.failedPaise)} failed)` : ''}
+            </p>
+          ) : null}
         </section>
 
         <section className="box stack" aria-labelledby="payout-title">

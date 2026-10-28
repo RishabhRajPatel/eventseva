@@ -6,7 +6,7 @@ import { pointOf, travelBetween } from './travel';
 const SHARES_PHONE: BookingStatus[] = ['confirmed', 'completed'];
 
 const SELECT = `
-  SELECT b.id, b.status, b.state, b.pay_mode, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
+  SELECT b.id, b.status, b.state, b.pay_mode, b.group_id, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
          b.progress, b.progress_at, b.eta_at, b.booking_type, b.starts_at, b.ends_at, b.fulfilment, b.deposit_paise, b.tax_paise,
          b.charges_paise, b.deposit_settled_at, b.snapshot->'answers' AS answers, b.snapshot->'route' AS route, cat.template->'questions' AS questions,
@@ -74,6 +74,8 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     state: r.state,
     /** online, or cash: the whole booking is paid to the vendor in person. */
     payMode: r.pay_mode,
+    /** The cart checkout this booking was made in (accepted bookings of one checkout can be paid together). */
+    checkoutId: viewer === 'customer' ? (r.group_id ?? null) : null,
     /** slot (day + slot) or a booking-engine type (rental, transport …); engine bookings have exact times. */
     bookingType: r.booking_type,
     stage: stageOf(r.status, r.booking_type === 'slot' ? null : r.fulfilment),

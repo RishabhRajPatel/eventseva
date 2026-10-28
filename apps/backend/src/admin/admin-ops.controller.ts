@@ -270,6 +270,8 @@ export class AdminOpsController {
       payout: payout ?? null,
       /** Every state move: from, to, who (customer, vendor, admin, system, gateway) and why. */
       history: history.rows,
+      /** Due, paid, deposit, refunds and cash, as the apps show it. */
+      money: await this.bookingsService.moneySummary(id, {}),
     };
   }
 

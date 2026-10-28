@@ -5,7 +5,6 @@ import { todayIst } from '../src/bookings/booking.rules';
 import { signParams } from '../src/media/cloudinary.service';
 import { FakeGateway, PAYMENT_GATEWAY } from '../src/payments/gateway';
 import { PaymentEventsService } from '../src/payments/payment-events.service';
-import { HandoverCodes } from '../src/engine/handover-code';
 import { createTestApp, TestApp } from './helpers';
 
 const SECRET = 'test-secret';
@@ -22,7 +21,6 @@ describe('booking lifecycle (production hardening)', () => {
   let t: TestApp;
   let gateway: FakeGateway;
   let events: PaymentEventsService;
-  let codes: HandoverCodes;
   let cityId: number;
   let vendor: { token: string; id: string };
   let driver: string;
@@ -49,7 +47,6 @@ describe('booking lifecycle (production hardening)', () => {
     t = await createTestApp();
     gateway = t.app.get(PAYMENT_GATEWAY);
     events = t.app.get(PaymentEventsService);
-    codes = t.app.get(HandoverCodes);
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
   });
   afterAll(async () => {
@@ -221,27 +218,54 @@ describe('booking lifecycle (production hardening)', () => {
   });
 
   describe('handover code', () => {
-    it('the customer’s code confirms the handover on the spot; wrong codes are refused and limited', async () => {
+    const wrongOf = (code: string) => (code === '000000' ? '111111' : '000000');
+
+    it('a fresh code per step confirms the record on the spot; wrong codes are counted and limited', async () => {
       const { c, id } = await readyTrip();
-      const { code } = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
-      expect(code).toMatch(/^\d{6}$/);
-      expect(code).toBe(codes.codeFor(id));
-      // Only the booking's own customer sees it.
+      const first = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
+      expect(first).toMatchObject({ code: expect.stringMatching(/^\d{6}$/), phase: 'handover' });
+      expect(Date.parse(first.expiresAt) - Date.now()).toBeGreaterThan(29 * 60_000);
+      // Only the booking's own customer gets one.
       const stranger = await customer('9844444444');
       await as(stranger.token).get(`/v1/bookings/${id}/handover-code`).expect(404);
-      const wrong = code === '000000' ? '111111' : '000000';
-      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: wrong }).expect(400)).body.error.code).toBe('CODE_INVALID');
+      // Opening it again makes a new code; the first one stops working.
+      const { code } = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
+      if (code !== first.code) {
+        expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: first.code }).expect(400)).body.error.code).toBe('CODE_INVALID');
+      }
+      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: wrongOf(code) }).expect(400)).body.error.code).toBe('CODE_INVALID');
       await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: code }).expect(200);
       const trip = (await as(c.token).get(`/v1/bookings/${id}/trip`).expect(200)).body;
       expect(trip.inspections[0]).toMatchObject({ phase: 'handover', customerAck: 'agreed', confirmedBy: 'code' });
-
+      // The handover code is used up; the return has its own code.
       await t.db.query(`UPDATE bookings SET starts_at = now() - interval '9 hours', ends_at = now() - interval '1 hour' WHERE id = $1`, [id]);
-      for (let i = 0; i < 4; i++) {
-        await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8, customerCode: wrong }).expect(400);
+      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8, customerCode: code }).expect(400)).body.error.code).toBe('CODE_EXPIRED');
+      const back = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
+      expect(back.phase).toBe('return');
+      for (let i = 0; i < 5; i++) {
+        await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8, customerCode: wrongOf(back.code) }).expect(400);
       }
-      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8, customerCode: code }).expect(429)).body.error.code).toBe('TOO_MANY_ATTEMPTS');
+      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8, customerCode: back.code }).expect(429)).body.error.code).toBe('TOO_MANY_ATTEMPTS');
       // Without a code the return is still recorded; the customer answers it in the app.
       await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/return`, { odometerKm: 1050, fuelEighths: 8 }).expect(200);
+      // Nothing is waiting for a code any more.
+      await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(404);
+    });
+
+    it('an expired code is refused, and a code cannot be replayed', async () => {
+      const { c, id } = await readyTrip();
+      const { code } = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
+      await t.db.query(`UPDATE handover_codes SET expires_at = now() - interval '1 second' WHERE booking_id = $1`, [id]);
+      expect((await as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: code }).expect(400)).body.error.code).toBe('CODE_EXPIRED');
+      const fresh = (await as(c.token).get(`/v1/bookings/${id}/handover-code`).expect(200)).body;
+      // Two submissions with the same code at once: one handover, the other refused.
+      const tries = await Promise.all([1, 2].map(() => as(vendor.token).post(`/v1/partner/bookings/${id}/trip/handover`, { odometerKm: 1000, fuelEighths: 8, customerCode: fresh.code })));
+      expect(tries.map((r) => r.status).sort()).toEqual([200, expect.any(Number)].sort());
+      expect(tries.filter((r) => r.status === 200)).toHaveLength(1);
+      expect((await t.db.query(`SELECT 1 FROM booking_inspections WHERE booking_id = $1 AND phase = 'handover'`, [id])).rowCount).toBe(1);
+      // Stored as a hash only.
+      const stored = (await t.db.query(`SELECT code_hash FROM handover_codes WHERE booking_id = $1`, [id])).rows;
+      expect(stored.every((r) => !r.code_hash.includes(fresh.code))).toBe(true);
     });
   });
 

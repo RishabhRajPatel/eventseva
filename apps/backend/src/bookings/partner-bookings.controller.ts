@@ -64,6 +64,12 @@ export class PartnerBookingsController {
     return this.one(auth.userId, id);
   }
 
+  /** Due, paid, deposit, refunds and cash of the booking, in one place. */
+  @Get('bookings/:id/money')
+  money(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.moneySummary(id, { vendorUserId: auth.userId });
+  }
+
   @Post('bookings/:id/accept')
   @HttpCode(HttpStatus.OK)
   async accept(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: AcceptDto = {}) {

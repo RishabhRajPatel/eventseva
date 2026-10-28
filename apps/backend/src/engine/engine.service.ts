@@ -6,7 +6,7 @@ import { CashService } from '../bookings/cash.service';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
 import { CloudinaryService } from '../media/cloudinary.service';
-import { AppError } from '../common/errors';
+import { AppError, assertExpectedTotal } from '../common/errors';
 import { decrypt } from '../common/crypto';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
@@ -297,6 +297,7 @@ export class EngineService {
     const p = await this.price(client, customerId, req, now, undefined, opts.discountPercent ?? 0);
     await this.checkLicence(client, customerId, p);
     const { plan, quote, loaded } = p;
+    assertExpectedTotal(req.expectedTotalPaise, quote.totalPaise);
     await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
     const respondBy = engineRespondBy(plan.starts, now);
     if (!respondBy) throw new AppError('TOO_LATE_TO_BOOK', 'This starts too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
@@ -322,7 +323,7 @@ export class EngineService {
       needs: plan.needs,
       addons: p.addonRows,
       // The request as made, so a later change (reschedule, extension) can be priced the same way.
-      request: { ...req, note: undefined },
+      request: { ...req, note: undefined, expectedTotalPaise: undefined },
       bundle: opts.bundleId ? { id: opts.bundleId, discountPercent: opts.discountPercent ?? 0 } : null,
     };
     const booking = await this.db.one<{ id: string }>(

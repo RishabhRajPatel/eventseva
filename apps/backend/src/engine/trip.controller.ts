@@ -1,7 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
-import { Db } from '../db/db.service';
 import { HandoverCodes } from './handover-code';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import { SignedPhotoDto } from '../media/signed-photo.dto';
@@ -86,19 +85,15 @@ export class TripController {
   constructor(
     private readonly trips: TripService,
     private readonly codes: HandoverCodes,
-    private readonly db: Db,
   ) {}
 
-  /** The code the customer reads out at the handover and the return (cars and rentals, once confirmed). */
+  /**
+   * A new code for the booking's next step (car handover, rental delivery, or the return), valid for
+   * 30 minutes and once; the previous unused code stops working.
+   */
   @Get('handover-code')
-  async handoverCode(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
-    const b = await this.db.one(
-      this.db,
-      `SELECT 1 FROM bookings WHERE id = $1 AND customer_id = $2 AND status = 'confirmed' AND booking_type IN ('transport', 'rental')`,
-      [id, auth.userId],
-    );
-    if (!b) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
-    return { code: this.codes.codeFor(id) };
+  handoverCode(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.codes.issue(auth.userId, id);
   }
 
   @Get('trip')

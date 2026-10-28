@@ -1,7 +1,7 @@
 // Cancel (a confirm dialog with the refund estimate) and the review sheet on the booking page.
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { rupees, type Booking } from '@eventseva/app-shared';
 import { api } from '../lib/api';
@@ -29,11 +29,22 @@ export function useBookingUpdated() {
   };
 }
 
-/** The refund line shown before confirming a cancel. The server decides the real amount. */
+/**
+ * The refund line shown before confirming a cancel: the server's estimate (same rules as the cancel
+ * itself, per category policy), or the app's own estimate while it loads or when offline.
+ */
 export function RefundText({ booking }: { booking: Booking }) {
   const { t } = useTranslation();
-  const p = refundPreview(booking);
-  if (!p) return null;
+  const local = refundPreview(booking);
+  const server = useQuery({
+    queryKey: ['cancel-preview', booking.id, booking.status],
+    queryFn: () => api.cancelPreview(booking.id),
+    enabled: !!local,
+    staleTime: 60_000,
+  });
+  const s = server.data;
+  const p = s ? { paid: s.paidPaise > 0, percent: s.percent, refundPaise: s.refundPaise, daysBefore: s.daysBefore, paidPaise: s.paidPaise } : local && { ...local, paidPaise: booking.payNowPaise };
+  if (!p || (s && !s.allowed)) return null;
   if (booking.payMode === 'cash') {
     return <Notice icon="alert" tone="lavender">{t('cash.cancelNote', { percent: p.percent })}</Notice>;
   }
@@ -44,11 +55,11 @@ export function RefundText({ booking }: { booking: Booking }) {
         {p.percent === 0
           ? t('cancel.noRefund')
           : booking.discountPaise > 0
-            ? t('cancel.refundPaid', { amount: rupees(p.refundPaise), percent: p.percent, paid: rupees(booking.payNowPaise) })
+            ? t('cancel.refundPaid', { amount: rupees(p.refundPaise), percent: p.percent, paid: rupees(p.paidPaise) })
             : t('cancel.refund', { amount: rupees(p.refundPaise), percent: p.percent })}
       </AppText>
       <AppText size="sm">{t('cancel.daysBefore', { count: p.daysBefore })}</AppText>
-      <AppText size="xs">{t('cancel.estimateNote')}</AppText>
+      {!s && <AppText size="xs">{t('cancel.estimateNote')}</AppText>}
     </Notice>
   );
 }

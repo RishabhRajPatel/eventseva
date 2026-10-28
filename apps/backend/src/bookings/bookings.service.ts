@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { BookingStatus } from '@eventseva/core';
 import { AppConfig, CONFIG } from '../config';
-import { AppError } from '../common/errors';
+import { AppError, assertExpectedTotal } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { PAYMENT_GATEWAY, PaymentGateway } from '../payments/gateway';
@@ -47,6 +47,8 @@ export interface BookingRequest {
   note?: string;
   /** cash: the whole booking is paid to the vendor in person (only where the vendor accepts cash). */
   payMode?: PayMode;
+  /** The total the customer saw; a different server total answers PRICE_CHANGED instead of booking. */
+  expectedTotalPaise?: number;
 }
 
 export type PayMode = 'online' | 'cash';
@@ -56,6 +58,14 @@ export interface AcceptOptions {
   pricePaise?: number;
   /** Extras that needed approval: each one approved or declined. */
   addons?: { addonId: string; approve: boolean }[];
+}
+
+interface PaymentRow {
+  id: string;
+  booking_id: string;
+  amount_paise: number;
+  status: string;
+  type: 'advance' | 'final' | 'deposit';
 }
 
 interface BookingRow {
@@ -225,6 +235,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }
       const money = priceBooking(item.price_paise, quantity, this.config.advancePercent, this.config.commissionPercent);
       if (money.amountPaise > MAX_BOOKING_PAISE) throw new AppError('AMOUNT_TOO_HIGH', 'Please split this into smaller bookings.');
+      assertExpectedTotal(body.expectedTotalPaise, money.amountPaise);
 
       const open = await this.db.one(
         client,
@@ -299,7 +310,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       // different amount (the coupon changed) is dropped and a new one made.
       let payment = await this.db.one<{ id: string; razorpay_order_id: string; amount_paise: number }>(
         client,
-        `SELECT id, razorpay_order_id, amount_paise FROM payments WHERE booking_id = $1 AND type = $2 AND status = 'created'`,
+        `SELECT id, razorpay_order_id, amount_paise FROM payments WHERE booking_id = $1 AND type = $2 AND status = 'created' AND order_group_id IS NULL`,
         [bookingId, type],
       );
       if (payment && payment.amount_paise !== payNow) {
@@ -316,6 +327,77 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
       }
       return { orderId: payment.razorpay_order_id, amountPaise: payNow, currency: 'INR', keyId: this.gateway.keyId };
     });
+  }
+
+  /**
+   * One Razorpay order for every booking of a checkout that a vendor accepted and that waits for its
+   * advance. Each booking gets its own share (a payment row); a second call with the same bookings and
+   * amounts returns the same order, and a changed set replaces the open order (if the old one is paid
+   * anyway, its shares are refunded).
+   */
+  async startCheckoutPayment(customerId: string, checkoutId: string) {
+    return this.db.tx(async (client) => {
+      const c = await this.db.one(client, 'SELECT id FROM checkouts WHERE id = $1 AND customer_id = $2 FOR UPDATE', [checkoutId, customerId]);
+      if (!c) throw new AppError('NOT_FOUND', 'Not found.', HttpStatus.NOT_FOUND);
+      const due = (await client.query<{ id: string; amount: number }>(
+        `SELECT id, (advance_paise - discount_paise)::int AS amount FROM bookings
+          WHERE group_id = $1 AND status = 'accepted' AND pay_mode = 'online' AND (pay_by IS NULL OR pay_by > now())
+          ORDER BY id FOR UPDATE`,
+        [checkoutId],
+      )).rows.filter((r) => r.amount > 0);
+      if (!due.length) throw new AppError('NOTHING_TO_PAY', 'Nothing in this checkout is waiting for payment.', HttpStatus.CONFLICT);
+      const total = due.reduce((sum, r) => sum + r.amount, 0);
+      const open = await this.db.one<{ id: string; razorpay_order_id: string; shares: { booking_id: string; amount_paise: number }[] }>(
+        client,
+        `SELECT o.id, o.razorpay_order_id,
+                (SELECT json_agg(json_build_object('booking_id', p.booking_id, 'amount_paise', p.amount_paise) ORDER BY p.booking_id)
+                   FROM payments p WHERE p.order_group_id = o.id) AS shares
+           FROM payment_orders o WHERE o.checkout_id = $1 AND o.status = 'created' FOR UPDATE`,
+        [checkoutId],
+      );
+      const same = open && JSON.stringify(open.shares) === JSON.stringify(due.map((d) => ({ booking_id: d.id, amount_paise: d.amount })));
+      let orderId: string;
+      if (same) {
+        orderId = open!.razorpay_order_id;
+      } else {
+        if (open) {
+          await client.query(`UPDATE payment_orders SET status = 'replaced' WHERE id = $1`, [open.id]);
+          await client.query(`UPDATE payments SET status = 'failed' WHERE order_group_id = $1 AND status = 'created'`, [open.id]);
+        }
+        ({ orderId } = await this.gateway.createOrder(total, checkoutId, { checkoutId }));
+        const g = await this.db.one<{ id: string }>(
+          client,
+          `INSERT INTO payment_orders (customer_id, checkout_id, razorpay_order_id, amount_paise) VALUES ($1, $2, $3, $4) RETURNING id`,
+          [customerId, checkoutId, orderId, total],
+        );
+        for (const d of due) {
+          await client.query(`INSERT INTO payments (booking_id, type, amount_paise, order_group_id) VALUES ($1, 'advance', $2, $3)`, [d.id, d.amount, g!.id]);
+        }
+      }
+      return {
+        orderId,
+        amountPaise: total,
+        currency: 'INR',
+        keyId: this.gateway.keyId,
+        bookings: due.map((d) => ({ bookingId: d.id, amountPaise: d.amount })),
+      };
+    });
+  }
+
+  async verifyCheckoutPayment(customerId: string, checkoutId: string, orderId: string, paymentId: string, signature: string) {
+    if (!this.gateway.verifyPayment(orderId, paymentId, signature)) {
+      throw new AppError('PAYMENT_INVALID', 'We could not verify this payment.');
+    }
+    const owner = await this.db.one(this.db, 'SELECT 1 FROM payment_orders WHERE razorpay_order_id = $1 AND checkout_id = $2 AND customer_id = $3', [orderId, checkoutId, customerId]);
+    if (!owner) throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found.', HttpStatus.NOT_FOUND);
+    return this.paymentCaptured(orderId, paymentId);
+  }
+
+  /** Development only (PAYMENT_PROVIDER=fake): pays the checkout's open order without a checkout screen. */
+  async devPayCheckout(customerId: string, checkoutId: string) {
+    if (this.config.paymentProvider !== 'fake') throw new AppError('NOT_FOUND', 'Not found.', HttpStatus.NOT_FOUND);
+    const { orderId } = await this.startCheckoutPayment(customerId, checkoutId);
+    return this.paymentCaptured(orderId, `pay_dev_${Date.now()}`);
   }
 
   /** Called by the app after checkout. The webhook confirms the same payment too; whichever comes first wins. */
@@ -348,86 +430,217 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    */
   async paymentCaptured(orderId: string, paymentId: string): Promise<'confirmed' | 'refunded' | 'already_done' | 'unknown_order'> {
     return this.thenSendRefunds(this.db.tx(async (client) => {
-      const p = await this.db.one<{ id: string; booking_id: string; amount_paise: number; status: string; type: 'advance' | 'final' | 'deposit' }>(
+      const p = await this.db.one<PaymentRow>(
         client,
         `SELECT id, booking_id, amount_paise, status, type FROM payments WHERE razorpay_order_id = $1 FOR UPDATE`,
         [orderId],
       );
-      if (!p) return 'unknown_order';
-      if (p.status === 'paid' || p.status === 'refunded') return 'already_done';
-
-      const b = await this.lockBooking(client, p.booking_id, {});
-      await client.query(`UPDATE payments SET status = 'paid', razorpay_payment_id = $2, paid_at = now() WHERE id = $1`, [p.id, paymentId]);
-
-      // A replaced order (coupon changed after checkout opened) that still got paid is refunded.
-      const replaced = p.status === 'failed';
-      // Balance or security deposit for a confirmed booking; a late balance for a completed one.
-      const lateBalance = p.type === 'final' && b.status === 'completed';
-      if (p.type !== 'advance' && (b.status === 'confirmed' || lateBalance) && !replaced) {
-        await client.query(`INSERT INTO booking_events (booking_id, event, data) VALUES ($1, $2, $3)`, [
-          b.id, p.type === 'deposit' ? 'deposit_paid' : 'balance_paid', { amountPaise: p.amount_paise },
-        ]);
-        // The payout was made at completion: the late balance is added to it, or flagged if already sent.
-        if (lateBalance) {
-          const payout = await client.query(
-            `UPDATE payouts SET amount_paise = amount_paise + $2 WHERE booking_id = $1 AND status IN ('scheduled', 'held', 'failed') RETURNING id`,
-            [b.id, p.amount_paise],
-          );
-          if (!payout.rowCount) {
-            await client.query(`INSERT INTO system_alerts (kind, message, data) VALUES ('payout_extra_due', $1, $2)`, [
-              `The customer paid ${rupees(p.amount_paise)} more after the vendor's payout was sent. Transfer it to the vendor separately.`,
-              { bookingId: b.id, vendorId: b.vendor_id, amountPaise: p.amount_paise },
-            ]);
-          }
-        }
-        const what = p.type === 'deposit' ? { en: 'security deposit', hi: 'सिक्योरिटी डिपॉज़िट' } : { en: 'balance', hi: 'बाकी रकम' };
-        await notify(client, b.vendor_user_id, 'payment_received', {
-          en: { title: 'Payment received', body: `The customer paid the ${what.en} of ${rupees(p.amount_paise)} for ${niceDay(b.day, 'en')}.` },
-          hi: { title: 'पेमेंट मिला', body: `ग्राहक ने ${niceDay(b.day, 'hi')} की ${what.hi} ${rupees(p.amount_paise)} दे दी।` },
-        }, { bookingId: b.id }, 'partner');
-        return 'confirmed';
+      if (p) {
+        if (p.status === 'paid' || p.status === 'refunded') return 'already_done';
+        return this.applyPayment(client, p, paymentId);
       }
-      if (p.type === 'advance' && b.status === 'accepted' && !replaced && isEngine(b)) {
-        // The holds become bookings. If one ran out and someone else took it meanwhile, nothing is confirmed.
-        try {
-          await renewAll(client, needsOf(b.needs), { ...this.holding(b), status: 'active', expiresAt: null });
-        } catch (err) {
-          if (!(err instanceof Unavailable)) throw err;
-          await this.refund(client, b.id, paymentId, p.amount_paise, 'not_available', false);
-          await client.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [p.id]);
-          await this.close(client, b.id, 'expired', 'No longer available when the payment arrived');
-          await notify(client, b.customer_id, 'payment_refunded', {
-            en: { title: 'Payment refunded', body: `The time to pay had run out and this is no longer available, so ${rupees(p.amount_paise)} is being refunded in full.` },
-            hi: { title: 'पैसा वापस', body: `भुगतान का समय निकल चुका था और यह अब उपलब्ध नहीं है, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
-          }, { bookingId: b.id }, 'customer');
-          await postBookingEvent(client, b, 'expired', null, { why: 'not_available' });
-          return 'refunded';
-        }
+      // One order for several bookings of a checkout: each booking's share is applied on its own,
+      // so a booking that can no longer be confirmed gets its share back and the others go ahead.
+      const g = await this.db.one<{ id: string; status: string }>(client, 'SELECT id, status FROM payment_orders WHERE razorpay_order_id = $1 FOR UPDATE', [orderId]);
+      if (!g) return 'unknown_order';
+      if (g.status === 'paid') return 'already_done';
+      await client.query(`UPDATE payment_orders SET status = 'paid', razorpay_payment_id = $2, paid_at = now() WHERE id = $1`, [g.id, paymentId]);
+      const shares = (await client.query<PaymentRow>(
+        `SELECT id, booking_id, amount_paise, status, type FROM payments WHERE order_group_id = $1 ORDER BY booking_id FOR UPDATE`,
+        [g.id],
+      )).rows;
+      const results: string[] = [];
+      for (const share of shares) {
+        if (share.status === 'paid' || share.status === 'refunded') continue;
+        results.push(await this.applyPayment(client, share, paymentId));
       }
-      if (p.type === 'advance' && b.status === 'accepted' && !replaced) {
-        await client.query(`UPDATE bookings SET status = 'confirmed', updated_at = now() WHERE id = $1`, [b.id]);
-        await this.coupons.markUsed(client, b.id);
-        await notify(client, b.customer_id, 'booking_confirmed', {
-          en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${niceDay(b.day, 'en')} is confirmed.` },
-          hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${niceDay(b.day, 'hi')} की बुकिंग पक्की है।` },
-        }, { bookingId: b.id }, 'customer');
-        await notify(client, b.vendor_user_id, 'booking_confirmed', {
-          en: { title: 'Booking confirmed', body: `The customer paid the advance for ${niceDay(b.day, 'en')}. Their phone number is now visible.` },
-          hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
-        }, { bookingId: b.id }, 'partner');
-        await postBookingEvent(client, b, 'confirmed', b.customer_id);
-        return 'confirmed';
-      }
-
-      await this.refund(client, b.id, paymentId, p.amount_paise, replaced ? 'replaced_order' : 'late_payment', !replaced || b.status !== 'accepted');
-      // Not the booking's payment: keeps "the paid advance" unique for later refunds.
-      await client.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [p.id]);
-      await notify(client, b.customer_id, 'payment_refunded', {
-        en: { title: 'Payment refunded', body: `This payment could not be used for the booking, so ${rupees(p.amount_paise)} is being refunded in full.` },
-        hi: { title: 'पैसा वापस', body: `यह पेमेंट बुकिंग में इस्तेमाल नहीं हो सका, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
-      }, { bookingId: b.id }, 'customer');
-      return 'refunded';
+      return results.includes('confirmed') ? 'confirmed' : 'refunded';
     }));
+  }
+
+  /**
+   * Applies money that arrived for one payment row (a booking's advance, balance or deposit, or its
+   * share of a checkout order) inside the caller's transaction: confirms or records it, or refunds it
+   * when the booking can no longer take it.
+   */
+  private async applyPayment(client: Queryable, p: PaymentRow, paymentId: string): Promise<'confirmed' | 'refunded'> {
+    const b = await this.lockBooking(client, p.booking_id, {});
+    await client.query(`UPDATE payments SET status = 'paid', razorpay_payment_id = $2, paid_at = now() WHERE id = $1`, [p.id, paymentId]);
+
+    // A replaced order (coupon changed after checkout opened) that still got paid is refunded.
+    const replaced = p.status === 'failed';
+    // Balance or security deposit for a confirmed booking; a late balance for a completed one.
+    const lateBalance = p.type === 'final' && b.status === 'completed';
+    if (p.type !== 'advance' && (b.status === 'confirmed' || lateBalance) && !replaced) {
+      await client.query(`INSERT INTO booking_events (booking_id, event, data) VALUES ($1, $2, $3)`, [
+        b.id, p.type === 'deposit' ? 'deposit_paid' : 'balance_paid', { amountPaise: p.amount_paise },
+      ]);
+      // The payout was made at completion: the late balance is added to it, or flagged if already sent.
+      if (lateBalance) {
+        const payout = await client.query(
+          `UPDATE payouts SET amount_paise = amount_paise + $2 WHERE booking_id = $1 AND status IN ('scheduled', 'held', 'failed') RETURNING id`,
+          [b.id, p.amount_paise],
+        );
+        if (!payout.rowCount) {
+          await client.query(`INSERT INTO system_alerts (kind, message, data) VALUES ('payout_extra_due', $1, $2)`, [
+            `The customer paid ${rupees(p.amount_paise)} more after the vendor's payout was sent. Transfer it to the vendor separately.`,
+            { bookingId: b.id, vendorId: b.vendor_id, amountPaise: p.amount_paise },
+          ]);
+        }
+      }
+      const what = p.type === 'deposit' ? { en: 'security deposit', hi: 'सिक्योरिटी डिपॉज़िट' } : { en: 'balance', hi: 'बाकी रकम' };
+      await notify(client, b.vendor_user_id, 'payment_received', {
+        en: { title: 'Payment received', body: `The customer paid the ${what.en} of ${rupees(p.amount_paise)} for ${niceDay(b.day, 'en')}.` },
+        hi: { title: 'पेमेंट मिला', body: `ग्राहक ने ${niceDay(b.day, 'hi')} की ${what.hi} ${rupees(p.amount_paise)} दे दी।` },
+      }, { bookingId: b.id }, 'partner');
+      return 'confirmed';
+    }
+    if (p.type === 'advance' && b.status === 'accepted' && !replaced && isEngine(b)) {
+      // The holds become bookings. If one ran out and someone else took it meanwhile, nothing is confirmed.
+      try {
+        await renewAll(client, needsOf(b.needs), { ...this.holding(b), status: 'active', expiresAt: null });
+      } catch (err) {
+        if (!(err instanceof Unavailable)) throw err;
+        await this.refund(client, b.id, paymentId, p.amount_paise, 'not_available', false);
+        await client.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [p.id]);
+        await this.close(client, b.id, 'expired', 'No longer available when the payment arrived');
+        await notify(client, b.customer_id, 'payment_refunded', {
+          en: { title: 'Payment refunded', body: `The time to pay had run out and this is no longer available, so ${rupees(p.amount_paise)} is being refunded in full.` },
+          hi: { title: 'पैसा वापस', body: `भुगतान का समय निकल चुका था और यह अब उपलब्ध नहीं है, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
+        }, { bookingId: b.id }, 'customer');
+        await postBookingEvent(client, b, 'expired', null, { why: 'not_available' });
+        return 'refunded';
+      }
+    }
+    if (p.type === 'advance' && b.status === 'accepted' && !replaced) {
+      await client.query(`UPDATE bookings SET status = 'confirmed', updated_at = now() WHERE id = $1`, [b.id]);
+      await this.coupons.markUsed(client, b.id);
+      await notify(client, b.customer_id, 'booking_confirmed', {
+        en: { title: 'Booking confirmed', body: `Advance of ${rupees(p.amount_paise)} received. Your booking for ${niceDay(b.day, 'en')} is confirmed.` },
+        hi: { title: 'बुकिंग पक्की हो गई', body: `${rupees(p.amount_paise)} एडवांस मिल गया। ${niceDay(b.day, 'hi')} की बुकिंग पक्की है।` },
+      }, { bookingId: b.id }, 'customer');
+      await notify(client, b.vendor_user_id, 'booking_confirmed', {
+        en: { title: 'Booking confirmed', body: `The customer paid the advance for ${niceDay(b.day, 'en')}. Their phone number is now visible.` },
+        hi: { title: 'बुकिंग पक्की हो गई', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का एडवांस दे दिया। अब उनका फ़ोन नंबर दिख रहा है।` },
+      }, { bookingId: b.id }, 'partner');
+      await postBookingEvent(client, b, 'confirmed', b.customer_id);
+      return 'confirmed';
+    }
+
+    await this.refund(client, b.id, paymentId, p.amount_paise, replaced ? 'replaced_order' : 'late_payment', !replaced || b.status !== 'accepted');
+    // Not the booking's payment: keeps "the paid advance" unique for later refunds.
+    await client.query(`UPDATE payments SET status = 'refunded' WHERE id = $1`, [p.id]);
+    await notify(client, b.customer_id, 'payment_refunded', {
+      en: { title: 'Payment refunded', body: `This payment could not be used for the booking, so ${rupees(p.amount_paise)} is being refunded in full.` },
+      hi: { title: 'पैसा वापस', body: `यह पेमेंट बुकिंग में इस्तेमाल नहीं हो सका, इसलिए ${rupees(p.amount_paise)} पूरा वापस किया जा रहा है।` },
+    }, { bookingId: b.id }, 'customer');
+    return 'refunded';
+  }
+
+  /**
+   * The money of one booking in one place, for its customer, its vendor or an admin: what is due, what
+   * was paid online (and how), the deposit, refunds by state, cash recorded, and what is still open.
+   */
+  async moneySummary(bookingId: string, who: { customerId?: string; vendorUserId?: string }) {
+    const b = await this.db.one<{ status: BookingStatus; pay_mode: PayMode; amount_paise: number; advance_paise: number; discount_paise: number; deposit_paise: number; charges_paise: number }>(
+      this.db,
+      `SELECT b.status, b.pay_mode, b.amount_paise, b.advance_paise, b.discount_paise, b.deposit_paise, b.charges_paise
+         FROM bookings b JOIN vendors v ON v.id = b.vendor_id
+        WHERE b.id = $1 AND ($2::uuid IS NULL OR b.customer_id = $2) AND ($3::uuid IS NULL OR v.user_id = $3)`,
+      [bookingId, who.customerId ?? null, who.vendorUserId ?? null],
+    );
+    if (!b) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
+    const paid = (await this.db.query<{ type: string; sum: number; shared: boolean }>(
+      `SELECT type, COALESCE(sum(amount_paise), 0)::int AS sum, bool_or(order_group_id IS NOT NULL) AS shared
+         FROM payments WHERE booking_id = $1 AND status IN ('paid', 'refunded') GROUP BY type`,
+      [bookingId],
+    )).rows;
+    const refunds = (await this.db.query<{ status: string; sum: number }>(
+      `SELECT status::text, COALESCE(sum(amount_paise), 0)::int AS sum FROM refunds WHERE booking_id = $1 GROUP BY status`,
+      [bookingId],
+    )).rows;
+    const charges = (await this.db.one<{ agreed: number }>(
+      this.db,
+      `SELECT COALESCE(sum(amount_paise), 0)::int AS agreed FROM booking_charges WHERE booking_id = $1 AND status IN ('accepted', 'resolved')`,
+      [bookingId],
+    ))!.agreed;
+    const cash = b.pay_mode === 'cash' ? await this.cash.summary(this.db, bookingId) : null;
+    const of = (t: string) => paid.find((p) => p.type === t)?.sum ?? 0;
+    const refundOf = (...st: string[]) => refunds.filter((r) => st.includes(r.status)).reduce((x, r) => x + r.sum, 0);
+    const pricePaid = cash ? cash.receivedPaise : of('advance') + of('final') + b.discount_paise;
+    const refunded = refundOf('sent', 'processed');
+    const refundPending = refundOf('pending', 'sending');
+    const refundFailed = refundOf('failed');
+    const open = ['accepted', 'confirmed', 'completed'].includes(b.status);
+    return {
+      currency: 'INR',
+      payMode: b.pay_mode,
+      /** The agreed price, plus extra charges the customer accepted (or an admin upheld). */
+      pricePaise: b.amount_paise,
+      chargesPaise: charges,
+      advancePaise: b.advance_paise,
+      /** EventSeva's coupon share: counted as paid towards the price. */
+      couponPaise: b.discount_paise,
+      paidOnline: { advancePaise: of('advance'), balancePaise: of('final'), depositPaise: of('deposit'), sharedOrder: paid.some((p) => p.shared) },
+      cash: cash && { receivedPaise: cash.receivedPaise, depositHeldPaise: cash.depositHeldPaise },
+      deposit: { requiredPaise: b.deposit_paise, heldPaise: cash ? cash.depositHeldPaise : of('deposit'), keptPaise: b.charges_paise },
+      refunds: { refundedPaise: refunded, pendingPaise: refundPending, failedPaise: refundFailed },
+      /** Still to pay towards the price and agreed charges (0 once settled or when the booking is closed). */
+      outstandingPaise: open ? Math.max(0, b.amount_paise + charges - pricePaid) : 0,
+      paymentState: !open ? (b.status === 'requested' ? 'not_due' : 'closed')
+        : b.status === 'accepted' ? 'awaiting_payment'
+        : b.amount_paise + charges - pricePaid <= 0 ? 'paid' : pricePaid > 0 ? 'partly_paid' : 'unpaid',
+      refundState: refundFailed ? 'failed' : refundPending ? 'pending' : refunded ? 'refunded' : 'none',
+    };
+  }
+
+  /**
+   * What cancelling now would mean, worked out by the same rules as the cancellation itself and
+   * shown before the customer confirms. Nothing changes.
+   */
+  async cancelPreview(customerId: string, bookingId: string) {
+    const b = await this.lockBooking(this.db, bookingId, { customerId });
+    const blocked = !ACTIVE.includes(b.status) || started(b) ? 'BOOKING_BAD_STATUS'
+      : isEngine(b) && b.fulfilment !== 'scheduled' ? 'BOOKING_IN_PROGRESS' : null;
+    const days = daysLeft(b);
+    const percent = isEngine(b) ? refundPercentFrom(b.cancellation_policy, 'customer', days) : refundPercent('customer', days);
+    let paid = 0;
+    let back = 0;
+    let depositBack = 0;
+    if (b.status === 'confirmed' && b.pay_mode === 'online') {
+      const { rows } = await this.db.query<{ type: string; amount_paise: number }>(
+        `SELECT type, amount_paise FROM payments WHERE booking_id = $1 AND type IN ('advance', 'final', 'deposit') AND status = 'paid'`,
+        [b.id],
+      );
+      for (const p of rows) {
+        if (p.type === 'deposit') depositBack += p.amount_paise;
+        else {
+          paid += p.amount_paise;
+          back += p.type === 'advance' ? Math.min(refundPaise(p.amount_paise, percent), p.amount_paise - b.refund_paise) : refundPaise(p.amount_paise, percent);
+        }
+      }
+    }
+    if (b.status === 'confirmed' && b.pay_mode === 'cash') {
+      const cash = await this.cash.summary(this.db, b.id);
+      paid = cash.receivedPaise;
+      back = refundPaise(cash.receivedPaise, percent);
+      depositBack = cash.depositHeldPaise;
+    }
+    return {
+      allowed: !blocked,
+      reason: blocked,
+      payMode: b.pay_mode,
+      daysBefore: days,
+      percent,
+      /** Price paid so far (advance and balance; cash bookings: cash the vendor recorded). */
+      paidPaise: paid,
+      refundPaise: back,
+      keptPaise: paid - back,
+      /** A security deposit always comes back in full. */
+      depositBackPaise: depositBack,
+      /** online: refunded to the payment method; cash: given back by the vendor. */
+      refundBy: b.pay_mode === 'cash' ? 'vendor_cash' : 'original_payment',
+    };
   }
 
   async cancelByCustomer(customerId: string, bookingId: string, reason: string) {

@@ -50,9 +50,14 @@ Tick each line. If something fails, note the phone model, Android version, scree
 - [ ] Vendor accepts; mobile number appears for both after the advance.
 - [ ] Car handover: vendor records odometer, fuel and photos; customer sees photos (tap to zoom) and
       accepts or disputes.
-- [ ] Handover code: the customer's booking shows a 6-digit code. The vendor types it in at the
-      handover (or rental delivery): the record shows as agreed without the customer tapping anything.
-      A wrong code shows a clear error; saving without a code still works.
+- [ ] Handover code: the customer's booking shows a 6-digit code for the current step (handover /
+      delivery / return) with "valid until". The vendor types it in: the record shows as agreed without the
+      customer tapping anything. "New code" makes the old one stop working; the return needs its own code.
+      A wrong or old code shows a clear error; saving without a code still works.
+- [ ] Price change: with an item in the cart, the vendor raises its price; "Send" shows the new total and
+      the difference, and sends only on the second press.
+- [ ] Cart of two vendors, both accept: the payment screen offers "Pay all together"; one payment confirms both.
+- [ ] Cancel a paid booking: the refund shown before confirming matches the refund afterwards.
 - [ ] Return with extra km: the charge appears; customer disputes; admin decides under Disputes.
 - [ ] Damage with no photos, disputed: admin cannot keep the money ("No photos back this charge"),
       only waive it. With photos, admin can keep part of it.

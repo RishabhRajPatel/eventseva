@@ -20,6 +20,10 @@ import {
   type Quote,
   type BookingChange,
   type CheckoutResult,
+  type CheckoutView,
+  type CheckoutPaymentOrder,
+  type CancelPreview,
+  type MoneySummary,
   type DriverLicence,
   type EngineBookingRequest,
   type PayMode,
@@ -155,6 +159,8 @@ export const api = {
   verifyPayment: (id: string, p: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
     client.post<Booking>(`/v1/bookings/${id}/pay/verify`, p),
   devPay: (id: string, part: PayPart = 'advance') => client.post<Booking>(`/v1/bookings/${id}/pay/dev`, undefined, part === 'advance' ? {} : { query: { part } }),
+  /** What cancelling now would refund, by the same rules as the cancel. Changes nothing. */
+  cancelPreview: (id: string) => client.get<CancelPreview>(`/v1/bookings/${id}/cancel-preview`),
   cancelBooking: (id: string, reason: string) => client.post<Booking>(`/v1/bookings/${id}/cancel`, { reason }),
   // ---- rentals (tent, furniture, utensils …) ----
   rentals: (vendorId: string, q: { from?: string; until?: string; q?: string; categoryId?: string } = {}) =>
@@ -176,15 +182,23 @@ export const api = {
   checkoutQuote: (items: EngineBookingRequest[], bundleId?: string) =>
     client.post<{ items: Quote[]; totalPaise: number; advancePaise: number; depositPaise: number }>('/v1/checkouts/quote', bundleId ? { items, bundleId } : { items }),
   /** All the bookings or none. */
-  checkout: (items: EngineBookingRequest[], bundleId: string | undefined, idempotencyKey: string) =>
-    client.post<CheckoutResult>('/v1/checkouts', bundleId ? { items, bundleId } : { items }, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  /** `expectedTotalPaise`: the total the customer saw; a different server total answers PRICE_CHANGED. */
+  checkout: (items: EngineBookingRequest[], bundleId: string | undefined, idempotencyKey: string, expectedTotalPaise?: number) =>
+    client.post<CheckoutResult>('/v1/checkouts', { items, ...(bundleId ? { bundleId } : {}), ...(expectedTotalPaise !== undefined ? { expectedTotalPaise } : {}) }, { headers: { 'Idempotency-Key': idempotencyKey } }),
+  checkoutView: (id: string) => client.get<CheckoutView>(`/v1/checkouts/${id}`),
+  /** One Razorpay order for every accepted booking of the checkout waiting for its advance. */
+  checkoutPay: (id: string) => client.post<CheckoutPaymentOrder>(`/v1/checkouts/${id}/pay`),
+  checkoutPayVerify: (id: string, p: { razorpayOrderId: string; razorpayPaymentId: string; razorpaySignature: string }) =>
+    client.post<CheckoutView>(`/v1/checkouts/${id}/pay/verify`, p),
+  checkoutDevPay: (id: string) => client.post<CheckoutView>(`/v1/checkouts/${id}/pay/dev`),
+  money: (bookingId: string) => client.get<MoneySummary>(`/v1/bookings/${bookingId}/money`),
   licence: async () => (await client.get<{ licence: DriverLicence | null }>('/v1/me/licence')).licence,
   signLicencePhoto: () => client.post<UploadSignature>('/v1/me/licence/upload'),
   saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) =>
     client.put<DriverLicence>('/v1/me/licence', body),
   trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),
   cash: (bookingId: string) => client.get<CashSummary>(`/v1/bookings/${bookingId}/cash`),
-  handoverCode: (bookingId: string) => client.get<{ code: string }>(`/v1/bookings/${bookingId}/handover-code`),
+  handoverCode: (bookingId: string) => client.get<{ code: string; phase: 'handover' | 'delivery' | 'return'; expiresAt: string }>(`/v1/bookings/${bookingId}/handover-code`),
   ackInspection: (bookingId: string, phase: 'handover' | 'return', decision: 'agreed' | 'disputed', note?: string) =>
     client.post<TripView>(`/v1/bookings/${bookingId}/inspections/${phase}/ack`, note ? { decision, note } : { decision }),
   changes: (bookingId: string) => client.get<{ items: BookingChange[] }>(`/v1/bookings/${bookingId}/changes`),

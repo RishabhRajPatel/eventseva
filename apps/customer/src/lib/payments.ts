@@ -1,7 +1,7 @@
 // Paying the advance. Screens call payAdvance() and do not care whether the Razorpay checkout or
 // the development shortcut is used.
 import { NativeModules, TurboModuleRegistry } from 'react-native';
-import { palette, type Booking } from '@eventseva/app-shared';
+import { palette, type Booking, type CheckoutView } from '@eventseva/app-shared';
 import { api, type PayPart } from './api';
 
 export type PaymentPath = 'razorpay' | 'dev';
@@ -77,4 +77,52 @@ export async function payAdvance(
     razorpaySignature: result.razorpay_signature ?? '',
   });
   return { status: 'paid', booking: paid };
+}
+
+export type CheckoutPayResult = { status: 'paid'; checkout: CheckoutView } | { status: 'cancelled' };
+
+/**
+ * "Pay together": one payment for every booking of a cart checkout that a vendor accepted and that
+ * waits for its advance. The server splits it per booking; one that can no longer be confirmed is
+ * refunded its own share.
+ */
+export async function payCheckout(
+  checkoutId: string,
+  who: { name?: string | null; phone?: string; method?: PayMethod } = {},
+  path: PaymentPath = choosePaymentPath(),
+  onStage: (stage: PayStage) => void = () => undefined,
+): Promise<CheckoutPayResult> {
+  if (path === 'dev') {
+    onStage('verifying');
+    return { status: 'paid', checkout: await api.checkoutDevPay(checkoutId) };
+  }
+  onStage('starting');
+  const order = await api.checkoutPay(checkoutId);
+  onStage('checkout');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const RazorpayCheckout = (require('react-native-razorpay') as typeof import('react-native-razorpay')).default;
+  let result;
+  try {
+    result = await RazorpayCheckout.open({
+      key: order.keyId,
+      amount: order.amountPaise,
+      currency: order.currency,
+      order_id: order.orderId,
+      name: 'EventSeva',
+      description: `${order.bookings.length} bookings`,
+      prefill: { name: who.name ?? undefined, contact: who.phone, method: who.method },
+      theme: { color: palette.royal },
+    });
+  } catch (e) {
+    const err = e as { code?: number; description?: string };
+    if (err?.code === RAZORPAY_CANCELLED) return { status: 'cancelled' };
+    throw new PaymentError(err?.description || 'Payment failed. No money was taken; please try again.');
+  }
+  onStage('verifying');
+  const checkout = await api.checkoutPayVerify(checkoutId, {
+    razorpayOrderId: result.razorpay_order_id ?? order.orderId,
+    razorpayPaymentId: result.razorpay_payment_id,
+    razorpaySignature: result.razorpay_signature ?? '',
+  });
+  return { status: 'paid', checkout };
 }

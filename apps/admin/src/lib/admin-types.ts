@@ -1,6 +1,6 @@
 // Response shapes of the /v1/admin routes (apps/backend/src/admin/*.controller.ts). Shared app
 // types (VendorDetail, Review …) come from @eventseva/app-shared.
-import type { BookingStatus, EventType, Slot, VendorDetail, VendorDocument, VendorStatus } from '@eventseva/app-shared';
+import type { BookingStatus, MoneySummary, EventType, Slot, VendorDetail, VendorDocument, VendorStatus } from '@eventseva/app-shared';
 import type { ComplaintStatus, MediaStatus, PayoutStatus } from './labels';
 
 export interface Dashboard {
@@ -157,6 +157,8 @@ export interface AdminBooking {
   /** cash: paid to the vendor in person; what the vendor recorded, and the commission they owe. */
   payMode?: 'online' | 'cash';
   cashReceipts?: { kind: string; amountPaise: number; note: string | null; createdAt: string }[];
+  /** The same money summary the apps show (due, paid, deposit, refunds by state). */
+  money?: MoneySummary;
   commissionDue?: { id: string; amountPaise: number; remainingPaise: number; status: string; reference: string | null } | null;
   payout: { id: string; amountPaise: number; status: PayoutStatus; releaseAfter: string; reference: string | null } | null;
 }

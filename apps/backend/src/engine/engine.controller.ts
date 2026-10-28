@@ -65,6 +65,7 @@ export class EngineRequestDto implements EngineRequest {
   @IsOptional() @IsIn(['with_driver', 'self_drive']) mode?: 'with_driver' | 'self_drive';
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsIn(['online', 'cash']) payMode?: 'online' | 'cash';
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) expectedTotalPaise?: number;
 }
 
 class LicencePhotoDto {

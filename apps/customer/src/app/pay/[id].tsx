@@ -18,6 +18,7 @@ import { Card, Divider, MoneyRow, Notice } from '../../components/Bits';
 import { Button } from '../../components/Button';
 import { CouponBox, CouponMoneyRows } from '../../components/Coupons';
 import { OptionTile } from '../../components/Form';
+import { PayTogetherCard } from '../../components/PayTogetherCard';
 import { Icon } from '../../components/Icon';
 import { Screen, ScreenHeader } from '../../components/Screen';
 import { CardsSkeleton } from '../../components/Skeleton';
@@ -153,6 +154,8 @@ export default function PayScreen() {
         {b.discountPaise > 0 ? <CouponMoneyRows booking={b} /> : <MoneyRow label={t('payment.advanceNow')} value={rupees(b.advancePaise)} strong accent />}
         <MoneyRow label={t('payment.balanceAfter')} value={rupees(b.balancePaise)} small />
       </Card>
+
+      {payable ? <PayTogetherCard booking={b} path={path} method={method} /> : null}
 
       {payable ? <CouponBox booking={b} /> : null}
 

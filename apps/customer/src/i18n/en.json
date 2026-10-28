@@ -533,6 +533,8 @@
     "COUPON_NOT_APPLICABLE": "This coupon cannot be used on this booking.",
     "COUPON_ALREADY_USED": "You have already used this coupon. Try another offer.",
     "COUPON_USED_UP": "This coupon has been fully used. Try another offer.",
+    "PRICE_CHANGED": "The price changed while you were booking. Check the new total and confirm again.",
+    "NOTHING_TO_PAY": "Nothing here is waiting for payment right now.",
     "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
     "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}.",
     "ACCOUNT_HAS_ACTIVE_BOOKINGS_one": "You still have {{count}} open booking. Finish or cancel your open bookings first, then delete your account.",
@@ -921,6 +923,8 @@
     "useHere": "Use my location"
   },
   "cart": {
+    "priceUp": "A price went up while you were here: the new total is {{total}} ({{diff}} more). Check it, then send again.",
+    "priceDown": "A price went down: the new total is {{total}} ({{diff}} less). Check it, then send again.",
     "title": "Cart",
     "subtitle_one": "{{count}} service for one event",
     "subtitle_other": "{{count}} services for one event",
@@ -1043,9 +1047,21 @@
   "photos": {
     "evidence": "{{label}} photo {{n}} of {{total}}"
   },
+  "payTogether": {
+    "title": "{{count}} bookings from your cart are ready to pay",
+    "body": "Pay this one together with {{names}} in one payment. Each booking is confirmed on its own; if one can no longer be confirmed, its share comes back.",
+    "pay": "Pay all together · {{amount}}",
+    "done_one": "Paid. {{count}} booking confirmed.",
+    "done_other": "Paid. {{count}} bookings confirmed."
+  },
   "handoverCode": {
     "title": "Your handover code",
-    "body": "Read this code to the vendor when the car or the items are handed over to you and when they come back. Share it only in person, at the handover."
+    "title_handover": "Code for the car handover",
+    "title_delivery": "Code for the delivery",
+    "title_return": "Code for the return",
+    "validUntil": "Valid until {{time}}, for this step only.",
+    "newCode": "New code",
+    "body": "Read this code to the vendor only in person, when the step happens. Each step gets its own code; a new code replaces the old one."
   },
   "payMode": {
     "title": "How will you pay?",

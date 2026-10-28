@@ -220,10 +220,21 @@ describe('after booking', () => {
     expect(screen.getByRole('button', { name: 'Send requests' })).toBeDisabled();
 
     mockedApi.checkoutQuote.mockResolvedValue({ items: [quote()], totalPaise: 13_500_000, advancePaise: 3_375_000, depositPaise: 0 });
+    // The vendor changed the price meanwhile: nothing is booked; the new total is shown and sent next time.
+    mockedApi.checkout.mockRejectedValueOnce(new ApiError(409, 'PRICE_CHANGED', 'x', { expectedTotalPaise: 13_500_000, totalPaise: 14_000_000, differencePaise: 500_000 }));
     mockedApi.checkout.mockResolvedValue({ id: 'co1', eventId: 'e1', createdAt: '', bookings: [{ id: 'b5' }] });
     await user.press(screen.getAllByRole('button', { name: 'Remove' })[1]);
-    await user.press(await screen.findByRole('button', { name: 'Send 1 request' }));
-    await waitFor(() => expect(mockedApi.checkout).toHaveBeenCalledWith([req], undefined, expect.stringMatching(/^cart-/)));
+    const send = await screen.findByRole('button', { name: 'Send 1 request' });
+    mockedApi.checkoutQuote.mockResolvedValue({ items: [quote()], totalPaise: 14_000_000, advancePaise: 3_500_000, depositPaise: 0 });
+    await user.press(send);
+    await waitFor(() => expect(mockedApi.checkout).toHaveBeenCalledWith([req], undefined, expect.stringMatching(/^cart-/), 13_500_000));
+    expect(await screen.findByText(`A price went up while you were here: the new total is ${rupees(14_000_000)} (${rupees(500_000)} more). Check it, then send again.`)).toBeOnTheScreen();
+    expect(cart.get().items).toHaveLength(1);
+    const firstKey = mockedApi.checkout.mock.calls[0][2];
+    await waitFor(() => expect(mockedApi.checkoutQuote).toHaveBeenCalledTimes(3));
+    await user.press(screen.getByRole('button', { name: 'Send 1 request' }));
+    await waitFor(() => expect(mockedApi.checkout).toHaveBeenLastCalledWith([req], undefined, expect.stringMatching(/^cart-/), 14_000_000));
+    expect(mockedApi.checkout.mock.calls[1][2]).not.toBe(firstKey);
     await waitFor(() => expect(view.getPathname()).toBe('/bookings'));
     expect(cart.get().items).toHaveLength(0);
   });
@@ -244,5 +255,21 @@ describe('licence photo upload', () => {
     expect(sent).toMatchObject({ api_key: 'k1', signature: 'sig', folder: 'eventseva/customers/u1/licence', type: 'private', timestamp: '1' });
     const failing = jest.fn(async () => ({ ok: false, json: async () => ({ error: { message: 'x' } }) }));
     await expect(uploadSigned({ uri: 'u', name: 'n', type: 't' }, sig, failing as unknown as typeof fetch)).rejects.toBeInstanceOf(LicencePhotoError);
+  });
+});
+
+describe('handover code card', () => {
+  it('shows the step, the expiry, and makes a new code on request', async () => {
+    const { HandoverCodeCard } = require('../components/HandoverCodeCard') as typeof import('../components/HandoverCodeCard');
+    const b = booking({ status: 'confirmed', bookingType: 'transport', stage: 'confirmed' });
+    mockedApi.handoverCode.mockResolvedValueOnce({ code: '482913', phase: 'handover', expiresAt: '2026-12-01T05:00:00Z' })
+      .mockResolvedValueOnce({ code: '120044', phase: 'handover', expiresAt: '2026-12-01T05:10:00Z' });
+    const user = userEvent.setup();
+    await renderApp({ code: () => <HandoverCodeCard booking={b} /> }, '/code');
+    expect(await screen.findByText('482913')).toBeOnTheScreen();
+    expect(screen.getByText('Code for the car handover')).toBeOnTheScreen();
+    expect(screen.getByText(/^Valid until .*, for this step only\.$/)).toBeOnTheScreen();
+    await user.press(screen.getByRole('button', { name: 'New code' }));
+    expect(await screen.findByText('120044')).toBeOnTheScreen();
   });
 });

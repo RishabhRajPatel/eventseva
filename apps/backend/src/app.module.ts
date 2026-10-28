@@ -1,6 +1,6 @@
 import { Controller, Get, Global, INestApplication, Module, ValidationPipe } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import { ActorInterceptor } from './db/actor';
+import { ActorInterceptor, requestIdMiddleware } from './db/actor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -175,6 +175,8 @@ export function configureApp(app: INestApplication) {
   const config = app.get<AppConfig>(CONFIG);
   // Behind a load balancer, req.ip must be the user's IP (from X-Forwarded-For), not the proxy's.
   if (config.trustProxy > 0) app.getHttpAdapter().getInstance().set('trust proxy', config.trustProxy);
+  // Every request gets an X-Request-Id to trace it through bookings, payments and logs.
+  app.use(requestIdMiddleware);
   app.use(helmet());
   // Personal answers (bookings, chats, phone numbers) must never sit in a shared cache or a proxy.
   // Public catalogue routes replace this with their own Cache-Control (see PublicCache).

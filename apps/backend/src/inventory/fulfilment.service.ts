@@ -192,7 +192,7 @@ export class FulfilmentService {
   }
 
   async deliver(vendorUserId: string, bookingId: string, input: LineQty[], body: StepBody) {
-    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
+    const byCode = await this.codes.check(vendorUserId, bookingId, 'delivery', body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.expect(b, ['dispatched'], 'mark delivery');
@@ -207,7 +207,7 @@ export class FulfilmentService {
       for (const l of await this.lines(client, b.id)) if (l.delivered_qty < l.qty) short.push(`${l.item_snapshot.name} ${l.delivered_qty}/${l.qty}`);
       await client.query(`UPDATE bookings SET fulfilment = 'delivered', updated_at = now() WHERE id = $1`, [b.id]);
       await this.record(client, b, 'delivery', vendorUserId, body, { lines: input });
-      if (byCode) await this.codes.confirm(client, b.id, 'delivery');
+      if (byCode) await this.codes.consume(client, byCode, b.id, 'delivery');
       await this.event(client, b, 'delivered', vendorUserId, { lines: input, short });
       await notify(client, b.customer_id, 'rental_delivered', {
         en: { title: 'Items delivered', body: short.length ? `Delivered, but fewer than booked: ${short.join(', ')}. Check and tell the vendor if anything is wrong.` : 'All items are at your venue. Please check them now and tell the vendor if anything is wrong.' },
@@ -222,7 +222,7 @@ export class FulfilmentService {
    * missing charge per unit); the vendor may only lower them. Nothing goes back to stock yet.
    */
   async recordReturn(vendorUserId: string, bookingId: string, input: ReturnLine[], body: StepBody) {
-    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
+    const byCode = await this.codes.check(vendorUserId, bookingId, 'return', body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.expect(b, ['delivered', 'return_pending'], 'record the return');
@@ -261,7 +261,7 @@ export class FulfilmentService {
       }
       await client.query(`UPDATE bookings SET fulfilment = 'return_pending', updated_at = now() WHERE id = $1`, [b.id]);
       await this.record(client, b, 'return', vendorUserId, body, { lines: input });
-      if (byCode) await this.codes.confirm(client, b.id, 'return');
+      if (byCode) await this.codes.consume(client, byCode, b.id, 'return');
       await this.event(client, b, 'returned', vendorUserId, { chargesPaise: charges });
       await notify(client, b.customer_id, 'rental_returned', {
         en: { title: 'Return counted', body: charges ? `The vendor reported damaged or missing items: ${rupees(charges)}. Open the booking to accept or dispute within ${CHARGE_REPLY_HOURS} hours.` : 'Everything came back fine. Thank you!' },

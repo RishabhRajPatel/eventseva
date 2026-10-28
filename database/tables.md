@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-54 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+56 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,7 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
+- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [handover_codes](#handover_codes), [invoice_counters](#invoice_counters), [invoices](#invoices), [payment_orders](#payment_orders), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
 
 ## Allowed values (enums)
 
@@ -979,16 +979,18 @@ Razorpay orders and payments for booking advances, and refunds (type = refund).
 | `paid_at` | timestamp with time zone |  |  |  |
 | `razorpay_refund_id` | text |  |  |  |
 | `checked_at` | timestamp with time zone |  |  | Last time the reconciliation job asked the provider about this unpaid order |
+| `order_group_id` | uuid |  |  | → [payment_orders](#payment_orders).id; Set when this booking was paid as part of one order for its checkout; razorpay_payment_id is then shared |
 
 <details><summary>Rules and indexes</summary>
 
 - Check: `CHECK (((type = 'refund'::payment_type) = (razorpay_refund_id IS NOT NULL)))`
-- Check: `CHECK (((type = 'refund'::payment_type) OR (razorpay_order_id IS NOT NULL)))`
+- Check: `CHECK (((type = 'refund'::payment_type) OR (razorpay_order_id IS NOT NULL) OR (order_group_id IS NOT NULL)))`
 - Unique: `UNIQUE (razorpay_order_id)`
-- Unique: `UNIQUE (razorpay_payment_id)`
 - Unique: `UNIQUE (razorpay_refund_id)`
 - Index: `CREATE INDEX ON payments USING btree (booking_id)`
+- Index: `CREATE UNIQUE INDEX ON payments USING btree (order_group_id, booking_id) WHERE (order_group_id IS NOT NULL)`
 - Index: `CREATE INDEX ON payments USING btree (created_at) WHERE (status = 'created'::payment_status)`
+- Index: `CREATE UNIQUE INDEX ON payments USING btree (razorpay_payment_id) WHERE (order_group_id IS NULL)`
 
 </details>
 
@@ -1321,6 +1323,7 @@ Every booking state change: from, to, who (customer, vendor, admin, system job o
 | `actor_id` | uuid |  |  |  |
 | `reason` | text |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `request_id` | text |  |  |  |
 
 <details><summary>Rules and indexes</summary>
 
@@ -1416,6 +1419,29 @@ EventSeva commission on completed cash bookings, owed by the vendor: taken from 
 
 </details>
 
+### handover_codes
+
+One-time codes the customer reads out at a handover, delivery or return; a new one replaces the unused one
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `phase` | text | yes |  |  |
+| `code_hash` | text | yes |  |  |
+| `expires_at` | timestamp with time zone | yes |  |  |
+| `attempts` | integer | yes | `0` |  |
+| `used_at` | timestamp with time zone |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((attempts >= 0))`
+- Check: `CHECK ((phase = ANY (ARRAY['handover'::text, 'delivery'::text, 'return'::text])))`
+- Index: `CREATE UNIQUE INDEX ON handover_codes USING btree (booking_id, phase) WHERE (used_at IS NULL)`
+
+</details>
+
 ### invoice_counters
 
 Next invoice number per series (a vendor or EventSeva, per financial year); numbers never repeat or skip
@@ -1443,6 +1469,36 @@ Invoices as issued: to the customer in the vendor's name, and EventSeva's commis
 - Check: `CHECK ((kind = ANY (ARRAY['customer'::text, 'commission'::text])))`
 - Unique: `UNIQUE (booking_id, kind)`
 - Unique: `UNIQUE (number)`
+
+</details>
+
+### payment_orders
+
+A Razorpay order paying several bookings of one checkout at once; payments rows with order_group_id are its share per booking
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | uuid | yes | `gen_random_uuid()` | primary key |
+| `customer_id` | uuid | yes |  | → [users](#users).id |
+| `checkout_id` | uuid | yes |  | → [checkouts](#checkouts).id |
+| `razorpay_order_id` | text | yes |  |  |
+| `razorpay_payment_id` | text |  |  |  |
+| `amount_paise` | integer | yes |  |  |
+| `currency` | text | yes | `'INR'::text` |  |
+| `status` | text | yes | `'created'::text` |  |
+| `checked_at` | timestamp with time zone |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+| `paid_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((amount_paise > 0))`
+- Check: `CHECK ((currency = 'INR'::text))`
+- Check: `CHECK ((status = ANY (ARRAY['created'::text, 'paid'::text, 'replaced'::text])))`
+- Unique: `UNIQUE (razorpay_order_id)`
+- Unique: `UNIQUE (razorpay_payment_id)`
+- Index: `CREATE INDEX ON payment_orders USING btree (checkout_id)`
+- Index: `CREATE INDEX ON payment_orders USING btree (created_at) WHERE (status = 'created'::text)`
 
 </details>
 

@@ -137,7 +137,7 @@ export class TripService {
    * drive needs a verified licence and the deposit paid; with-driver trips need a driver assigned.
    */
   async handover(vendorUserId: string, bookingId: string, body: InspectionInput) {
-    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
+    const byCode = await this.codes.check(vendorUserId, bookingId, 'handover', body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.confirmed(b);
@@ -159,7 +159,7 @@ export class TripService {
         `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, 'handover', $2, $3, $4, $5)`,
         [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths }, body.notes?.trim() || null, this.checkPhotos(b.vendor_id, body.photos), vendorUserId],
       );
-      if (byCode) await this.codes.confirm(client, b.id, 'handover');
+      if (byCode) await this.codes.consume(client, byCode, b.id, 'handover');
       await client.query(`UPDATE bookings SET fulfilment = 'in_progress', actual_start_at = now(), updated_at = now() WHERE id = $1`, [b.id]);
       await this.event(client, b.id, 'handover', vendorUserId, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths });
       await notify(client, b.customer_id, 'trip_started', {
@@ -174,7 +174,7 @@ export class TripService {
    * tolls, parking and damage are entered by the vendor with photos. All become proposed charges.
    */
   async returnCar(vendorUserId: string, bookingId: string, body: ReturnInput) {
-    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
+    const byCode = await this.codes.check(vendorUserId, bookingId, 'return', body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.confirmed(b);
@@ -224,7 +224,7 @@ export class TripService {
         `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, 'return', $2, $3, $4, $5)`,
         [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths, km }, body.notes?.trim() || null, photos, vendorUserId],
       );
-      if (byCode) await this.codes.confirm(client, b.id, 'return');
+      if (byCode) await this.codes.consume(client, byCode, b.id, 'return');
       // The car and driver are back: free for other bookings from now.
       await client.query(`UPDATE reservations SET status = 'released' WHERE booking_id = $1 AND status IN ('hold', 'active')`, [b.id]);
       await client.query(`UPDATE capacity_holds SET status = 'released' WHERE booking_id = $1 AND status IN ('hold', 'active')`, [b.id]);

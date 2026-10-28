@@ -48,7 +48,8 @@ export default function CartScreen() {
   const book = useMutation({
     mutationFn: () => {
       if (keyRef.current.body !== json) keyRef.current = { body: json, key: newKey('cart') };
-      return api.checkout(requests, bundle?.id, keyRef.current.key);
+      // The total shown on this screen: if the server's is different now, it answers PRICE_CHANGED.
+      return api.checkout(requests, bundle?.id, keyRef.current.key, quote.data?.totalPaise);
     },
     onSuccess: (result) => {
       cart.clear();
@@ -57,7 +58,16 @@ export default function CartScreen() {
       toast.success(t('cart.booked', { count: result.bookings.length }));
       router.replace('/bookings');
     },
-    onError: (e) => setError(errorText(t, e)),
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === 'PRICE_CHANGED' && typeof e.details.totalPaise === 'number') {
+        // Show the new total and let the customer send again with it (a new key: a different request).
+        keyRef.current = { body: '', key: newKey('cart') };
+        void quote.refetch();
+        const diff = Number(e.details.differencePaise ?? 0);
+        return setError(t(diff > 0 ? 'cart.priceUp' : 'cart.priceDown', { total: rupees(e.details.totalPaise), diff: rupees(Math.abs(diff)) }));
+      }
+      setError(errorText(t, e));
+    },
   });
 
   if (!items.length) {

@@ -102,3 +102,16 @@ test('chat without a conversation starts one for the vendor', async () => {
   expect(mockedApi.startChat).toHaveBeenCalledWith('v1');
   expect(router.getPathname()).toBe('/chat/c9');
 });
+
+test('the refund estimate comes from the server when it answers (its rules decide, per category)', async () => {
+  mockedApi.booking.mockResolvedValue(booking({ status: 'confirmed', day: inDays(20) }));
+  mockedApi.cancelPreview.mockResolvedValue({
+    allowed: true, reason: null, payMode: 'online', daysBefore: 20, percent: 50, paidPaise: 3_375_000, refundPaise: 1_687_500,
+    keptPaise: 1_687_500, depositBackPaise: 0, refundBy: 'original_payment',
+  });
+  const user = userEvent.setup();
+  await open();
+  await user.press(await screen.findByRole('button', { name: 'Cancel booking' }));
+  expect(await screen.findByText(`You will get about ${rupees(1_687_500)} back (50% of the advance).`)).toBeOnTheScreen();
+  expect(mockedApi.cancelPreview).toHaveBeenCalledWith('b1');
+});

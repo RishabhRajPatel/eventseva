@@ -117,6 +117,8 @@ export interface EngineRequest {
   note?: string;
   /** cash: the whole booking is paid to the vendor in person (only where the vendor accepts cash). */
   payMode?: 'online' | 'cash';
+  /** The total the customer saw; a different server total answers PRICE_CHANGED instead of booking. */
+  expectedTotalPaise?: number;
 }
 
 export interface QuoteLine {

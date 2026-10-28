@@ -1,7 +1,7 @@
 import { Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
 import { Pool, PoolClient, QueryResultRow, types } from 'pg';
 import { AppConfig, CONFIG } from '../config';
-import { currentActor } from './actor';
+import { currentActor, currentRequestId } from './actor';
 
 // Postgres `date` stays a plain 'YYYY-MM-DD' string. Turning it into a JS Date would shift it
 // by the server's time zone, and an event day must never move.
@@ -46,8 +46,12 @@ export class Db implements OnModuleDestroy, Queryable {
       await client.query('BEGIN');
       // The booking state history records who made each change (see booking_state_log()).
       const actor = currentActor();
-      if (actor) {
-        await client.query(`SELECT set_config('eventseva.actor_kind', $1, true), set_config('eventseva.actor_id', $2, true)`, [actor.kind, actor.id ?? '']);
+      const requestId = currentRequestId();
+      if (actor || requestId) {
+        await client.query(
+          `SELECT set_config('eventseva.actor_kind', $1, true), set_config('eventseva.actor_id', $2, true), set_config('eventseva.request_id', $3, true)`,
+          [actor?.kind ?? '', actor?.id ?? '', requestId ?? ''],
+        );
       }
       const result = await fn(client);
       await client.query('COMMIT');
