@@ -45,6 +45,7 @@ describe('profile and catalog', () => {
       'Tent & Furniture',
       'Wedding & Event Planners',
       'Photography & Entertainment',
+      'Cars & Travel',
     ]);
     const hi = (await t.http().get('/v1/categories').set('Accept-Language', 'hi-IN,hi;q=0.9').expect(200)).body;
     expect(hi.language).toBe('hi');

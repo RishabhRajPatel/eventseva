@@ -1,5 +1,5 @@
 import { slugify } from '../src/admin/categories.controller';
-import { createTestApp, TestApp } from './helpers';
+import { createTestApp, restoreLiveCategories, TestApp } from './helpers';
 
 describe('categories managed by admins', () => {
   let t: TestApp;
@@ -9,9 +9,9 @@ describe('categories managed by admins', () => {
   /** Puts the category list back as the migration left it, so other test files see the real set. */
   async function restoreCategories() {
     await t.db.query(`DELETE FROM categories WHERE slug IN ('mehendi-artist')`);
-    await t.db.query(`UPDATE categories SET is_active = (slug IN ('dj','decor','catering','bartan','tent','planner','camera'))`);
+    await restoreLiveCategories(t.db);
     await t.db.query(`UPDATE categories SET sort_order = CASE slug WHEN 'dj' THEN 1 WHEN 'decor' THEN 2 WHEN 'catering' THEN 3
-      WHEN 'bartan' THEN 4 WHEN 'tent' THEN 5 WHEN 'planner' THEN 6 WHEN 'camera' THEN 7 ELSE sort_order END`);
+      WHEN 'bartan' THEN 4 WHEN 'tent' THEN 5 WHEN 'planner' THEN 6 WHEN 'camera' THEN 7 WHEN 'car' THEN 8 ELSE sort_order END`);
   }
   afterAll(async () => {
     await t.reset();
@@ -37,15 +37,16 @@ describe('categories managed by admins', () => {
     expect(slugify('  Mehendi Artist!! ')).toBe('mehendi-artist');
   });
 
-  it('the owner\'s seven categories, in order, with Hindi names and icons; old ones hidden but kept', async () => {
+  it('the owner\'s seven categories and wedding cars, in order, with Hindi names and icons; old ones hidden but kept', async () => {
     const hi = await appCategories('hi');
-    expect(hi.map((c) => c.slug)).toEqual(['dj', 'decor', 'catering', 'bartan', 'tent', 'planner', 'camera']);
+    expect(hi.map((c) => c.slug)).toEqual(['dj', 'decor', 'catering', 'bartan', 'tent', 'planner', 'camera', 'car']);
     expect(hi.map((c) => c.name)).toEqual([
-      'डीजे और साउंड', 'लाइटिंग और सजावट', 'हलवाई और कैटरिंग', 'बर्तन और किचन का सामान', 'टेंट और फ़र्नीचर', 'वेडिंग और इवेंट प्लानर', 'फ़ोटोग्राफ़ी और मनोरंजन',
+      'डीजे और साउंड', 'लाइटिंग और सजावट', 'हलवाई और कैटरिंग', 'बर्तन और किचन का सामान', 'टेंट और फ़र्नीचर', 'वेडिंग और इवेंट प्लानर', 'फ़ोटोग्राफ़ी और मनोरंजन', 'कार और ट्रैवल',
     ]);
+    expect(hi.find((c) => c.slug === 'car')!.icon).toBe('car');
     expect(hi.find((c) => c.slug === 'tent')!.icon).toBe('tent');
     expect((await t.db.query(`SELECT slug FROM categories WHERE NOT is_active ORDER BY slug`)).rows.map((r) => r.slug)).toEqual([
-      'band', 'bartender', 'car', 'generator', 'guest-transport', 'halwai', 'hotel', 'hall', 'makeup', 'other',
+      'band', 'bartender', 'generator', 'guest-transport', 'halwai', 'hotel', 'hall', 'makeup', 'other',
     ].sort());
   });
 
@@ -67,7 +68,7 @@ describe('categories managed by admins', () => {
     const created = (await as(admin)
       .post('/v1/admin/categories', { nameEn: 'Mehendi Artist', nameHi: 'मेहंदी आर्टिस्ट', icon: 'makeup', defaultUnit: 'per_person' })
       .expect(201)).body;
-    expect(created).toMatchObject({ slug: 'mehendi-artist', isActive: true, sortOrder: 8, liveVendors: 0 });
+    expect(created).toMatchObject({ slug: 'mehendi-artist', isActive: true, sortOrder: 9, liveVendors: 0 });
     const dup = await as(admin).post('/v1/admin/categories', { nameEn: 'mehendi artist', nameHi: 'मेहंदी', icon: 'makeup', defaultUnit: 'per_person' }).expect(409);
     expect(dup.body.error.code).toBe('CATEGORY_EXISTS');
     expect((await appCategories('hi')).at(-1)).toMatchObject({ slug: 'mehendi-artist', name: 'मेहंदी आर्टिस्ट', icon: 'makeup' });

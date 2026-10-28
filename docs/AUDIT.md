@@ -24,7 +24,7 @@ Checks run on 27 Oct 2026, all passing:
 | Area | Tables | Notes |
 |---|---|---|
 | Accounts | users, otp_requests, sessions, device_tokens, admin_users | OTP login with rolling limits and SMS budget; admin password + TOTP + recovery codes + step-up |
-| Catalogue | cities, categories | Categories are admin-managed (add, rename, hide, reorder). 7 visible and 8 hidden today |
+| Catalogue | cities, categories | Categories are admin-managed (add, rename, hide, reorder). 8 visible (the 7 launch categories plus wedding cars) and 9 hidden today |
 | Vendors | vendors, vendor_documents, vendor_bank_accounts, services, packages, media, availability | Services priced per unit (`per_event`, `per_day`, `per_plate`, `per_hour`, `per_km`, `per_room_night`, `per_person`, `per_shift`) with min/max guests; vendor packages = a list of item names at one price; calendar by day × slot (full/day/night) |
 | Events and bookings | events, bookings, reviews, shortlists | One event, many bookings (one per vendor item). Venue pin, arrive-by time, event-day progress |
 | Money | payments, refunds, payouts, coupons, coupon_redemptions, featured_plans, featured_purchases | Advance only; queued idempotent refunds; payouts after the event; coupons; paid featured listings |

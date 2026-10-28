@@ -46,10 +46,8 @@ describe('wedding car booking', () => {
     bookings = t.app.get(BookingsService);
     gateway = t.app.get(PAYMENT_GATEWAY);
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
-    await t.db.query(`UPDATE categories SET is_active = true WHERE slug = 'car'`);
   });
   afterAll(async () => {
-    await t.db.query(`UPDATE categories SET is_active = false WHERE slug = 'car'`);
     await t.app.close();
   });
 

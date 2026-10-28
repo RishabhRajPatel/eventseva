@@ -3,7 +3,7 @@
 // booked time (reschedule, extension) with conflicts, price differences and refunds.
 import { todayIst } from '../src/bookings/booking.rules';
 import { FakeGateway, PAYMENT_GATEWAY } from '../src/payments/gateway';
-import { createTestApp, TestApp } from './helpers';
+import { createTestApp, restoreLiveCategories, TestApp } from './helpers';
 
 const inDays = (n: number) => {
   const d = new Date(`${todayIst()}T00:00:00Z`);
@@ -24,7 +24,7 @@ describe('booking types and changes', () => {
     gateway = t.app.get(PAYMENT_GATEWAY);
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
   });
-  const restore = () => t.db.query(`UPDATE categories SET is_active = (slug IN ('dj','decor','catering','bartan','tent','planner','camera'))`);
+  const restore = () => restoreLiveCategories(t.db);
   afterAll(async () => {
     await restore();
     await t.app.close();

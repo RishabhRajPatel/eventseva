@@ -3,7 +3,7 @@
 import { todayIst } from '../src/bookings/booking.rules';
 import { checkTemplate } from '../src/engine/rules';
 import { signParams } from '../src/media/cloudinary.service';
-import { createTestApp, TestApp } from './helpers';
+import { createTestApp, restoreLiveCategories, TestApp } from './helpers';
 
 const SECRET = 'test-secret';
 const inDays = (n: number) => {
@@ -21,8 +21,8 @@ describe('engine catalogue', () => {
     t = await createTestApp();
     cityId = (await t.db.one(t.db, `SELECT id FROM cities WHERE name = 'Prayagraj'`)).id;
   });
-  // Tests switch hidden categories on; put back the owner's seven for the other suites.
-  const restore = () => t.db.query(`UPDATE categories SET is_active = (slug IN ('dj','decor','catering','bartan','tent','planner','camera'))`);
+  // Tests switch hidden categories on; put back the owner's seven and wedding cars for the other suites.
+  const restore = () => restoreLiveCategories(t.db);
   afterAll(async () => {
     await restore();
     await t.app.close();
@@ -60,8 +60,8 @@ describe('engine catalogue', () => {
     for (const r of rows) expect(() => checkTemplate(r.booking_type, r.template)).not.toThrow();
     const types = Object.fromEntries(rows.map((r) => [r.slug, r.booking_type]));
     expect(types).toMatchObject({ dj: 'time_window', catering: 'per_person', tent: 'rental', car: 'transport', makeup: 'appointment', bartender: 'staffing', planner: 'quote' });
-    // Customers still see the seven categories the owner chose.
-    expect((await t.http().get('/v1/categories').expect(200)).body.items).toHaveLength(7);
+    // Customers see the seven launch categories the owner chose, plus wedding cars.
+    expect((await t.http().get('/v1/categories').expect(200)).body.items).toHaveLength(8);
   });
 
   it('admins change a category\'s booking type and template, checked on the server', async () => {

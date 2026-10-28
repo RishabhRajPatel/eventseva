@@ -127,3 +127,10 @@ export async function createTestApp(): Promise<TestApp> {
     },
   };
 }
+
+/** Categories customers see after the migrations: the owner's seven launch categories and wedding cars. */
+export const LIVE_CATEGORIES = ['dj', 'decor', 'catering', 'bartan', 'tent', 'planner', 'camera', 'car'];
+
+/** Puts category visibility back as the migrations left it, after a test switched hidden ones on. */
+export const restoreLiveCategories = (db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) =>
+  db.query('UPDATE categories SET is_active = (slug = ANY($1))', [LIVE_CATEGORIES]);
