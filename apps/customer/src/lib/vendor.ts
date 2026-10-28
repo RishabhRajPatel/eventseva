@@ -1,22 +1,23 @@
 import type { Package, Service, Slot, VendorDetail } from '@eventseva/app-shared';
 
 /** A bookable thing on a vendor page: a service (priced per unit) or a fixed package. */
-export type Item = { type: 'service'; id: string; title: string; pricePaise: number; unit: Service['unit']; detail: string | null } | {
+export type Item = { type: 'service'; id: string; title: string; pricePaise: number; unit: Service['unit']; detail: string | null; cashAllowed?: boolean } | {
   type: 'package';
   id: string;
   title: string;
   pricePaise: number;
   unit: 'package';
   detail: string | null;
+  cashAllowed?: boolean;
 };
 
 export function vendorItems(v: Pick<VendorDetail, 'services' | 'packages'>): Item[] {
   const packages: Item[] = v.packages
     .filter((p: Package) => p.isActive)
-    .map((p) => ({ type: 'package', id: p.id, title: p.title, pricePaise: p.pricePaise, unit: 'package', detail: p.items.join(' · ') || null }));
+    .map((p) => ({ type: 'package', id: p.id, title: p.title, pricePaise: p.pricePaise, unit: 'package', detail: p.items.join(' · ') || null, cashAllowed: p.cashAllowed ?? false }));
   const services: Item[] = v.services
     .filter((s: Service) => s.isActive)
-    .map((s) => ({ type: 'service', id: s.id, title: s.title, pricePaise: s.pricePaise, unit: s.unit, detail: s.description }));
+    .map((s) => ({ type: 'service', id: s.id, title: s.title, pricePaise: s.pricePaise, unit: s.unit, detail: s.description, cashAllowed: s.cashAllowed ?? false }));
   return [...packages, ...services];
 }
 

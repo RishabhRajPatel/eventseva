@@ -41,6 +41,7 @@ import { FieldInput } from '../../../components/FieldInput';
 import { Notice } from '../../../components/Notice';
 import { PriceInput } from '../../../components/PriceInput';
 import { Screen } from '../../../components/Screen';
+import { CashToggle } from '../../../components/CashToggle';
 import { Segmented } from '../../../components/Segmented';
 import { QueryView } from '../../../components/States';
 import { Txt } from '../../../components/Txt';
@@ -83,6 +84,7 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
   const [rules, setRules] = useState<RuleForm>(ruleForm(service?.rules ?? setup.defaultRules));
   const [attrs, setAttrs] = useState<FieldValues>(initialValues(setup.attributes, service?.attributes));
   const [resourceId, setResourceId] = useState<string | null>(service?.resourceId ?? null);
+  const [cashAllowed, setCashAllowed] = useState(service?.cashAllowed ?? false);
 
   const choosable = (resources.data ?? []).filter((r) => r.kind === setup.resourceKind && r.status !== 'inactive');
   const needsResource = type === 'transport';
@@ -138,6 +140,7 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
       rules: ruleCheck.rules,
       attributes: toValues(setup.attributes, attrs),
       ...(setup.resourceKind && setup.resourceKind !== 'crew' ? { resourceId } : {}),
+      cashAllowed,
     });
   }
 
@@ -201,6 +204,7 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
         />
       </View>
       <Field testID="service-description" label={`${t('engine.description')} ${t('form.optional')}`} value={description} onChangeText={setDescription} multiline maxLength={500} />
+      <CashToggle value={cashAllowed} onChange={setCashAllowed} />
 
       {setup.resourceKind && setup.resourceKind !== 'crew' ? (
         <View style={styles.group} {...form.at('resource')} accessibilityRole="radiogroup" accessibilityLabel={t(`engine.which.${setup.resourceKind}`)}>

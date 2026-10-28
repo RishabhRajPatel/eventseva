@@ -26,6 +26,7 @@ import { openLink } from '../../lib/links';
 import { RentalSection } from '../../components/RentalSection';
 import { CarTripSection } from '../../components/CarTripSection';
 import { HandoverCodeCard, showsHandoverCode } from '../../components/HandoverCodeCard';
+import { CashBookingCard } from '../../components/CashBookingCard';
 import { ChangesSection } from '../../components/ChangesSection';
 
 export default function BookingScreen() {
@@ -93,6 +94,7 @@ export default function BookingScreen() {
 
       <TripCard booking={b} />
 
+      {b.payMode === 'cash' ? <CashBookingCard booking={b} /> : null}
       {showsHandoverCode(b) ? <HandoverCodeCard booking={b} /> : null}
       {b.bookingType === 'rental' ? <RentalSection booking={b} /> : null}
       {b.bookingType === 'transport' ? <CarTripSection booking={b} /> : null}

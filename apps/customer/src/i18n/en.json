@@ -586,7 +586,11 @@
     "CHANGE_PENDING": "A change is already waiting for the vendor. Wait for their answer or withdraw it.",
     "CHANGE_NOT_SUPPORTED": "This booking cannot be changed in the app. Chat with the vendor.",
     "INVOICE_NOT_READY": "The invoice is ready once the booking is confirmed.",
-    "BOOKING_BAD_TRANSITION": "This booking just changed. Pull down to refresh and try again."
+    "BOOKING_BAD_TRANSITION": "This booking just changed. Pull down to refresh and try again.",
+    "CASH_BOOKING": "This booking is paid in cash to the vendor, not in the app.",
+    "CASH_NOT_ACCEPTED": "The vendor takes only online payment for this. Choose online.",
+    "CASH_NOT_AVAILABLE": "Cash is not available for this vendor right now. Choose online payment.",
+    "CASH_NOT_IN_CART": "The cart is paid online. Book this on its own to pay in cash."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1042,5 +1046,31 @@
   "handoverCode": {
     "title": "Your handover code",
     "body": "Read this code to the vendor when the car or the items are handed over to you and when they come back. Share it only in person, at the handover."
+  },
+  "payMode": {
+    "title": "How will you pay?",
+    "online": "Online (advance now)",
+    "cash": "Cash to the vendor",
+    "onlineHint": "Pay the advance in the app once the vendor accepts; the rest as agreed.",
+    "cashHint": "No online payment. The booking is confirmed when the vendor accepts; pay them in person. Keep your receipts.",
+    "footerCash": "Total {{total}} · pay the vendor in cash"
+  },
+  "cash": {
+    "title": "Cash payment",
+    "requested": "You chose to pay in cash. Once the vendor accepts, the booking is confirmed and you pay them in person.",
+    "payVendor": "Pay {{amount}} to the vendor in person, as you agree with them.",
+    "received": "Recorded by the vendor",
+    "depositHeld": "Deposit with the vendor",
+    "wrongHint": "The vendor records each cash payment and you get a notification. If something is wrong, tell us.",
+    "report": "Report a cash problem",
+    "depositHint": "Give the security deposit to the vendor in cash before taking the items or the car.",
+    "cancelNote": "This booking is paid in cash: the vendor gives back {{percent}}% of the cash you paid, by the cancellation rules. Nothing is refunded online.",
+    "kind": {
+      "advance": "Advance",
+      "balance": "Payment",
+      "deposit": "Deposit",
+      "deposit_return": "Deposit returned",
+      "refund": "Refund"
+    }
   }
 }

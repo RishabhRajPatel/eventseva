@@ -57,6 +57,10 @@ Tick each line. If something fails, note the phone model, Android version, scree
 - [ ] Damage with no photos, disputed: admin cannot keep the money ("No photos back this charge"),
       only waive it. With photos, admin can keep part of it.
 - [ ] Admin → Payment events lists each payment webhook once; "Check unpaid orders now" answers.
+- [ ] Cash: vendor turns on "Cash also accepted" for a service; the customer picks "Cash to the vendor";
+      the vendor's accept confirms it with no payment screen. The vendor records cash; the customer gets a
+      notification and sees it on the booking. After the event: no payout for it, and the commission
+      shows under Earnings and Admin → Commission dues; it comes off the next online payout.
 - [ ] Admin → booking page shows "State history" with who made each change.
 - [ ] Reschedule or extend; the price difference is charged or refunded.
 - [ ] Before completion, invoice says "Proforma"; after the event is marked completed, it has a number.

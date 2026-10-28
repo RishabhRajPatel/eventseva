@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatClock, formatDay, rupees, todayIst, type Quote } from '@eventseva/app-shared';
+import { formatClock, formatDay, rupees, todayIst, type PayMode, type Quote } from '@eventseva/app-shared';
 import { api, type RentalRequest } from '../../../lib/api';
 import { errorText } from '../../../lib/errors';
 import { keys } from '../../../lib/queryClient';
@@ -14,6 +14,7 @@ import { c, radius, space } from '../../../lib/theme';
 import { useLanguage } from '../../../hooks/useLanguage';
 import { AppText } from '../../../components/AppText';
 import { Card, Divider, MoneyRow, Notice, Pill } from '../../../components/Bits';
+import { PayModePicker } from '../../../components/PayModePicker';
 import { Button } from '../../../components/Button';
 import { Chip, ChoiceRow, TextField } from '../../../components/Form';
 import { Icon } from '../../../components/Icon';
@@ -48,6 +49,7 @@ export default function RentScreen() {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [cart, setCart] = useState<Cart>({});
   const [note, setNote] = useState('');
+  const [payModeChoice, setPayMode] = useState<PayMode>('online');
   const [formError, setFormError] = useState<string | null>(null);
 
   const startDay = event ? addDaysTo(event.eventDate, offset) : null;
@@ -64,6 +66,9 @@ export default function RentScreen() {
   // Items seen so far, so the cart keeps its names and limits while the list is filtered.
   const known = useRef(new Map<string, RentalItem>());
   for (const i of catalogue.data?.items ?? []) known.current.set(i.id, i);
+  // Cash only where the vendor accepts it for rentals.
+  const cashOk = !!catalogue.data?.settings.cashAllowed;
+  const payMode: PayMode = cashOk ? payModeChoice : 'online';
   const lines = cartLines(cart);
   const problems = lines.map((l) => ({ l, item: known.current.get(l.itemId), p: known.current.get(l.itemId) ? lineProblem(known.current.get(l.itemId)!, l.qty, days) : null }));
   const firstProblem = problems.find((x) => x.p);
@@ -90,7 +95,7 @@ export default function RentScreen() {
     mutationFn: () => {
       const json = JSON.stringify(body);
       if (keyRef.current.body !== json) keyRef.current = { body: json, key: newIdempotencyKey() };
-      return api.requestRental({ ...body!, note: note.trim() || undefined }, keyRef.current.key);
+      return api.requestRental({ ...body!, note: note.trim() || undefined, ...(payMode === 'cash' ? { payMode } : {}) }, keyRef.current.key);
     },
     onSuccess: ({ id: bookingId }) => {
       void qc.invalidateQueries({ queryKey: keys.allBookings });
@@ -222,6 +227,7 @@ export default function RentScreen() {
       )}
 
       <TextField label={t('book.note')} placeholder={t('rent.notePlaceholder')} value={note} onChangeText={setNote} multiline maxLength={500} />
+      {cashOk ? <PayModePicker value={payMode} onChange={setPayMode} /> : null}
       <QuoteCard quote={quote.data} error={quote.error} loading={quote.isFetching} empty={!lines.length} />
       {cat.settings.instructions ? <Notice icon="alert">{cat.settings.instructions}</Notice> : null}
     </Screen>

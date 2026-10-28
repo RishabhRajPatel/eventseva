@@ -11,6 +11,7 @@ import { paiseToRupeesInput, rupeesInputToPaise } from '../lib/money';
 import { toast } from '../lib/toast';
 import { c, space } from '../lib/theme';
 import { Button } from '../components/Button';
+import { CashToggle } from '../components/CashToggle';
 import { Card, CardHeader } from '../components/Card';
 import { Field } from '../components/Field';
 import { Screen } from '../components/Screen';
@@ -40,6 +41,7 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
   const [cleaning, setCleaning] = useState(hoursText(settings.bufferAfterMin));
   const [approval, setApproval] = useState(settings.approval);
   const [instructions, setInstructions] = useState(settings.instructions ?? '');
+  const [cashAllowed, setCashAllowed] = useState(settings.cashAllowed ?? false);
 
   const money = [delivery, perKm, minOrder].map((v) => (v.trim() ? rupeesInputToPaise(v) : 0));
   const invalid = money.some((m) => m === null);
@@ -59,6 +61,7 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
         bufferAfterMin: hours(cleaning),
         approval,
         instructions: instructions.trim() || undefined,
+        cashAllowed,
       });
     },
     onSuccess: (saved) => {
@@ -100,6 +103,7 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
         <Txt size="xs" color={c.textMuted}>{t(approval === 'auto' ? 'rentalSettings.approvalAutoNote' : 'rentalSettings.approvalVendorNote')}</Txt>
       </View>
       <Field label={t('rentalSettings.instructions')} value={instructions} onChangeText={setInstructions} multiline maxLength={1000} placeholder={t('rentalSettings.instructionsPlaceholder')} />
+      <CashToggle value={cashAllowed} onChange={setCashAllowed} />
       {invalid ? <Txt size="sm" color={c.danger} accessibilityRole="alert">{t('inventory.moneyInvalid')}</Txt> : null}
     </Screen>
   );

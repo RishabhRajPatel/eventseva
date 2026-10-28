@@ -23,6 +23,7 @@ export type Section =
   | 'disputes'
   | 'refunds'
   | 'payments'
+  | 'dues'
   | 'checks'
   | 'reports'
   | 'complaints'
@@ -56,6 +57,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'refunds', href: '/refunds', label: 'Refunds' },
   // Razorpay webhooks: failures and payments that were not confirmed (wrong amount, not captured).
   { section: 'payments', href: '/payment-events', label: 'Payment events', badge: 'paymentProblems' },
+  // Commission on cash bookings that vendors still owe.
+  { section: 'dues', href: '/commission-dues', label: 'Commission dues' },
   { section: 'reports', href: '/reports', label: 'Reports' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
@@ -72,7 +75,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
   verifier: ['dashboard', 'vendors', 'photos', 'checks', 'security'],
   support: ['dashboard', 'vendors', 'bookings', 'disputes', 'reports', 'complaints', 'users', 'security'],
-  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'payments', 'reports', 'coupons', 'featured', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'payments', 'dues', 'reports', 'coupons', 'featured', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {

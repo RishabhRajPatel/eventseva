@@ -6,7 +6,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { formatClock, formatDay, rupees, todayIst, type EngineBookingRequest, type PublicEngineService, type Quote } from '@eventseva/app-shared';
+import { formatClock, formatDay, rupees, todayIst, type EngineBookingRequest, type PayMode, type PublicEngineService, type Quote } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
 import { cart } from '../../../lib/cart';
 import {
@@ -32,6 +32,7 @@ import { c, space } from '../../../lib/theme';
 import { useLanguage } from '../../../hooks/useLanguage';
 import { AppText } from '../../../components/AppText';
 import { Card, Divider, MoneyRow, Notice, Pill } from '../../../components/Bits';
+import { PayModePicker } from '../../../components/PayModePicker';
 import { Button } from '../../../components/Button';
 import { AnswerField, PlaceField } from '../../../components/EngineFields';
 import { Chip, ChoiceRow, TextField } from '../../../components/Form';
@@ -123,6 +124,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   }));
   const set = (patch: Partial<EngineForm>) => setForm((f) => ({ ...f, ...patch }));
   const [tried, setTried] = useState(false);
+  const [payModeChoice, setPayMode] = useState<PayMode>('online');
   const [formError, setFormError] = useState<string | null>(null);
 
   // Switching service or event resets what depends on it.
@@ -136,6 +138,8 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   }, [eventId]);
 
   const problem = formProblem(s, form);
+  // Cash only where the vendor accepts it for this service; it never goes in the cart.
+  const payMode: PayMode = s.cashAllowed ? payModeChoice : 'online';
   const request = problem ? null : toRequest(s, form);
   const json = JSON.stringify(request);
   const [debounced, setDebounced] = useState<EngineBookingRequest | null>(null);
@@ -150,7 +154,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   const send = useMutation({
     mutationFn: () => {
       if (keyRef.current.body !== json) keyRef.current = { body: json, key: newKey() };
-      return api.requestEngine(request!, keyRef.current.key);
+      return api.requestEngine({ ...request!, ...(payMode === 'cash' ? { payMode } : {}) }, keyRef.current.key);
     },
     onSuccess: ({ id: bookingId }) => {
       void qc.invalidateQueries({ queryKey: keys.allBookings });
@@ -218,11 +222,13 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
             </AppText>
           ) : (
             <AppText size="sm" align="center">
-              {quote.data ? t('engineBook.footerTotal', { total: rupees(quote.data.totalPaise), advance: rupees(quote.data.advancePaise) }) : t('book.noPaymentNow')}
+              {quote.data
+                ? payMode === 'cash' ? t('payMode.footerCash', { total: rupees(quote.data.totalPaise) }) : t('engineBook.footerTotal', { total: rupees(quote.data.totalPaise), advance: rupees(quote.data.advancePaise) })
+                : t('book.noPaymentNow')}
             </AppText>
           )}
           <View style={styles.footerRow}>
-            <Button label={t('cart.add')} variant="outline" size="md" style={styles.flex} onPress={addToCart} />
+            {payMode === 'online' ? <Button label={t('cart.add')} variant="outline" size="md" style={styles.flex} onPress={addToCart} /> : null}
             <Button testID="send-engine" label={s.rules.approval === 'auto' ? t('engineBook.bookNow') : t('engineBook.send')} loadingLabel={t('book.sending')} size="md" style={styles.flex} onPress={submit} />
           </View>
         </>
@@ -348,6 +354,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
       ) : null}
 
       <TextField label={t('book.note')} placeholder={t('engineBook.notePlaceholder')} value={form.note} onChangeText={(note) => set({ note })} multiline maxLength={500} />
+      {s.cashAllowed ? <PayModePicker value={payMode} onChange={setPayMode} /> : null}
       <QuoteCard quote={quote.data} error={quoteError} loading={quote.isFetching} waiting={!!problem} />
       {s.rules.instructions ? <Notice icon="alert">{s.rules.instructions}</Notice> : null}
     </Screen>

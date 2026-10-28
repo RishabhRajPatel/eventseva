@@ -182,6 +182,7 @@ describe('services and cars', () => {
         rules: { approval: 'vendor', minDurationMin: 120, leadTimeHours: 12, deposit: { fixedPaise: 300_000 } },
         attributes: {},
         resourceId: 'r1',
+        cashAllowed: false,
       }),
     );
   });

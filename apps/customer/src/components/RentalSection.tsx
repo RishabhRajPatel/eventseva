@@ -98,11 +98,15 @@ export function Deposit({ booking, deposit: d, closed, queryKey }: { booking: Bo
     },
   });
   if (!d.requiredPaise) return <AppText size="sm">{t('rent.noDeposit')}</AppText>;
-  const due = booking.status === 'confirmed' && d.paidPaise < d.requiredPaise && !closed;
+  const cash = booking.payMode === 'cash';
+  const due = booking.status === 'confirmed' && d.paidPaise < d.requiredPaise && !closed && !cash;
   return (
     <View style={{ gap: space.xs }}>
       <MoneyRow label={t('rent.deposit')} value={rupees(d.requiredPaise)} />
       {d.paidPaise ? <MoneyRow label={t('rent.depositPaidLine')} value={rupees(d.paidPaise)} small /> : null}
+      {cash && booking.status === 'confirmed' && d.paidPaise < d.requiredPaise ? (
+        <AppText size="xs" color={c.textMuted}>{t('cash.depositHint')}</AppText>
+      ) : null}
       {d.settledAt ? (
         <MoneyRow label={t('rent.depositKept')} value={rupees(d.keptPaise)} small />
       ) : null}

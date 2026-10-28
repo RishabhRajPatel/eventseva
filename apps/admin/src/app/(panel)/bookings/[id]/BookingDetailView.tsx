@@ -246,6 +246,33 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
         </section>
       ) : null}
 
+      {b.payMode === 'cash' ? (
+        <section className="box stack" aria-labelledby="cash-title">
+          <h2 id="cash-title">Cash payment</h2>
+          <p className="small muted">The customer pays the vendor in person. These entries are what the vendor recorded; the customer was told about each.</p>
+          {b.cashReceipts?.length ? (
+            <ul className="stack-sm">
+              {b.cashReceipts.map((r, i) => (
+                <li key={i} className="small">
+                  {humanize(r.kind)} {['refund', 'deposit_return'].includes(r.kind) ? '−' : ''}
+                  {rupees(r.amountPaise)} · {formatDateTime(r.createdAt)}
+                  {r.note ? ` · “${r.note}”` : ''}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">No cash recorded yet.</p>
+          )}
+          {b.commissionDue ? (
+            <p className="small">
+              Commission owed by the vendor: {rupees(b.commissionDue.remainingPaise)} of {rupees(b.commissionDue.amountPaise)} ({humanize(b.commissionDue.status)}
+              {b.commissionDue.reference ? `, ${b.commissionDue.reference}` : ''}).{' '}
+              <Link href="/commission-dues">Commission dues</Link>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {b.history?.length ? (
         <section className="box stack" aria-labelledby="history-title">
           <h2 id="history-title">State history</h2>

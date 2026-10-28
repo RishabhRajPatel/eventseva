@@ -34,6 +34,9 @@ export function RefundText({ booking }: { booking: Booking }) {
   const { t } = useTranslation();
   const p = refundPreview(booking);
   if (!p) return null;
+  if (booking.payMode === 'cash') {
+    return <Notice icon="alert" tone="lavender">{t('cash.cancelNote', { percent: p.percent })}</Notice>;
+  }
   if (!p.paid) return <Notice icon="checkCircle" tone="mintLight">{t('cancel.notPaid')}</Notice>;
   return (
     <Notice icon="alert" tone={p.percent > 0 ? 'mintLight' : 'peach'}>

@@ -3,9 +3,11 @@ import { RefreshControl, StyleSheet, View } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { formatDay, rupees, todayIst, type Earnings } from '@eventseva/app-shared';
+import { useQuery } from '@tanstack/react-query';
+import { formatDay, rupees, todayIst, type CommissionDues, type Earnings } from '@eventseva/app-shared';
 import { monthOf, shiftMonth } from '../lib/calendar';
 import { useEarnings } from '../lib/queries';
+import { api } from '../lib/api';
 import { c, radius, space } from '../lib/theme';
 import { useLang } from '../hooks/useLang';
 import { BankCard } from '../components/Banners';
@@ -19,6 +21,21 @@ import { Txt } from '../components/Txt';
 
 type PayoutStatus = Earnings['payouts'][number]['status'];
 const PAYOUT_TONE: Record<PayoutStatus, Tone> = { scheduled: 'warning', processing: 'info', paid: 'success', failed: 'danger', held: 'danger' };
+
+/** Commission owed to EventSeva on cash bookings; it comes off the next online payouts. */
+function CommissionDuesCard() {
+  const { t } = useTranslation();
+  const dues = useQuery({ queryKey: ['commission-dues'], queryFn: () => api.get<CommissionDues>('/v1/partner/commission-dues') });
+  if (!dues.data || !dues.data.openPaise) return null;
+  const over = dues.data.openPaise > dues.data.limitPaise;
+  return (
+    <View style={{ paddingBottom: space.md }}>
+      <Notice icon="rupee" tone={over ? 'warning' : 'info'} title={t('cash.duesTitle', { amount: rupees(dues.data.openPaise) })}>
+        {t(over ? 'cash.duesOver' : 'cash.duesBody', { limit: rupees(dues.data.limitPaise) })}
+      </Notice>
+    </View>
+  );
+}
 
 /** "Kamai": one month of earnings and payouts (VendorEarnings board). */
 export default function EarningsScreen() {
@@ -39,7 +56,7 @@ export default function EarningsScreen() {
             contentContainerStyle={styles.list}
             ItemSeparatorComponent={Gap}
             refreshControl={<RefreshControl refreshing={earnings.isRefetching} onRefresh={() => void earnings.refetch()} colors={[c.royal]} />}
-            ListHeaderComponent={<EarningsSummary e={e} />}
+            ListHeaderComponent={<><CommissionDuesCard /><EarningsSummary e={e} /></>}
             renderItem={({ item }) => <PayoutRow p={item} />}
             ListEmptyComponent={
               <Card>

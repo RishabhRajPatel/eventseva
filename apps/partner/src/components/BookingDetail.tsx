@@ -24,6 +24,7 @@ import { RentalPanel } from './RentalPanel';
 import { ChangesPanel } from './ChangesPanel';
 import { EngineDetails } from './EngineDetails';
 import { TripPanel } from './TripPanel';
+import { CashPanel } from './CashPanel';
 
 /** Everything about one booking and what the vendor can do next. Used full-screen and in the tablet side panel. */
 export function BookingDetail({ booking, now }: { booking: Booking; now: number }) {
@@ -89,6 +90,10 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
       {booking.bookingType === 'transport' ? <TripPanel booking={booking} /> : null}
       <EngineDetails booking={booking} />
       <ChangesPanel booking={booking} />
+      {booking.payMode === 'cash' && booking.status === 'requested' ? (
+        <Notice icon="rupee" tone="warning" title={t('cash.requestTitle')}>{t('cash.requestBody')}</Notice>
+      ) : null}
+      {booking.payMode === 'cash' && !['requested', 'accepted', 'rejected', 'expired'].includes(booking.status) ? <CashPanel booking={booking} /> : null}
 
       <Card>
         <CardHeader title={t('money.title')} />
@@ -160,7 +165,8 @@ export function BookingDetail({ booking, now }: { booking: Booking; now: number 
       <ReasonSheet
         visible={cancelling}
         title={t('booking.cancelTitle')}
-        message={booking.status === 'confirmed' ? t('booking.cancelBodyPaid', { amount: rupees(booking.advancePaise) }) : t('booking.cancelBodyUnpaid')}
+        message={booking.payMode === 'cash' && booking.status === 'confirmed' ? t('cash.cancelBody')
+          : booking.status === 'confirmed' ? t('booking.cancelBodyPaid', { amount: rupees(booking.advancePaise) }) : t('booking.cancelBodyUnpaid')}
         quickReasons={[t('reason.emergency'), t('reason.equipment'), t('reason.health'), t('reason.doubleBooked')]}
         confirmLabel={t('booking.cancelConfirm')}
         loading={cancel.isPending}

@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { formatClock, formatDay, formatDistance, formatMinutes, rupees, SLOTS, todayIst, type Slot } from '@eventseva/app-shared';
+import type { PayMode } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
 import { ADVANCE_PERCENT, estimate, needsQuantity, parseQuantity } from '../../../lib/booking';
 import { errorText } from '../../../lib/errors';
@@ -20,6 +21,7 @@ import { Card, Divider, MoneyRow, Notice } from '../../../components/Bits';
 import { Button } from '../../../components/Button';
 import { monthOf } from '../../../components/DatePicker';
 import { EventForm } from '../../../components/EventForm';
+import { PayModePicker } from '../../../components/PayModePicker';
 import { Chip, ChoiceRow, FieldError, OptionTile, TextField } from '../../../components/Form';
 import { usePriceLabel } from '../../../components/ItemOption';
 import { Screen, ScreenHeader } from '../../../components/Screen';
@@ -60,6 +62,7 @@ export default function BookingFormScreen() {
   const [quantityTouched, setQuantityTouched] = useState(false);
   const [note, setNote] = useState('');
   const [arriveBy, setArriveBy] = useState<string | null>(null);
+  const [payModeChoice, setPayMode] = useState<PayMode>('online');
   const [submitted, setSubmitted] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -95,6 +98,8 @@ export default function BookingFormScreen() {
 
   const items = useMemo(() => (vendor.data ? vendorItems(vendor.data) : []), [vendor.data]);
   const item = items.find((i) => itemKey(i) === itemKeyState) ?? items[0];
+  // Cash only for items the vendor accepts it for; switching to another item falls back to online.
+  const payMode: PayMode = item?.cashAllowed ? payModeChoice : 'online';
   const counted = !!item && item.unit !== 'package' && needsQuantity(item.unit);
   const qty = parseQuantity(quantity);
   const est = item ? estimate(item.pricePaise, item.unit === 'package' ? 'per_event' : item.unit, qty) : null;
@@ -120,6 +125,7 @@ export default function BookingFormScreen() {
         quantity: counted ? qty! : undefined,
         note: note.trim() || undefined,
         arriveBy: arriveBy ?? undefined,
+        ...(payMode === 'cash' ? { payMode } : {}),
       });
     },
     onSuccess: (booking) => {
@@ -310,6 +316,8 @@ export default function BookingFormScreen() {
           {t('arrive.hint')}
         </AppText>
       </View>
+
+      {item?.cashAllowed ? <PayModePicker value={payMode} onChange={setPayMode} /> : null}
 
       {travel ? (
         <Notice icon="pin" tone={travel.outsideServiceArea ? 'peach' : 'lavender'}>

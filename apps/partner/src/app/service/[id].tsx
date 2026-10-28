@@ -11,6 +11,7 @@ import { c, space } from '../../lib/theme';
 import { useCatalogMutations } from '../../hooks/useCatalogMutations';
 import { useForm } from '../../hooks/useForm';
 import { Button } from '../../components/Button';
+import { CashToggle } from '../../components/CashToggle';
 import { ChoiceChip } from '../../components/Chip';
 import { Field } from '../../components/Field';
 import { PriceInput } from '../../components/PriceInput';
@@ -42,6 +43,7 @@ function ServiceForm({ service, isNew, categoryId }: { service: Service | null; 
   const [unit, setUnit] = useState<PricingUnit | null>(service?.unit ?? null);
   const [minGuests, setMinGuests] = useState(service?.minGuests ? String(service.minGuests) : '');
   const [maxGuests, setMaxGuests] = useState(service?.maxGuests ? String(service.maxGuests) : '');
+  const [cashAllowed, setCashAllowed] = useState(service?.cashAllowed ?? false);
 
   // New services start with the unit usual for the vendor's category (per plate for cooks …).
   const defaultUnit = categories.data?.find((x) => x.id === categoryId)?.defaultUnit;
@@ -67,6 +69,7 @@ function ServiceForm({ service, isNew, categoryId }: { service: Service | null; 
       unit: unit ?? 'per_event',
       minGuests: min,
       maxGuests: max,
+      cashAllowed,
     });
   }
 
@@ -151,6 +154,7 @@ function ServiceForm({ service, isNew, categoryId }: { service: Service | null; 
           </Txt>
         ) : null}
       </View>
+      <CashToggle value={cashAllowed} onChange={setCashAllowed} />
       <Txt size="xs" color={c.textMuted}>
         {t('catalog.note')}
       </Txt>

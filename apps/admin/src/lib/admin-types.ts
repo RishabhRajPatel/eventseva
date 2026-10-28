@@ -30,6 +30,8 @@ export interface Dashboard {
   openDisputes: number;
   /** Razorpay webhooks in the last 7 days that failed or did not confirm a payment. */
   paymentProblems?: number;
+  /** Commission on cash bookings that vendors still owe (paise). */
+  openCommissionDuesPaise?: number;
   bookingsByStatus: Partial<Record<BookingStatus, number>>;
   last14Days: Array<{ day: string; bookings: number }>;
   topCategories: Array<{ slug: string; name: string; bookings: number }>;
@@ -152,6 +154,10 @@ export interface AdminBooking {
   /** Lifecycle state from the database state machine, and every move with who made it. */
   state?: string;
   history?: BookingStateMove[];
+  /** cash: paid to the vendor in person; what the vendor recorded, and the commission they owe. */
+  payMode?: 'online' | 'cash';
+  cashReceipts?: { kind: string; amountPaise: number; note: string | null; createdAt: string }[];
+  commissionDue?: { id: string; amountPaise: number; remainingPaise: number; status: string; reference: string | null } | null;
   payout: { id: string; amountPaise: number; status: PayoutStatus; releaseAfter: string; reference: string | null } | null;
 }
 
@@ -333,4 +339,18 @@ export interface PaymentEvent {
   paymentId: string | null;
   amountPaise: number | null;
   bookingId: string | null;
+}
+
+/** GET /v1/admin/commission-dues */
+export interface CommissionDue {
+  id: string;
+  bookingId: string;
+  vendorId: string;
+  businessName: string;
+  amountPaise: number;
+  remainingPaise: number;
+  status: 'open' | 'settled' | 'waived';
+  reference: string | null;
+  createdAt: string;
+  settledAt: string | null;
 }

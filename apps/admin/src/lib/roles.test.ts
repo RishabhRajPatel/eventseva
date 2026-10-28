@@ -6,12 +6,12 @@ const labels = (role: (typeof ADMIN_ROLES)[number]) => navFor(role).map((item) =
 
 test('nav is filtered by role', () => {
   assert.deepEqual(labels('super'), [
-    'Dashboard', 'Vendors', 'Photos', 'Car checks', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Payment events', 'Reports', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
+    'Dashboard', 'Vendors', 'Photos', 'Car checks', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Payment events', 'Commission dues', 'Reports', 'Complaints', 'Users', 'Coupons', 'Featured', 'Categories', 'Cities', 'Audit log', 'My security',
   ]);
   // Every admin manages their own 2FA recovery codes.
   assert.deepEqual(labels('verifier'), ['Dashboard', 'Vendors', 'Photos', 'Car checks', 'My security']);
   assert.deepEqual(labels('support'), ['Dashboard', 'Vendors', 'Bookings', 'Disputes', 'Reports', 'Complaints', 'Users', 'My security']);
-  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Payment events', 'Reports', 'Coupons', 'Featured', 'My security']);
+  assert.deepEqual(labels('finance'), ['Dashboard', 'Bookings', 'Payouts', 'Disputes', 'Refunds', 'Payment events', 'Commission dues', 'Reports', 'Coupons', 'Featured', 'My security']);
 });
 
 test('page access follows the nav, including detail pages', () => {

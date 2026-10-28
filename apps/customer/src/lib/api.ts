@@ -22,6 +22,8 @@ import {
   type CheckoutResult,
   type DriverLicence,
   type EngineBookingRequest,
+  type PayMode,
+  type CashSummary,
   type Invoice,
   type PublicEngineService,
   type ServiceBundle,
@@ -84,6 +86,7 @@ export interface BookingRequest {
   note?: string;
   /** 'HH:MM' */
   arriveBy?: string;
+  payMode?: PayMode;
 }
 
 /** POST /v1/quotes and /v1/engine-bookings: items for dates (rentals). */
@@ -95,6 +98,7 @@ export interface RentalRequest {
   endsAt: string;
   lines: { itemId: string; qty: number }[];
   note?: string;
+  payMode?: PayMode;
 }
 
 export type PayPart = 'advance' | 'balance' | 'deposit';
@@ -179,6 +183,7 @@ export const api = {
   saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) =>
     client.put<DriverLicence>('/v1/me/licence', body),
   trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),
+  cash: (bookingId: string) => client.get<CashSummary>(`/v1/bookings/${bookingId}/cash`),
   handoverCode: (bookingId: string) => client.get<{ code: string }>(`/v1/bookings/${bookingId}/handover-code`),
   ackInspection: (bookingId: string, phase: 'handover' | 'return', decision: 'agreed' | 'disputed', note?: string) =>
     client.post<TripView>(`/v1/bookings/${bookingId}/inspections/${phase}/ack`, note ? { decision, note } : { decision }),

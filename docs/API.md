@@ -99,7 +99,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `GET /v1/events` | `{items: EventSummary[]}` with `confirmedCount`, `pendingCount`, `committedPaise` |
 | `GET /v1/events/:id` | `EventSummary & {bookings: Booking[]}` |
 | `PATCH /v1/events/:id` | `{title?, venueAddress?, venueLandmark?, venueLat?, venueLng?, guestCount?, budgetPaise?}`; `null` clears. The date cannot change (400). A venue change adds a chat line for every open booking and pushes `venue_updated` to confirmed vendors |
-| `POST /v1/bookings` | `{eventId, vendorId, serviceId \| packageId, slot: 'full'\|'day'\|'night', quantity?, note?, arriveBy?: 'HH:MM'}` → `Booking`. Opens the chat with the vendor (a "Booking requested" line) |
+| `POST /v1/bookings` | `{eventId, vendorId, serviceId \| packageId, slot: 'full'\|'day'\|'night', quantity?, note?, arriveBy?: 'HH:MM', payMode?: 'online'\|'cash'}` → `Booking`. Opens the chat with the vendor (a "Booking requested" line). Cash: see "Cash bookings" |
 | `GET /v1/bookings?eventId=&status=` | `{items: Booking[]}` |
 | `GET /v1/bookings/:id` | `Booking` |
 | `POST /v1/bookings/:id/pay` | → `PaymentOrder` for the Razorpay checkout |
@@ -181,6 +181,32 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 - **Chat:** polls every 4–5 s while open. Phone numbers are masked (`••••••••••`) until a booking is confirmed
   (`phoneShared`). Show a hint: "Phone number is shared after booking".
 - **Notifications:** `data.bookingId` or `data.conversationId` tells where tapping a notification opens.
+
+## Cash bookings
+
+A vendor may accept cash for a service or package (`cashAllowed` on slot services, packages, engine services
+and the rental settings; shown to customers on the same objects). The customer then sends `payMode: 'cash'`
+with the request (`POST /v1/bookings`, `POST /v1/engine-bookings`; not in a cart: `CASH_NOT_IN_CART` 400).
+
+- **Refused:** the item does not take cash `CASH_NOT_ACCEPTED` 400; the vendor owes too much commission
+  (over `CASH_DUES_LIMIT_PAISE`, default ₹5,000, or older than 30 days) `CASH_NOT_AVAILABLE` 409.
+- **Flow:** a cash booking always waits for the vendor; their accept confirms it (`state`
+  `pending_vendor` → `confirmed`, no advance). Online payment routes answer `CASH_BOOKING` 409. Bookings carry
+  `payMode`; trip and rental views have `payMode` and `balanceDuePaise: 0`.
+- **Cash records:** `GET /v1/partner/bookings/:id/cash` · `POST …/cash {kind, amountPaise, note?}` (vendor;
+  `kind`: `advance`, `balance`, `deposit`, `deposit_return`, `refund`) and `GET /v1/bookings/:id/cash`
+  (customer) → `{payMode, amountPaise, depositPaise, receivedPaise, depositHeldPaise, receipts}`. Never more
+  than the booking (plus agreed charges), the deposit, or what was taken: `CASH_TOO_MUCH` 400 with
+  `maxPaise`; online bookings `NOT_CASH_BOOKING` 409. The customer gets a notification for each entry. A car's
+  deposit recorded in cash counts for the handover check.
+- **Cancel and deposit:** nothing is refunded online; both sides are told how much cash the vendor gives
+  back (cancellation tier, or deposit minus agreed charges).
+- **Commission:** on completion the vendor gets no payout for a cash booking and owes the commission
+  (`commission_dues`). It comes off their next scheduled online payouts (`payouts.dues_deducted_paise`).
+  `GET /v1/partner/commission-dues` → `{openPaise, limitPaise, items}`. Admin (finance):
+  `GET /v1/admin/commission-dues?status=open|settled|waived`, `POST …/:id/settle {reference}` and
+  `POST …/:id/waive {reference}` (2FA re-check; closed already: `DUE_CLOSED` 409). The dashboard has
+  `openCommissionDuesPaise`; the admin booking page has `payMode`, `cashReceipts` and `commissionDue`.
 
 ## Partner app (all `/v1/partner/*` need a partner-app login)
 

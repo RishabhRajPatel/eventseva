@@ -818,7 +818,14 @@
     "bookingChanged": "This booking just changed. Pull down to refresh and try again.",
     "codeInvalid": "That is not the customer’s handover code. Ask them to check the code on their booking.",
     "codeTooManyAttempts": "Too many wrong codes. Try again in an hour, or save without the code.",
-    "evidenceRequired": "No photos back this charge, so it can only be waived."
+    "evidenceRequired": "No photos back this charge, so it can only be waived.",
+    "cashBooking": "This booking is paid in cash to the vendor.",
+    "notCashBooking": "This booking is paid online, so there is no cash to record.",
+    "cashTooMuch": "That is more than this booking allows. Check the amount.",
+    "cashNotAccepted": "This is not offered for cash. Choose online payment.",
+    "cashNotAvailable": "Cash is not available for this vendor right now. Choose online payment.",
+    "cashNotInCart": "The cart is paid online. Book this item on its own to pay in cash.",
+    "dueClosed": "This commission is already settled."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1487,5 +1494,31 @@
   "handoverCode": {
     "label": "Customer’s handover code",
     "hint": "Ask the customer for the 6-digit code in their app. With it, this record counts as agreed by them."
+  },
+  "cash": {
+    "allowLabel": "Cash also accepted",
+    "allowHint": "Customers may choose to pay you the whole booking in cash. EventSeva’s commission on it is taken from your next online payouts.",
+    "title": "Cash payment",
+    "vendorNote": "The customer pays you {{amount}} in person. EventSeva’s commission of {{commission}} is taken from your next online payout.",
+    "received": "Cash received",
+    "depositHeld": "Deposit with you",
+    "record": "Record cash",
+    "amount": "Amount",
+    "note": "Note",
+    "save": "Save",
+    "saved": "Saved. The customer is told.",
+    "requestTitle": "Customer will pay in cash",
+    "requestBody": "If you accept, the booking is confirmed straight away. Collect the money in person and record it here.",
+    "cancelBody": "The customer is told how much cash to expect back by the cancellation rules.",
+    "duesTitle": "{{amount}} commission due on cash bookings",
+    "duesBody": "It is taken from your next online payouts. Above {{limit}}, customers cannot choose cash for your bookings.",
+    "duesOver": "Customers cannot choose cash for your bookings until this is below {{limit}}. It comes off your next online payout, or pay EventSeva and support will mark it.",
+    "kind": {
+      "advance": "Advance",
+      "balance": "Payment",
+      "deposit": "Deposit",
+      "deposit_return": "Deposit returned",
+      "refund": "Refund given"
+    }
   }
 }

@@ -11,6 +11,7 @@ import { useCatalogMutations } from '../../hooks/useCatalogMutations';
 import { useForm } from '../../hooks/useForm';
 import { toast } from '../../lib/toast';
 import { Button } from '../../components/Button';
+import { CashToggle } from '../../components/CashToggle';
 import { ChoiceChip } from '../../components/Chip';
 import { Field } from '../../components/Field';
 import { PriceInput } from '../../components/PriceInput';
@@ -35,6 +36,7 @@ function PackageForm({ pkg, isNew }: { pkg: Package | null; isNew: boolean }) {
   const [items, setItems] = useState<string[]>(pkg?.items ?? []);
   const [item, setItem] = useState('');
   const [price, setPrice] = useState(pkg ? paiseToRupeesInput(pkg.pricePaise) : '');
+  const [cashAllowed, setCashAllowed] = useState(pkg?.cashAllowed ?? false);
 
   const priceCheck = checkPrice(price);
   const errors = {
@@ -71,7 +73,7 @@ function PackageForm({ pkg, isNew }: { pkg: Package | null; isNew: boolean }) {
 
   function submit() {
     if (save.isPending || !form.check(errors) || !priceCheck.ok) return;
-    save.mutate({ title: title.trim(), items, pricePaise: priceCheck.paise });
+    save.mutate({ title: title.trim(), items, pricePaise: priceCheck.paise, cashAllowed });
   }
 
   if (!isNew && !pkg) {
@@ -138,6 +140,7 @@ function PackageForm({ pkg, isNew }: { pkg: Package | null; isNew: boolean }) {
       <View {...form.at('price')}>
         <PriceInput ref={form.ref('price')} testID="package-price" label={t('package.price')} value={price} onChange={setPrice} onBlur={form.blur('price')} showError={form.show('price')} />
       </View>
+      <CashToggle value={cashAllowed} onChange={setCashAllowed} />
       <Txt size="xs" color={c.textMuted}>
         {t('catalog.note')}
       </Txt>

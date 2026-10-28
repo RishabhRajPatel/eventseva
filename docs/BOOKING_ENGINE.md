@@ -135,7 +135,7 @@ database works out the state and refuses any move that is not in `booking_state_
 | State | When | Can move to |
 |---|---|---|
 | `draft` | Reserved (the cart lives on the phone until checkout) | pending_vendor, awaiting_payment, cancelled, expired |
-| `pending_vendor` | `requested`: waiting for the vendor | awaiting_payment, cancelled, expired |
+| `pending_vendor` | `requested`: waiting for the vendor | awaiting_payment, confirmed (cash booking), cancelled, expired |
 | `awaiting_payment` | `accepted`: waiting for the advance | confirmed, cancelled, expired |
 | `confirmed` | Advance paid, nothing handed over yet | in_progress, return_pending, completed, cancelled, disputed |
 | `in_progress` | Dispatched, delivered, or the car is out | return_pending, completed, cancelled, disputed |
@@ -174,6 +174,16 @@ Payment, refund and payout statuses are separate columns on their own tables and
 - **Payouts:** created at completion and paid by bank transfer outside the app; finance records the UTR
   (`mark-paid`), can hold a payout, and can record it again if a transfer failed. There is no automatic
   payout API yet, so there is nothing to retry automatically.
+
+## Cash bookings
+
+Vendors choose per service or package whether cash is accepted. A cash booking is paid to the vendor in
+person: the vendor's accept confirms it, no money passes through Razorpay, and the vendor records what
+they take or give back (`cash_receipts`; the customer is told each time). Cancellations and deposits are
+settled in cash, with both sides told the amount. On completion the commission becomes a
+`commission_dues` row: the booking sweep takes it off the vendor's next scheduled online payouts, or finance
+records the vendor's direct payment or waives it. Too much open commission (`CASH_DUES_LIMIT_PAISE`) or any
+older than 30 days turns cash off for that vendor until it is paid.
 
 ## Handover code
 

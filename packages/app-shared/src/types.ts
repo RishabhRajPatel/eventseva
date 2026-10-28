@@ -136,6 +136,8 @@ export interface Service {
   minGuests: number | null;
   maxGuests: number | null;
   isActive: boolean;
+  /** The vendor accepts cash: customers may pay the whole booking in person. */
+  cashAllowed?: boolean;
 }
 
 export interface Package {
@@ -144,6 +146,7 @@ export interface Package {
   items: string[];
   pricePaise: number;
   isActive: boolean;
+  cashAllowed?: boolean;
 }
 
 export interface VendorDetail {
@@ -263,6 +266,29 @@ export type BookingType = 'slot' | 'time_window' | 'rental' | 'per_person' | 'st
  * pending_confirmation → awaiting_payment → confirmed → preparing → dispatched → delivered →
  * return_pending → returned_verified → completed.
  */
+export type PayMode = 'online' | 'cash';
+
+export type CashKind = 'advance' | 'balance' | 'deposit' | 'deposit_return' | 'refund';
+
+/** GET /v1/bookings/:id/cash and /v1/partner/bookings/:id/cash */
+export interface CashSummary {
+  payMode: PayMode;
+  amountPaise: number;
+  depositPaise: number;
+  /** Advance and balance taken, minus refunds given back. */
+  receivedPaise: number;
+  /** Deposit taken minus deposit given back. */
+  depositHeldPaise: number;
+  receipts: { id: string; kind: CashKind; amountPaise: number; note: string | null; createdAt: string }[];
+}
+
+/** GET /v1/partner/commission-dues: EventSeva's commission on the vendor's cash bookings. */
+export interface CommissionDues {
+  openPaise: number;
+  limitPaise: number;
+  items: { id: string; bookingId: string; amountPaise: number; remainingPaise: number; status: 'open' | 'settled' | 'waived'; reference: string | null; createdAt: string; settledAt: string | null }[];
+}
+
 export type BookingState =
   | 'draft'
   | 'pending_vendor'
@@ -299,6 +325,8 @@ export interface Booking {
   stage: BookingStage;
   /** Lifecycle state kept by the database state machine (see docs/BOOKING_ENGINE.md). */
   state?: BookingState;
+  /** online (Razorpay), or cash: the whole booking is paid to the vendor in person. */
+  payMode?: PayMode;
   /** Engine bookings: exact start and end (ISO); null for slot bookings. */
   startsAt: string | null;
   endsAt: string | null;
@@ -682,12 +710,13 @@ export interface RentalSettings {
   bufferAfterMin: number;
   approval: 'vendor' | 'auto';
   instructions: string | null;
+  cashAllowed?: boolean;
 }
 
 /** GET /v1/vendors/:id/rentals: what a customer can rent. */
 export interface RentalCatalogue {
   serviceId: string | null;
-  settings: Pick<RentalSettings, 'deliveryFeePaise' | 'travelFreeKm' | 'travelPerKmPaise' | 'minOrderPaise' | 'taxPercent' | 'leadTimeHours' | 'approval' | 'instructions'>;
+  settings: Pick<RentalSettings, 'deliveryFeePaise' | 'travelFreeKm' | 'travelPerKmPaise' | 'minOrderPaise' | 'taxPercent' | 'leadTimeHours' | 'approval' | 'instructions' | 'cashAllowed'>;
   categories: { id: string; nameEn: string; nameHi: string; itemCount: number }[];
   items: Array<Omit<InventoryItem, 'repairQty' | 'totalQty' | 'availableNow' | 'openBookings'> & { stock: number; available: number | null }>;
 }
@@ -851,6 +880,7 @@ export interface EngineService {
   minGuests: number | null;
   maxGuests: number | null;
   isActive: boolean;
+  cashAllowed?: boolean;
 }
 
 export interface VendorResource {
@@ -896,6 +926,7 @@ export interface PublicEngineService {
   attributes: Record<string, unknown>;
   minGuests: number | null;
   maxGuests: number | null;
+  cashAllowed?: boolean;
   rules: {
     minDurationMin: number | null;
     maxDurationMin: number | null;
@@ -935,6 +966,8 @@ export interface EngineBookingRequest {
   route?: { pickup: Place; destination: Place; stops?: Place[] };
   mode?: 'with_driver' | 'self_drive';
   note?: string;
+  /** cash: pay the whole booking to the vendor in person (only where the vendor accepts cash). */
+  payMode?: PayMode;
 }
 
 export interface TripInspection {
