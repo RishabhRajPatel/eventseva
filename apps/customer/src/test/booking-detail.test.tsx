@@ -115,3 +115,21 @@ test('the refund estimate comes from the server when it answers (its rules decid
   expect(await screen.findByText(`You will get about ${rupees(1_687_500)} back (50% of the advance).`)).toBeOnTheScreen();
   expect(mockedApi.cancelPreview).toHaveBeenCalledWith('b1');
 });
+
+test('an engine booking shows the plan booked and the answers, with choice labels', async () => {
+  mockedApi.booking.mockResolvedValue(booking({
+    status: 'confirmed', day: inDays(20), bookingType: 'time_window',
+    plan: { id: 'full_night', name: { en: 'Full night', hi: 'पूरी रात' } },
+    questions: [
+      { key: 'occasion', label: { en: 'Occasion', hi: 'मौक़ा' }, options: [{ value: 'sangeet', label: { en: 'Sangeet', hi: 'संगीत' } }] },
+      { key: 'generator', label: { en: 'Generator needed?', hi: 'जनरेटर?' } },
+    ],
+    answers: { occasion: 'sangeet', generator: true, mode: 'with_driver' },
+  }));
+  await open();
+  expect(await screen.findByText('Your answers')).toBeOnTheScreen();
+  expect(screen.getByText('Full night')).toBeOnTheScreen();
+  expect(screen.getByText('Sangeet')).toBeOnTheScreen();
+  expect(screen.getByText('Generator needed?')).toBeOnTheScreen();
+  expect(screen.queryByText('with_driver')).not.toBeOnTheScreen();
+});

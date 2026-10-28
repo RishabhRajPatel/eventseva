@@ -44,9 +44,11 @@ Booking types are the only code per kind of service. Everything else is configur
 | Vendor, per service | Price (model, rate, included hours / km, extras, GST) | Quote lines from the type's handler |
 | | **Rate plans** (`plans`): 2–6 ways to book, each with its own price and rule overrides (DJ "per hour" / "full night"; car "local" / "outstation") | The customer picks one (`planId`); its price and rules replace the service's for that booking |
 | | **Price rules** (`pricing.adjustments`): percent or amount by weekday, date range and event type | Extra lines on the service's own price, in order, never below zero |
-| | **Own questions** (`questions`): text, number, yes/no or choices (choices may add a price) | Asked after the category's; keys may not clash |
+| | **Own questions** (`questions`): text, long text, number, yes/no, choices (may add a price), date, time; help text; shown only after a given earlier answer (`showIf`) | Asked after the category's; keys may not clash; hidden ones are neither required nor kept |
 | | **Event types** (`eventTypes`) | Others get `EVENT_TYPE_NOT_SERVED`; `?eventType=` hides the service from the listing |
-| | **Availability** (rules): working hours, `workingDays`, `blockedDates`, `maxAdvanceDays`, `maxPerDay`, notice, durations, quantities, buffers | Checked on every quote and request; `maxPerDay` under a lock per service and day |
+| | **Availability** (rules): working hours, `workingDays`, `blockedDates`, `maxAdvanceDays`, `maxPerDay`, notice, durations, quantities, buffers | Checked on every quote, request and reschedule; `maxPerDay` under a lock per service and day. The customer app greys out days and start times from the day view (`…/engine-services/:id/day`) |
+| Vendor, rentals | Delivery, minimum order, notice, set-up / pick-up / cleaning time, approval, cash, price rules, working days, blocked dates, how far ahead, bookings per day | The rent lines of each rental |
+| Admin, per service | Take a service off the app with a reason, or put it back | New bookings refused; open ones go ahead; audited and in the history |
 | | Approval (instant or vendor), deposit, cash accepted, extras (add-ons), bundles | As before |
 
 **Snapshots.** A booking keeps what was agreed: the price (the plan's, with its rules), the rules, the

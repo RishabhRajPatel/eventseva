@@ -9,6 +9,7 @@ import {
   type BookingTypeKey,
   type CancellationPolicy,
   type CategoryTemplate,
+  FIELD_TYPES,
   type FieldDef,
   type PriceAdjustment,
   type Pricing,
@@ -59,11 +60,24 @@ const isDay = (v: unknown) => typeof v === 'string' && DAY.test(v) && !Number.is
 const isWeekdays = (v: unknown) => Array.isArray(v) && v.length > 0 && v.length <= 7 && v.every((d) => isInt(d, 0, 6)) && new Set(v).size === v.length;
 const bad = (message: string, field?: string) => new AppError('VALIDATION', message, HttpStatus.BAD_REQUEST, field ? { field } : undefined);
 
-function checkBilingual(v: unknown, where: string) {
+function checkBilingual(v: unknown, where: string, max = 80) {
   const b = v as { en?: unknown; hi?: unknown };
-  if (!b || typeof b.en !== 'string' || typeof b.hi !== 'string' || !b.en.trim() || !b.hi.trim() || b.en.length > 80 || b.hi.length > 80) {
-    throw bad(`${where}: label needs English and Hindi text (up to 80 characters).`, where);
+  if (!b || typeof b.en !== 'string' || typeof b.hi !== 'string' || !b.en.trim() || !b.hi.trim() || b.en.length > max || b.hi.length > max || UNSAFE.test(b.en) || UNSAFE.test(b.hi)) {
+    throw bad(`${where}: label needs English and Hindi text (up to ${max} characters, no < > or control characters).`, where);
   }
+}
+
+/** Labels and answers are plain text: no markup, no control characters. Apps never render HTML. */
+const UNSAFE = /[<>\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** Whether a question is asked, given the answers before it. */
+export function isShown(f: FieldDef, answers: Record<string, unknown>): boolean {
+  if (!f.showIf) return true;
+  const given = answers[f.showIf.key];
+  const list = Array.isArray(given) ? given : [given];
+  return list.some((v) => f.showIf!.values.includes(v as string | boolean));
 }
 
 export function checkFields(fields: unknown, where: string): FieldDef[] {
@@ -75,7 +89,17 @@ export function checkFields(fields: unknown, where: string): FieldDef[] {
     if (keys.has(f.key)) throw bad(`${where}: "${f.key}" appears twice.`, where);
     keys.add(f.key);
     checkBilingual(f.label, `${where}.${f.key}`);
-    if (!['text', 'number', 'boolean', 'select', 'multiselect'].includes(f.type)) throw bad(`${where}.${f.key}: unknown type.`, where);
+    if (!(FIELD_TYPES as readonly string[]).includes(f.type)) throw bad(`${where}.${f.key}: unknown type.`, where);
+    if (f.help !== undefined) checkBilingual(f.help, `${where}.${f.key}.help`, 200);
+    if (f.maxLength !== undefined && !isInt(f.maxLength, 1, f.type === 'longtext' ? 4000 : 2000)) throw bad(`${where}.${f.key}: maxLength too long.`, where);
+    if (f.showIf !== undefined) {
+      // Only an earlier question can decide, so the form reads top to bottom and never loops.
+      const s = f.showIf;
+      if (!s || typeof s.key !== 'string' || !keys.has(s.key) || s.key === f.key || !Array.isArray(s.values) || !s.values.length || s.values.length > 20
+        || s.values.some((v) => typeof v !== 'string' && typeof v !== 'boolean')) {
+        throw bad(`${where}.${f.key}.showIf: an earlier question and the answers that show this one.`, where);
+      }
+    }
     if ((f.type === 'select' || f.type === 'multiselect') && (!Array.isArray(f.options) || !f.options.length || f.options.length > 50)) {
       throw bad(`${where}.${f.key}: choices are needed.`, where);
     }
@@ -199,6 +223,8 @@ export function checkValues(fields: FieldDef[], values: Record<string, unknown> 
   for (const k of Object.keys(v)) if (!known.has(k)) throw bad(`${where}.${k} is not asked for this service.`, `${where}.${k}`);
   const out: Record<string, unknown> = {};
   for (const f of fields) {
+    // A question hidden by an earlier answer is not asked: its answer, if any, is dropped.
+    if (!isShown(f, out)) continue;
     const val = v[f.key];
     if (val === undefined || val === null || val === '') {
       if (f.required) throw new AppError('ANSWER_REQUIRED', `${f.label.en} is required.`, HttpStatus.BAD_REQUEST, { field: f.key });
@@ -207,8 +233,17 @@ export function checkValues(fields: FieldDef[], values: Record<string, unknown> 
     const fail = () => new AppError('ANSWER_INVALID', `${f.label.en} is not valid.`, HttpStatus.BAD_REQUEST, { field: f.key });
     switch (f.type) {
       case 'text':
-        if (typeof val !== 'string' || val.trim().length > (f.maxLength ?? 500)) throw fail();
+      case 'longtext':
+        if (typeof val !== 'string' || val.trim().length > (f.maxLength ?? (f.type === 'longtext' ? 2000 : 500)) || UNSAFE.test(val.replace(/[\n\r\t]/g, ' '))) throw fail();
         out[f.key] = val.trim();
+        break;
+      case 'date':
+        if (typeof val !== 'string' || !DAY_RE.test(val) || Number.isNaN(Date.parse(`${val}T00:00:00Z`)) || !new Date(`${val}T00:00:00Z`).toISOString().startsWith(val)) throw fail();
+        out[f.key] = val;
+        break;
+      case 'time':
+        if (typeof val !== 'string' || !TIME_RE.test(val)) throw fail();
+        out[f.key] = val;
         break;
       case 'number':
         if (typeof val !== 'number' || !Number.isFinite(val) || (f.min !== undefined && val < f.min) || (f.max !== undefined && val > f.max)) throw fail();

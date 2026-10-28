@@ -314,9 +314,12 @@ What a vendor sells, priced per unit (per event, per plate, per day …). Soft-d
 | `event_types` | text[] | yes | `'{}'::text[]` | Event types the service is offered for; empty means every event |
 | `plans` | jsonb | yes | `'[]'::jsonb` | Rate plans: ways to book the service, each with its own pricing (and rule overrides); empty means the service pricing |
 | `config_version` | integer | yes | `1` | Goes up by one with every change to pricing, rules, questions, plans or event types |
+| `admin_disabled_at` | timestamp with time zone |  |  | Set when an admin took the service off the app; the vendor cannot switch it back on |
+| `admin_disabled_reason` | text |  |  |  |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((admin_disabled_reason IS NULL) OR ((length(admin_disabled_reason) >= 3) AND (length(admin_disabled_reason) <= 500))))`
 - Check: `CHECK ((config_version >= 1))`
 - Check: `CHECK ((jsonb_typeof(plans) = 'array'::text))`
 - Check: `CHECK ((jsonb_typeof(questions) = 'array'::text))`

@@ -94,10 +94,11 @@ export const schemaVersion = (fields: FieldDef[]) => createHash('sha256').update
 
 /**
  * Price rule lines for a booking starting at `starts` for an event of `eventType`. Percent rules work on
- * the service's own price lines (before add-ons, travel, discounts and tax). Rules apply in order.
+ * the service's own price lines (the base price and its extras: not delivery or other fees, add-ons,
+ * travel, discounts or tax). Rules apply in order.
  */
 export function adjustmentLines(pricing: Pricing, serviceLines: QuoteLine[], starts: Date, eventType: string): QuoteLine[] {
-  const base = serviceLines.reduce((s, l) => s + l.amountPaise, 0);
+  const base = serviceLines.filter((l) => l.kind === 'base' || l.kind === 'extra').reduce((s, l) => s + l.amountPaise, 0);
   const day = istDay(starts);
   const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
   const out: QuoteLine[] = [];

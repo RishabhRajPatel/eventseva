@@ -182,3 +182,26 @@ Brief test list:
 | Cart rollback | `dynamic-engine.spec` "a cart line with a wrong plan rolls the whole checkout back" |
 | Duplicate webhooks, cancel, reschedule, refund | Existing `booking-lifecycle.spec`, `checkout-pay.spec`, `bookings.spec`, `engine-types.spec` |
 | Unauthorised access | History routes in `dynamic-engine.spec`; `url-security.spec` |
+
+## 10. Third brief (same spec, re-checked against the code)
+
+Each line of the spec was checked against what was built. Gaps found and closed:
+
+| Spec | Before | Now |
+|---|---|---|
+| Question types: long text, date / time, display order, conditional visibility | text, number, yes/no, choices | + `longtext`, `date`, `time`, `help`, `showIf` (earlier question only); order is the list order; hidden answers dropped; labels and text are plain text (`<`, `>` and control characters refused) |
+| Customer gets only valid options for a date | Server refused bad times after a quote | Day view `GET …/engine-services/:id/day`; the app greys out closed days and start times (notice, working hours, busy times including set-up and clean-up) |
+| Event types hide services | Server refused | The booking form lists only services offered for the event |
+| Rentals configurable like services | Delivery, notice, timings | + price rules (on rent only), working days, blocked dates, advance window, per-day limit, change history |
+| Booking limits per day on reschedule | Not checked | Checked; the booking itself is not counted twice |
+| Admin disables unsafe services | No control | `PATCH /v1/admin/services/:id/status` with reason; audit log, history, vendor notified; vendor cannot edit until put back |
+| Admin reviews configurations | Only slot services on the vendor page | "Booking settings" section: price, ways to book, events, questions, version, status, changes |
+| Booking keeps what was answered | Answers kept; labels from today's category | Labels from the booking's own question snapshot; plan shown in both apps |
+
+Not built, and why:
+- **File or image answers.** These need a signed upload tied to a booking that does not exist yet, plus
+  moderation. Customers can share files in chat after booking.
+- **Breaks inside a working day.** Vendors can block whole dates. A break needs a time-range rule, which can
+  be added as a new rule key (see "Adding a setting later" in BOOKING_ENGINE.md).
+- **Several simultaneous bookings of one service.** Capacity is modelled per resource: several cars or
+  crews, staff pools, catering capacity per day. There is no separate per-service count.

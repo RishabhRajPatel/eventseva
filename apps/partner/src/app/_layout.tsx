@@ -140,6 +140,7 @@ function AppStack() {
         <Stack.Screen name="rental-settings" />
         <Stack.Screen name="engine/index" />
         <Stack.Screen name="engine/service/[id]" />
+        <Stack.Screen name="engine/history/[id]" />
         <Stack.Screen name="engine/resource/[id]" />
         <Stack.Screen name="engine/addon/[id]" />
         <Stack.Screen name="engine/bundle/[id]" />

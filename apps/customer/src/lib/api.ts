@@ -30,6 +30,7 @@ import {
   type CashSummary,
   type Invoice,
   type PublicEngineService,
+  type ServiceDay,
   type ServiceBundle,
   type TripView,
   type UploadSignature,
@@ -175,6 +176,9 @@ export const api = {
   // ---- services booked by time / quantity (DJ, catering, cars, staff …) ----
   engineServices: (vendorId: string) => client.get<{ items: PublicEngineService[] }>(`/v1/vendors/${vendorId}/engine-services`, undefined, { auth: false }),
   bundles: (vendorId: string) => client.get<{ items: ServiceBundle[] }>(`/v1/vendors/${vendorId}/bundles`, undefined, { auth: false }),
+  /** One day of a service: offered or not, the notice, and when the vendor is already taken. */
+  serviceDay: (vendorId: string, serviceId: string, date: string, planId?: string) =>
+    client.get<ServiceDay>(`/v1/vendors/${vendorId}/engine-services/${serviceId}/day`, { date, ...(planId ? { planId } : {}) }, { auth: false }),
   engineQuote: (body: EngineBookingRequest) => client.post<Quote>('/v1/quotes', body),
   /** The same key on a retry returns the booking already made, never a second one. */
   requestEngine: (body: EngineBookingRequest, idempotencyKey: string) =>

@@ -12,7 +12,7 @@ import { Fact, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { api } from '@/lib/api';
 import type { AdminVendor } from '@/lib/admin-types';
-import type { ServiceConfigChange } from '@eventseva/app-shared';
+import type { EngineService, ServiceConfigChange } from '@eventseva/app-shared';
 import { historyLabel, humanize, MEDIA_STATUS, UNIT_LABELS, VENDOR_STATUS, vendorDecisions, type VendorDecision } from '@/lib/labels';
 import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
@@ -120,6 +120,7 @@ function VendorDetail({
           {can(role, 'payout.manage') ? <VendorBank vendorId={v.id} businessName={v.businessName} /> : null}
 
           <Services vendor={v} />
+          {can(role, 'service.history') ? <ConfigurableServices vendorId={v.id} /> : null}
 
           <section className="box stack" aria-labelledby="media-title">
             <div className="section-head">
@@ -184,10 +185,92 @@ function ServiceHistory({ serviceId }: { serviceId: string }) {
   );
 }
 
+type ConfiguredService = EngineService & { disabledAt: string | null };
+
+/**
+ * Services booked by time or quantity, and rentals: how the vendor set them up (price, ways to book,
+ * events, questions, rules), what they changed, and taking one off the app when it is unsafe or misleading.
+ */
+function ConfigurableServices({ vendorId }: { vendorId: string }) {
+  const state = useApiQuery<{ items: ConfiguredService[] }>('/v1/admin/services', { vendorId });
+  const [history, setHistory] = useState<string | null>(null);
+  const [acting, setActing] = useState<ConfiguredService | null>(null);
+  return (
+    <section className="box stack" aria-labelledby="config-title">
+      <h2 id="config-title">Booking settings</h2>
+      <QueryView state={state} loadingLabel="Loading services" isEmpty={(d) => d.items.length === 0} empty={<p className="muted">No services booked by time, quantity or rental.</p>}>
+        {(d) => (
+          <div className="table-wrap">
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th scope="col">Service</th>
+                  <th scope="col">Price</th>
+                  <th scope="col">Ways to book</th>
+                  <th scope="col">Events</th>
+                  <th scope="col">Questions</th>
+                  <th scope="col">Version</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.items.map((s) => (
+                  <tr key={s.id}>
+                    <td>
+                      <span className="cell-main">{s.title}</span>
+                      <span className="cell-sub">{humanize(s.bookingType)}</span>
+                    </td>
+                    <td className="nowrap">
+                      {s.pricing.model === 'quote' ? 'On request' : `${rupees(s.pricing.ratePaise)} ${humanize(s.pricing.model)}`}
+                      {s.pricing.adjustments?.length ? <span className="cell-sub">{s.pricing.adjustments.length} price rule(s)</span> : null}
+                    </td>
+                    <td>{s.plans?.length ? s.plans.map((p) => `${p.name.en} (${p.pricing.model === 'quote' ? 'quote' : rupees(p.pricing.ratePaise)})`).join(', ') : '—'}</td>
+                    <td>{s.eventTypes?.length ? s.eventTypes.map(humanize).join(', ') : 'All'}</td>
+                    <td>{s.questions?.length ? s.questions.map((q) => q.label.en).join(', ') : '—'}</td>
+                    <td className="num">{s.configVersion ?? 1}</td>
+                    <td>{s.disabledAt ? <span title={s.disabledReason ?? ''}>Off: {s.disabledReason}</span> : 'On'}</td>
+                    <td className="btn-row">
+                      <button type="button" className="btn btn-small" aria-expanded={history === s.id} onClick={() => setHistory(history === s.id ? null : s.id)}>
+                        {history === s.id ? 'Hide changes' : 'Changes'}
+                      </button>
+                      <button type="button" className={`btn btn-small ${s.disabledAt ? '' : 'btn-danger-outline'}`} onClick={() => setActing(s)}>
+                        {s.disabledAt ? 'Put back' : 'Take off'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </QueryView>
+      {history ? <ServiceHistory serviceId={history} /> : null}
+      {acting ? (
+        <ActionDialog
+          title={acting.disabledAt ? `Put “${acting.title}” back on the app?` : `Take “${acting.title}” off the app?`}
+          description={
+            <p>
+              {acting.disabledAt
+                ? 'Customers can book it again; the vendor can edit it again.'
+                : 'Customers stop seeing it and new bookings are refused. Open bookings go ahead. The vendor sees the reason and cannot switch it back on.'}
+            </p>
+          }
+          confirmLabel={acting.disabledAt ? 'Put back' : 'Take off'}
+          busyLabel="Saving…"
+          tone={acting.disabledAt ? 'primary' : 'danger'}
+          input={acting.disabledAt ? undefined : { label: 'Reason (shown to the vendor)', limits: REASON_LIMITS.vendor, multiline: true }}
+          onConfirm={(reason) => api.patch(`/v1/admin/services/${acting.id}/status`, acting.disabledAt ? { active: true } : { active: false, reason })}
+          successMessage={() => (acting.disabledAt ? 'Service is back on the app.' : 'Service taken off the app.')}
+          onClose={() => setActing(null)}
+          onDone={state.reload}
+        />
+      ) : null}
+    </section>
+  );
+}
+
 function Services({ vendor: v }: { vendor: AdminVendor }) {
-  const { session } = useShell();
-  const [open, setOpen] = useState<string | null>(null);
-  const showHistory = can(session.admin.role, 'service.history');
   return (
     <section className="box stack" aria-labelledby="services-title">
       <h2 id="services-title">Services and packages</h2>
@@ -203,7 +286,6 @@ function Services({ vendor: v }: { vendor: AdminVendor }) {
                 </th>
                 <th scope="col">Guests</th>
                 <th scope="col">Active</th>
-                {showHistory ? <th scope="col">Changes</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -218,20 +300,12 @@ function Services({ vendor: v }: { vendor: AdminVendor }) {
                   </td>
                   <td className="nowrap">{s.minGuests || s.maxGuests ? `${s.minGuests ?? '—'} to ${s.maxGuests ?? '—'}` : '—'}</td>
                   <td>{s.isActive ? 'Yes' : 'No'}</td>
-                  {showHistory ? (
-                    <td>
-                      <button type="button" className="btn btn-small" aria-expanded={open === s.id} onClick={() => setOpen(open === s.id ? null : s.id)}>
-                        {open === s.id ? 'Hide' : 'Show'}
-                      </button>
-                    </td>
-                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : null}
-      {open ? <ServiceHistory serviceId={open} /> : null}
       {v.packages.length ? (
         <div className="table-wrap">
           <table className="tbl">

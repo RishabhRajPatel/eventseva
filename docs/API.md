@@ -420,11 +420,28 @@ approving needs the RC and insurance, or the licence: `DOCUMENTS_MISSING` 409). 
 |---|---|
 | `plans` | `[]` or 2–6 `{id, name: {en, hi}, description?, pricing, rules?}`. `id`: lowercase letters, digits, `_`; keep it when editing (bookings refer to it). `pricing` as the service's, with the category's models; `rules`: vendor rule keys only |
 | `pricing.adjustments` | Up to 20 `{label: {en, hi}, days?: [0–6], from?, until? (YYYY-MM-DD), eventTypes?, percent? (-90…300), amountPaise?}`; at least one of percent / amount. Applied in order to the service's own price lines |
-| `questions` | Up to 15 fields in the category's format (`key`, `label`, `type`, `required?`, `options?` with `pricePaise?`); keys may not repeat the category's |
+| `questions` | Up to 15 fields in the category's format (`key`, `label`, `type`, `required?`, `options?` with `pricePaise?`, `help?`, `showIf?`); keys may not repeat the category's. `type`: `text`, `longtext`, `number`, `boolean`, `select`, `multiselect`, `date` (YYYY-MM-DD), `time` (HH:MM). `showIf: {key, values}` asks it only when an earlier question's answer is one of `values`; a hidden question's answer is dropped. Labels and text answers are plain text: `<`, `>` and control characters are refused |
 | `eventTypes` | Event types served; `[]` = every event |
 | `rules.workingDays` · `blockedDates` · `maxAdvanceDays` · `maxPerDay` | India weekdays 0–6 · up to 366 dates · 1–730 · 1–1000 |
 
-The service answer adds `configVersion`. `GET /v1/partner/engine-services/:id/history` (own services) and
+The service answer adds `configVersion` and `disabledReason` (set when EventSeva took it off the app: the
+vendor's `PATCH` then answers `SERVICE_DISABLED` 409 with `reason`).
+
+`GET /v1/vendors/:id/engine-services/:serviceId/day?date=YYYY-MM-DD&planId=` (no login) → `{date, open,
+reason: past|too_far|blocked|closed|full|null, workingHours, earliestStart, setupMin, afterMin, busy: [{from,
+until}], maxPerDay, booked}`: what the time picker greys out. `busy` are the times the car, hall or team is
+taken (set-up and clean-up included), never who booked. The quote and the booking still check everything.
+
+Rentals (`PUT /v1/partner/rental-settings`) also take `adjustments`, `workingDays`, `blockedDates`,
+`maxAdvanceDays` and `maxPerDay`; price rules apply to the rent of the items, not to delivery. Their changes
+are kept in the same history.
+
+Admin (verifier, support): `GET /v1/admin/services?vendorId=` (the vendor's configurable and rental services,
+with every setting and `disabledAt`), `PATCH /v1/admin/services/:id/status` `{active: false, reason}` takes one off
+the app (open bookings go ahead, the vendor is told, audited) and `{active: true}` puts it back.
+`SERVICE_NOT_DISABLED` 409 (only an admin-disabled service can be put back), `SERVICE_NOT_ACTIVE` 409.
+
+A reschedule onto another day counts against that day's `maxPerDay` (`DAY_FULL` 409). `GET /v1/partner/engine-services/:id/history` (own services) and
 `GET /v1/admin/services/:id/history` (verifier, support) → `{items: [{version, changes: {pricing|rules|questions|plans|eventTypes: {before, after}}, createdAt}]}`.
 A booking's snapshot keeps `plan`, `eventType` and `questions: {version, fields}` as booked.
 

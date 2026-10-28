@@ -13,10 +13,17 @@ export type PricingModel = (typeof PRICING_MODELS)[number];
 export type Bilingual = { en: string; hi: string };
 
 /** A field a vendor fills (attributes) or a customer answers (questions). */
+export const FIELD_TYPES = ['text', 'longtext', 'number', 'boolean', 'select', 'multiselect', 'date', 'time'] as const;
+
 export interface FieldDef {
   key: string;
   label: Bilingual;
-  type: 'text' | 'number' | 'boolean' | 'select' | 'multiselect';
+  /** text: one line; longtext: a paragraph; date: YYYY-MM-DD; time: HH:MM (India time). */
+  type: (typeof FIELD_TYPES)[number];
+  /** A line under the question. */
+  help?: Bilingual;
+  /** Asked only when an earlier answer is one of `values` (any of them, for a multiple choice). */
+  showIf?: { key: string; values: (string | boolean)[] };
   required?: boolean;
   options?: { value: string; label: Bilingual; /** per-person or flat extra, for priced choices (menus) */ pricePaise?: number; perPerson?: boolean }[];
   min?: number;

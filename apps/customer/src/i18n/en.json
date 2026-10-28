@@ -925,8 +925,25 @@
       "countRange": "{{what}}: between {{min}} and {{max}}.",
       "route": "Add the pickup and drop places, and find them on the map.",
       "answers": "Please answer the vendor's questions.",
-      "plan": "Choose how you want to book."
+      "plan": "Choose how you want to book.",
+      "event": "This vendor does not offer this for your kind of event. Pick another service or event."
     },
+    "datePlaceholder": "YYYY-MM-DD, e.g. 2026-12-01",
+    "timePlaceholder": "HH:MM, e.g. 17:30",
+    "dayClosed": {
+      "past": "This day has passed.",
+      "too_far": "The vendor does not take bookings this far ahead.",
+      "blocked": "The vendor is not taking bookings on this day.",
+      "closed": "The vendor does not work on this day of the week.",
+      "full": "The vendor is fully booked on this day."
+    },
+    "timeProblem": {
+      "notice": "Too soon: the vendor needs more notice. Pick a later time.",
+      "hours": "Outside the vendor's working hours.",
+      "busy": "The vendor is already booked around this time.",
+      "closed": "Not available on this day."
+    },
+    "yourAnswers": "Your answers",
     "plan": "How do you want to book?",
     "useHere": "Use my location"
   },

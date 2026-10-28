@@ -24,8 +24,11 @@ import {
   START_TIMES,
   toRequest,
   withPlan,
+  startProblem,
+  visibleQuestions,
   type EngineForm,
 } from '../../../lib/engine';
+import { istIso } from '../../../lib/rental';
 import { errorText } from '../../../lib/errors';
 import { vendorQuery } from '../../../lib/queries';
 import { keys } from '../../../lib/queryClient';
@@ -92,7 +95,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   vendorId: string;
   vendorName: string;
   services: PublicEngineService[];
-  events: { id: string; title: string; eventDate: string; venueAddress: string | null; venueLocation: { lat: number; lng: number } | null; guestCount: number | null }[];
+  events: { id: string; title: string; eventType?: string; eventDate: string; venueAddress: string | null; venueLocation: { lat: number; lng: number } | null; guestCount: number | null }[];
   initialService?: string;
   bundleId?: string;
 }) {
@@ -102,12 +105,15 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   const toast = useToast();
   const today = todayIst();
   const [serviceId, setServiceId] = useState(services.find((s) => s.id === initialService)?.id ?? services[0].id);
+  const [eventId, setEventId] = useState(events[0].id);
+  const event = events.find((e) => e.id === eventId)!;
+  // Only what the vendor offers for this kind of event (an empty list means every event).
+  const offered = services.filter((x) => !x.eventTypes?.length || !event.eventType || x.eventTypes.includes(event.eventType as never));
   const listed = services.find((x) => x.id === serviceId)!;
+  const notForEvent = !offered.some((x) => x.id === listed.id);
   const [planId, setPlanId] = useState<string | undefined>(listed.plans?.[0]?.id);
   // With several ways to book, the chosen plan's price and rules are the ones that apply.
   const s = withPlan(listed, planId);
-  const [eventId, setEventId] = useState(events[0].id);
-  const event = events.find((e) => e.id === eventId)!;
   const venue = event.venueAddress && event.venueLocation ? { address: event.venueAddress, ...event.venueLocation } : null;
   const modes = carModes(s);
   const kind = countKind(s.bookingType);
@@ -150,7 +156,19 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  const problem = formProblem(s, form);
+  // The vendor's day: closed days and the times their car / hall / team is taken are greyed out.
+  const day = offsetDay(event.eventDate, form.dayOffset);
+  const dayInfo = useQuery({
+    queryKey: ['serviceDay', vendorId, s.id, day, planId],
+    queryFn: () => api.serviceDay(vendorId, s.id, day, planId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const startOf = (time: string) => istIso(day, time);
+  const minutes = asksDuration(s.bookingType) ? form.hours * 60 : Math.max(1, Number(form.count) || 1) * (s.rules.perPersonMin ?? 60);
+  const timeProblem = (time: string) => (dayInfo.data ? (dayInfo.data.open ? startProblem(dayInfo.data, startOf(time), minutes) : 'closed') : null);
+  const selectedTimeProblem = timeProblem(form.startTime);
+  const problem = notForEvent ? 'event' : formProblem(s, form);
   // Cash only where the vendor accepts it for this service; it never goes in the cart.
   const payMode: PayMode = s.cashAllowed ? payModeChoice : 'online';
   const request = problem ? null : toRequest(s, form);
@@ -178,7 +196,9 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
     onError: (e) => setFormError(errorText(t, e)),
   });
 
-  const problemText = problem
+  const problemText = problem === 'event'
+    ? t('engineBook.problem.event')
+    : problem
     ? t(`engineBook.problem.${problem}`, { min: s.rules.minQty ?? s.minGuests ?? 1, max: s.rules.maxQty ?? s.maxGuests ?? '—', what: kind ? t(`engineBook.count.${kind}`) : '' })
     : null;
 
@@ -249,10 +269,11 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
     >
       <ScreenHeader title={t('engineBook.title')} />
 
-      {services.length > 1 ? (
+      {notForEvent ? <Notice icon="alert" tone="peach">{t('engineBook.problem.event')}</Notice> : null}
+      {offered.length > 1 || notForEvent ? (
         <View style={styles.gap8} accessibilityRole="radiogroup" accessibilityLabel={t('engineBook.service')}>
           <AppText variant="bold" size="sm">{t('engineBook.service')}</AppText>
-          {services.map((x) => (
+          {offered.map((x) => (
             <ChoiceRow key={x.id} icon="star" label={x.title} right={x.pricing.model === 'quote' ? t('engineBook.quotePrice') : rupees(x.pricing.ratePaise)} selected={x.id === serviceId} onPress={() => setServiceId(x.id)} />
           ))}
         </View>
@@ -306,9 +327,14 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
         <AppText variant="bold" size="sm">{t('engineBook.startTime')}</AppText>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup" accessibilityLabel={t('engineBook.startTime')}>
           {START_TIMES.map((time) => (
-            <Chip key={time} label={formatClock(time)} selected={form.startTime === time} onPress={() => set({ startTime: time })} />
+            <Chip key={time} label={formatClock(time)} selected={form.startTime === time} disabled={!!timeProblem(time)} onPress={() => set({ startTime: time })} />
           ))}
         </ScrollView>
+        {dayInfo.data && !dayInfo.data.open && dayInfo.data.reason ? (
+          <Notice icon="calendar" tone="peach">{t(`engineBook.dayClosed.${dayInfo.data.reason}`)}</Notice>
+        ) : selectedTimeProblem ? (
+          <AppText size="sm" color={c.danger} accessibilityLiveRegion="polite">{t(`engineBook.timeProblem.${selectedTimeProblem}`)}</AppText>
+        ) : null}
         {asksDuration(s.bookingType) ? (
           <>
             <AppText variant="bold" size="sm">{t('engineBook.howLong')}</AppText>
@@ -356,7 +382,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
         </View>
       ) : null}
 
-      {s.questions.map((q) => (
+      {visibleQuestions(s.questions, form.answers).map((q) => (
         <AnswerField key={q.key} field={q} value={form.answers[q.key]} onChange={(v) => set({ answers: { ...form.answers, [q.key]: v } })} error={errors[q.key] ?? null} />
       ))}
 

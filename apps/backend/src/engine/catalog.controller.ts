@@ -185,6 +185,20 @@ export class PartnerEngineCatalogController {
   }
 }
 
+class AdminServicesQuery {
+  @IsUUID() vendorId: string;
+}
+
+class ServiceStatusDto {
+  @IsBoolean() active: boolean;
+  @IsOptional() @IsString() @Length(3, 500) reason?: string;
+}
+
+class DayQuery {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date: YYYY-MM-DD' }) date: string;
+  @IsOptional() @IsString() @MaxLength(30) planId?: string;
+}
+
 class PublicServicesQuery {
   @IsOptional() @IsIn(EVENT_TYPES) eventType?: string;
 }
@@ -193,6 +207,12 @@ class PublicServicesQuery {
 @Controller('v1/vendors')
 export class PublicEngineServicesController {
   constructor(private readonly catalog: EngineCatalogService) {}
+
+  /** One day of a service: offered or not (and why), notice, and when the car / hall / team is taken. */
+  @Get(':id/engine-services/:serviceId/day')
+  day(@Param('id', ParseUUIDPipe) id: string, @Param('serviceId', ParseUUIDPipe) serviceId: string, @Query() q: DayQuery) {
+    return this.catalog.dayAvailability(id, serviceId, q.date, q.planId);
+  }
 
   /** `?eventType=wedding` leaves out services the vendor does not offer for that event. */
   @PublicCache(30)
@@ -208,10 +228,24 @@ export class PublicEngineServicesController {
 export class AdminServiceConfigController {
   constructor(private readonly catalog: EngineCatalogService) {}
 
+  /** `?vendorId=`: the vendor's configurable services with all their settings. */
+  @AdminRoles('verifier', 'support')
+  @Get()
+  list(@Query() q: AdminServicesQuery) {
+    return this.catalog.adminServices(q.vendorId);
+  }
+
   @AdminRoles('verifier', 'support')
   @Get(':id/history')
   history(@Param('id', ParseUUIDPipe) id: string) {
     return this.catalog.configHistory(id, null);
+  }
+
+  /** Take a service off the app (with a reason the vendor sees) or put it back. */
+  @AdminRoles('verifier', 'support')
+  @Patch(':id/status')
+  status(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: ServiceStatusDto) {
+    return this.catalog.setServiceStatus(admin.adminId, id, body.active, body.reason);
   }
 }
 

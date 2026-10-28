@@ -159,7 +159,7 @@ export interface QuestionForm {
   key: string;
   labelEn: string;
   labelHi: string;
-  type: 'text' | 'boolean' | 'select';
+  type: 'text' | 'longtext' | 'number' | 'date' | 'time' | 'boolean' | 'select';
   required: boolean;
   /** Choices, one per comma: "Veg, Jain, Non-veg". */
   options: string;
@@ -170,7 +170,7 @@ export const questionForms = (fields: FieldDef[] | undefined): QuestionForm[] =>
     key: f.key,
     labelEn: f.label.en,
     labelHi: f.label.hi,
-    type: f.type === 'select' || f.type === 'multiselect' ? 'select' : f.type === 'boolean' ? 'boolean' : 'text',
+    type: f.type === 'multiselect' ? 'select' : f.type,
     required: !!f.required,
     options: (f.options ?? []).map((o) => o.label.en).join(', '),
   }));
@@ -191,6 +191,7 @@ export function toQuestions(forms: QuestionForm[], categoryKeys: string[]): { ok
     used.add(key);
     const q: FieldDef = { key, label: both(f.labelEn, f.labelHi), type: f.type, ...(f.required ? { required: true } : {}) };
     if (f.type === 'text') q.maxLength = 300;
+    if (f.type === 'longtext') q.maxLength = 2000;
     if (f.type === 'select') {
       const names = [...new Set(f.options.split(',').map((o) => o.trim()).filter(Boolean))];
       if (names.length < 2 || names.length > 20) return { ok: false, problem: { index, field: 'options' } };

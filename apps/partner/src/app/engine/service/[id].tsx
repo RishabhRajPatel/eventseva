@@ -227,6 +227,10 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
         </>
       }
     >
+      {service?.disabledReason ? <Notice tone="warning">{t('serviceConfig.disabled', { reason: service.disabledReason })}</Notice> : null}
+      {service ? (
+        <LinkButton testID="service-history" label={t('serviceConfig.history')} onPress={() => router.push({ pathname: '/engine/history/[id]', params: { id: service.id } })} />
+      ) : null}
       <View {...form.at('title')}>
         <Field
           ref={form.ref('title')}

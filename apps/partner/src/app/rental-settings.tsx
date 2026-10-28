@@ -18,6 +18,8 @@ import { Screen } from '../components/Screen';
 import { Segmented } from '../components/Segmented';
 import { QueryView } from '../components/States';
 import { Txt } from '../components/Txt';
+import { AvailabilityCard, PriceRulesCard } from '../components/ServiceConfigSections';
+import { availabilityForm, priceRuleForms, toAvailability, toPriceRules, type AvailabilityForm, type PriceRuleForm } from '../lib/serviceConfig';
 
 /** How rentals are booked: delivery charges, minimum order, notice, setup and pickup time, approval. */
 export default function RentalSettingsScreen() {
@@ -42,9 +44,15 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
   const [approval, setApproval] = useState(settings.approval);
   const [instructions, setInstructions] = useState(settings.instructions ?? '');
   const [cashAllowed, setCashAllowed] = useState(settings.cashAllowed ?? false);
+  const [availability, setAvailability] = useState<AvailabilityForm>(availabilityForm({
+    workingDays: settings.workingDays ?? undefined, blockedDates: settings.blockedDates, maxAdvanceDays: settings.maxAdvanceDays ?? undefined, maxPerDay: settings.maxPerDay ?? undefined,
+  }));
+  const [priceRules, setPriceRules] = useState<PriceRuleForm[]>(priceRuleForms(settings.adjustments));
 
   const money = [delivery, perKm, minOrder].map((v) => (v.trim() ? rupeesInputToPaise(v) : 0));
-  const invalid = money.some((m) => m === null);
+  const availabilityCheck = toAvailability(availability);
+  const rulesCheck = toPriceRules(priceRules);
+  const invalid = money.some((m) => m === null) || !availabilityCheck.ok || !rulesCheck.ok;
 
   const save = useMutation({
     mutationFn: () => {
@@ -62,6 +70,8 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
         approval,
         instructions: instructions.trim() || undefined,
         cashAllowed,
+        ...(availabilityCheck.ok ? availabilityCheck.rules : {}),
+        adjustments: rulesCheck.ok ? rulesCheck.adjustments : [],
       });
     },
     onSuccess: (saved) => {
@@ -97,6 +107,12 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
         </View>
         <Field testID="cleaning-hours" label={t('rentalSettings.cleaningHours')} hint={t('rentalSettings.cleaningHint')} value={cleaning} onChangeText={num(setCleaning)} keyboardType="number-pad" maxLength={2} placeholder="4" />
       </Card>
+      <PriceRulesCard
+        value={priceRules}
+        onChange={setPriceRules}
+        error={rulesCheck.ok ? null : t(`serviceConfig.problem.rule_${rulesCheck.problem.field}`, { n: rulesCheck.problem.index + 1 })}
+      />
+      <AvailabilityCard value={availability} onChange={setAvailability} error={availabilityCheck.ok ? null : t(`serviceConfig.problem.${availabilityCheck.problem}`)} />
       <View style={{ gap: space.sm }}>
         <Txt variant="bold" size="sm">{t('rentalSettings.approval')}</Txt>
         <Segmented options={[{ key: 'vendor', label: t('rentalSettings.approvalVendor') }, { key: 'auto', label: t('rentalSettings.approvalAuto') }]} value={approval} onChange={setApproval} />
@@ -104,7 +120,7 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
       </View>
       <Field label={t('rentalSettings.instructions')} value={instructions} onChangeText={setInstructions} multiline maxLength={1000} placeholder={t('rentalSettings.instructionsPlaceholder')} />
       <CashToggle value={cashAllowed} onChange={setCashAllowed} />
-      {invalid ? <Txt size="sm" color={c.danger} accessibilityRole="alert">{t('inventory.moneyInvalid')}</Txt> : null}
+      {money.some((m) => m === null) ? <Txt size="sm" color={c.danger} accessibilityRole="alert">{t('inventory.moneyInvalid')}</Txt> : null}
     </Screen>
   );
 }

@@ -833,7 +833,8 @@
     "cashNotAccepted": "This is not offered for cash. Choose online payment.",
     "cashNotAvailable": "Cash is not available for this vendor right now. Choose online payment.",
     "cashNotInCart": "The cart is paid online. Book this item on its own to pay in cash.",
-    "dueClosed": "This commission is already settled."
+    "dueClosed": "This commission is already settled.",
+    "serviceDisabled": "EventSeva took this service off the app. Contact support."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1175,7 +1176,24 @@
       "perDay": "Bookings per day: from 1 to 1000.",
       "question_label": "Question {{n}}: write the question.",
       "question_options": "Question {{n}}: add 2 to 20 choices, separated by commas."
-    }
+    },
+    "typeLongText": "Long text",
+    "typeNumber": "Number",
+    "typeDate": "Date",
+    "typeTime": "Time",
+    "planBooked": "Booked as",
+    "history": "Change history",
+    "historyEmpty": "No changes since you added it.",
+    "historyVersion": "Version {{n}}",
+    "changed": {
+      "pricing": "Price",
+      "rules": "Rules",
+      "questions": "Questions",
+      "plans": "Ways to book",
+      "eventTypes": "Events",
+      "active": "On / off by EventSeva"
+    },
+    "disabled": "EventSeva took this service off the app: {{reason}}. Contact support to change it."
   },
   "engine": {
     "title": "Services & bookings",

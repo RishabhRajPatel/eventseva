@@ -6,7 +6,8 @@ import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { lockPool, peakUsed, poolUsed } from '../engine/reservations';
 import { checkPricing, checkRules, effectiveRules } from '../engine/rules';
-import type { Pricing, RuleSet } from '../engine/types';
+import { recordConfigChange } from '../engine/config-history';
+import type { PriceAdjustment, Pricing, RuleSet } from '../engine/types';
 import { CloudinaryService } from '../media/cloudinary.service';
 
 export const ITEM_QUALITIES = ['basic', 'standard', 'premium', 'custom'] as const;
@@ -57,6 +58,12 @@ export interface RentalSettings {
   instructions?: string;
   /** Customers may choose to pay the whole rental to the vendor in cash. */
   cashAllowed?: boolean;
+  /** Price rules (weekend, season, event type) on the rent of the items. */
+  adjustments?: PriceAdjustment[];
+  workingDays?: number[];
+  blockedDates?: string[];
+  maxAdvanceDays?: number;
+  maxPerDay?: number;
 }
 
 interface ItemRow {
@@ -438,6 +445,11 @@ export class InventoryService {
       instructions: rules.instructions ?? null,
       cancellation: rules.cancellation ?? null,
       cashAllowed: s?.cash_allowed ?? false,
+      adjustments: pricing.adjustments ?? [],
+      workingDays: rules.workingDays ?? null,
+      blockedDates: rules.blockedDates ?? [],
+      maxAdvanceDays: rules.maxAdvanceDays ?? null,
+      maxPerDay: rules.maxPerDay ?? null,
     };
   }
 
@@ -453,6 +465,7 @@ export class InventoryService {
       ...(body.travelPerKmPaise !== undefined && { travelPerKmPaise: body.travelPerKmPaise }),
       ...(body.minOrderPaise !== undefined && { minChargePaise: body.minOrderPaise }),
       ...(body.taxPercent !== undefined && { taxPercent: body.taxPercent }),
+      ...(body.adjustments?.length && { adjustments: body.adjustments }),
     }, ['per_unit']);
     const rules = checkRules({
       ...(body.leadTimeHours !== undefined && { leadTimeHours: body.leadTimeHours }),
@@ -461,9 +474,19 @@ export class InventoryService {
       ...(body.bufferAfterMin !== undefined && { bufferAfterMin: body.bufferAfterMin }),
       ...(body.approval !== undefined && { approval: body.approval }),
       ...(body.instructions?.trim() && { instructions: body.instructions.trim() }),
+      ...(body.workingDays?.length && body.workingDays.length < 7 && { workingDays: body.workingDays }),
+      ...(body.blockedDates?.length && { blockedDates: body.blockedDates }),
+      ...(body.maxAdvanceDays !== undefined && { maxAdvanceDays: body.maxAdvanceDays }),
+      ...(body.maxPerDay !== undefined && { maxPerDay: body.maxPerDay }),
     });
     await this.db.tx(async (client) => {
       const id = await this.ensureRentalService(client, vendorId);
+      const cur = (await this.db.one<{ pricing: Pricing; rules: RuleSet; config_version: number; user_id: string }>(
+        client,
+        'SELECT s.pricing, s.rules, s.config_version, v.user_id FROM services s JOIN vendors v ON v.id = s.vendor_id WHERE s.id = $1 FOR UPDATE OF s',
+        [id],
+      ))!;
+      await recordConfigChange(client, id, cur.user_id, cur, { pricing, rules });
       await client.query('UPDATE services SET pricing = $2, rules = $3, cash_allowed = COALESCE($4, cash_allowed) WHERE id = $1', [id, pricing, rules, body.cashAllowed ?? null]);
     });
     return this.settings(vendorId);

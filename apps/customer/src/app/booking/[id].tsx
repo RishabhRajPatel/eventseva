@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { addDays, formatDateTime, formatDay, formatPhone, rupees, timeLeft, todayIst, type Booking } from '@eventseva/app-shared';
+import { addDays, answerLines, formatDateTime, formatDay, formatPhone, rupees, timeLeft, todayIst, type Booking } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
 import { canCancel, isConfirmed, isPending } from '../../lib/booking';
 import { errorText } from '../../lib/errors';
@@ -98,6 +98,7 @@ export default function BookingScreen() {
       {showsHandoverCode(b) ? <HandoverCodeCard booking={b} /> : null}
       {b.bookingType === 'rental' ? <RentalSection booking={b} /> : null}
       {b.bookingType === 'transport' ? <CarTripSection booking={b} /> : null}
+      <AnswersCard booking={b} />
       {b.addons?.length ? (
         <Card style={styles.card}>
           <AppText variant="bold" size="md">{t('engineBook.extras')}</AppText>
@@ -261,7 +262,28 @@ function StatusCard({ booking: b, onPay, onReview, reviewed }: { booking: Bookin
   }
 }
 
+/** The way the service was booked (its plan) and the customer's answers to the questions, as answered. */
+function AnswersCard({ booking: b }: { booking: Booking }) {
+  const { t } = useTranslation();
+  const { lang } = useLanguage();
+  const lines = answerLines(b, lang, { yes: t('engineBook.yes'), no: t('engineBook.no') });
+  if (!lines.length && !b.plan) return null;
+  return (
+    <Card style={styles.card}>
+      <AppText variant="bold" size="md">{t('engineBook.yourAnswers')}</AppText>
+      {b.plan ? <MoneyRow label={t('engineBook.plan')} value={lang === 'hi' ? b.plan.name.hi : b.plan.name.en} small /> : null}
+      {lines.map((l) => (
+        <View key={l.key} style={styles.answer}>
+          <AppText size="sm" color={c.textMuted}>{l.label}</AppText>
+          <AppText size="md">{l.value}</AppText>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
 const styles = StyleSheet.create({
+  answer: { gap: 2 },
   flex: { flex: 1 },
   card: { padding: space.lg, gap: space.md },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },

@@ -14,9 +14,15 @@ export function EngineDetails({ booking: b }: { booking: Booking }) {
   const lang = useLang();
   const answers = answerRows(b, lang);
   const addons = b.addons ?? [];
-  if (!answers.length && !addons.length) return null;
+  if (!answers.length && !addons.length && !b.plan) return null;
   return (
     <Card style={{ gap: space.sm }} testID="engine-details">
+      {b.plan ? (
+        <Row first>
+          <Txt size="sm" color={c.textMuted} style={{ flex: 1 }}>{t('serviceConfig.planBooked')}</Txt>
+          <Txt size="sm" variant="bold">{lang === 'hi' ? b.plan.name.hi : b.plan.name.en}</Txt>
+        </Row>
+      ) : null}
       {answers.length ? (
         <>
           <CardHeader title={t('engine.customerAnswers')} />

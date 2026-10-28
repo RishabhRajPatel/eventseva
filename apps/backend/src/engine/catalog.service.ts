@@ -7,7 +7,8 @@ import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
 import { checkPricing, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
-import { allQuestions, checkEventTypes, checkPlans, checkVendorQuestions } from './service-config';
+import { recordConfigChange } from './config-history';
+import { allQuestions, checkEventTypes, checkPlans, checkVendorQuestions, pickPlan } from './service-config';
 import type { BookingTypeKey, CategoryTemplate, FieldDef, Pricing, RatePlan, ResourceKind, RuleSet } from './types';
 
 export const MAX_ENGINE_SERVICES = 30;
@@ -115,14 +116,8 @@ interface VendorCategory {
 
 const SERVICE_COLUMNS = `s.id, s.title, s.description, s.booking_type AS "bookingType", s.pricing, s.rules, s.attributes, s.resource_id AS "resourceId",
   s.min_guests AS "minGuests", s.max_guests AS "maxGuests", s.is_active AS "isActive", s.cash_allowed AS "cashAllowed", s.created_at AS "createdAt",
-  s.questions, s.event_types AS "eventTypes", s.plans, s.config_version AS "configVersion"`;
+  s.questions, s.event_types AS "eventTypes", s.plans, s.config_version AS "configVersion", s.admin_disabled_reason AS "disabledReason"`;
 
-/** JSON with object keys sorted, so a value read back from jsonb compares equal to the one saved. */
-const canonical = (v: unknown): string =>
-  JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
-
-/** Settings whose changes are kept in service_config_history (column → name in the API). */
-const TRACKED = { pricing: 'pricing', rules: 'rules', questions: 'questions', plans: 'plans', event_types: 'eventTypes' } as const;
 const RESOURCE_COLUMNS = `r.id, r.kind, r.name, r.attributes, r.status, r.verification, r.reject_reason AS "rejectReason", r.created_at AS "createdAt",
   COALESCE((SELECT json_agg(json_build_object('id', d.id, 'docType', d.doc_type, 'status', d.status, 'rejectReason', d.reject_reason) ORDER BY d.created_at)
      FROM vendor_documents d WHERE d.resource_id = r.id), '[]') AS documents`;
@@ -171,7 +166,9 @@ export class EngineCatalogService {
   async services(userId: string) {
     const v = await this.vendor(this.db, userId);
     const { rows } = await this.db.query(
-      `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.vendor_id = $1 AND s.booking_type NOT IN ('slot', 'rental') AND s.is_active ORDER BY s.created_at`,
+      // Services an admin took off the app stay in the list, with the reason.
+      `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.vendor_id = $1 AND s.booking_type NOT IN ('slot', 'rental')
+          AND (s.is_active OR s.admin_disabled_at IS NOT NULL) ORDER BY s.created_at`,
       [v.id],
     );
     return rows;
@@ -252,21 +249,14 @@ export class EngineCatalogService {
           WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type NOT IN ('slot', 'rental') FOR UPDATE`,
         [id, v.id],
       );
-      if (!cur) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
+      if (!cur) {
+        const off = await this.db.one<{ admin_disabled_reason: string }>(client, 'SELECT admin_disabled_reason FROM services WHERE id = $1 AND vendor_id = $2 AND admin_disabled_at IS NOT NULL', [id, v.id]);
+        if (off) throw new AppError('SERVICE_DISABLED', 'EventSeva took this service off the app. Contact support to change it.', HttpStatus.CONFLICT, { reason: off.admin_disabled_reason });
+        throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
+      }
       const c = await this.checkService(client, v, body, cur);
       // Each change to what customers book is kept, with the version it made.
-      const next = { pricing: c.pricing, rules: c.rules, questions: c.questions, plans: c.plans, event_types: c.eventTypes };
-      const changes: Record<string, { before: unknown; after: unknown }> = {};
-      for (const [col, name] of Object.entries(TRACKED) as [keyof typeof TRACKED, string][]) {
-        const after = next[col];
-        if (after !== undefined && canonical(after) !== canonical(cur[col])) changes[name] = { before: cur[col], after };
-      }
-      if (Object.keys(changes).length) {
-        await client.query(`UPDATE services SET config_version = config_version + 1 WHERE id = $1`, [id]);
-        await client.query(`INSERT INTO service_config_history (service_id, version, changed_by, changes) VALUES ($1, $2, $3, $4)`, [
-          id, cur.config_version + 1, userId, changes,
-        ]);
-      }
+      await recordConfigChange(client, id, userId, cur, { pricing: c.pricing, rules: c.rules, questions: c.questions, plans: c.plans, event_types: c.eventTypes });
       await client.query(
         `UPDATE services SET title = COALESCE($3, title), description = CASE WHEN $4 THEN $5 ELSE description END,
                 pricing = COALESCE($6, pricing), price_paise = COALESCE($7, price_paise), rules = COALESCE($8, rules),
@@ -300,6 +290,49 @@ export class EngineCatalogService {
       [serviceId],
     );
     return { items: rows };
+  }
+
+  /** Admin: a vendor's services booked by time or quantity (and their rentals service), with every setting, for review. */
+  async adminServices(vendorId: string) {
+    const { rows } = await this.db.query(
+      `SELECT ${SERVICE_COLUMNS}, s.admin_disabled_at AS "disabledAt" FROM services s
+        WHERE s.vendor_id = $1 AND s.booking_type <> 'slot' AND (s.is_active OR s.admin_disabled_at IS NOT NULL) ORDER BY s.created_at`,
+      [vendorId],
+    );
+    return { items: rows };
+  }
+
+  /**
+   * Admin: takes a service off the app (unsafe, misleading or broken settings) or puts it back. Open
+   * bookings go ahead; new ones are refused. Audited, kept in the service history, and the vendor is told.
+   */
+  async setServiceStatus(adminId: string, id: string, active: boolean, reason?: string) {
+    return this.db.tx(async (client) => {
+      const s = await this.db.one<{ is_active: boolean; admin_disabled_at: Date | null; config_version: number; title: string; user_id: string }>(
+        client,
+        `SELECT s.is_active, s.admin_disabled_at, s.config_version, s.title, v.user_id FROM services s JOIN vendors v ON v.id = s.vendor_id WHERE s.id = $1 FOR UPDATE OF s`,
+        [id],
+      );
+      if (!s) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
+      if (!active && !reason?.trim()) throw new AppError('VALIDATION', 'Give the vendor a reason.', HttpStatus.BAD_REQUEST, { field: 'reason' });
+      if (active && !s.admin_disabled_at) throw new AppError('SERVICE_NOT_DISABLED', 'Only a service an admin took off can be put back.', HttpStatus.CONFLICT);
+      if (!active && !s.is_active) throw new AppError('SERVICE_NOT_ACTIVE', 'This service is already off the app.', HttpStatus.CONFLICT);
+      const why = reason?.trim() || null;
+      await recordConfigChange(client, id, null, { is_active: s.is_active, config_version: s.config_version }, { is_active: active }, why ?? undefined);
+      await client.query(
+        `UPDATE services SET is_active = $2, admin_disabled_at = CASE WHEN $2 THEN NULL ELSE now() END, admin_disabled_reason = CASE WHEN $2 THEN NULL ELSE $3 END WHERE id = $1`,
+        [id, active, why],
+      );
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, $2, 'service', $3, $4, $5)`,
+        [adminId, active ? 'service.enable' : 'service.disable', id, { active: s.is_active }, { active, reason: why }],
+      );
+      await notify(client, s.user_id, 'service_status', active
+        ? { en: { title: 'Service back on EventSeva', body: `${s.title} can be booked again.` }, hi: { title: 'सेवा फिर से चालू', body: `${s.title} फिर से बुक हो सकती है।` } }
+        : { en: { title: 'Service taken off EventSeva', body: `${s.title}: ${why}` }, hi: { title: 'सेवा बंद की गई', body: `${s.title}: ${why}` } },
+      { serviceId: id }, 'partner');
+      return { id, active, reason: why };
+    });
   }
 
   /** Soft delete: bookings keep pointing at it. Open bookings still go ahead. */
@@ -565,6 +598,70 @@ export class EngineCatalogService {
    * A vendor's bookable engine services with what the booking form needs: questions, the rules the
    * customer must meet, the vehicle's public details, and extras. Never the vendor's internal data.
    */
+  /**
+   * One day of a service, for the customer's date and time picker: whether it is offered that day (and
+   * why not), the working hours, the earliest start allowed by the notice, and when the vendor's car, hall
+   * or team is already taken (with set-up and cleaning time). Only times, never who booked. The server
+   * still checks everything again when the customer asks for a quote or books.
+   */
+  async dayAvailability(vendorId: string, serviceId: string, date: string, planId?: string) {
+    if (Number.isNaN(Date.parse(`${date}T00:00:00Z`)) || !new Date(`${date}T00:00:00Z`).toISOString().startsWith(date)) {
+      throw new AppError('VALIDATION', 'date: a real date as YYYY-MM-DD.', HttpStatus.BAD_REQUEST, { field: 'date' });
+    }
+    const s = await this.db.one<{ id: string; booking_type: BookingTypeKey; rules: RuleSet; plans: RatePlan[]; resource_id: string | null; template: CategoryTemplate }>(
+      this.db,
+      `SELECT s.id, s.booking_type, s.rules, s.plans, s.resource_id, c.template
+         FROM services s JOIN vendors v ON v.id = s.vendor_id JOIN categories c ON c.id = v.category_id
+        WHERE s.id = $1 AND s.vendor_id = $2 AND s.is_active AND v.status = 'approved' AND s.booking_type NOT IN ('slot', 'rental')`,
+      [serviceId, vendorId],
+    );
+    if (!s) throw new AppError('ITEM_NOT_FOUND', 'This service is not offered any more.', HttpStatus.NOT_FOUND);
+    const plan = planId === undefined ? null : pickPlan(s.plans, planId);
+    const rules = effectiveRules(s.booking_type, s.template ?? {}, { ...(s.rules ?? {}), ...(plan?.rules ?? {}) });
+    const now = new Date();
+    const today = istDayOf(now);
+    const dayStart = new Date(`${date}T00:00:00+05:30`);
+    const dayEnd = new Date(dayStart.getTime() + 86_400_000);
+    const maxDays = Math.min(rules.maxAdvanceDays ?? 730, 730);
+    const booked = (await this.db.one<{ n: number }>(
+      this.db,
+      `SELECT count(*)::int AS n FROM bookings WHERE service_id = $1 AND day = $2 AND status IN ('requested', 'accepted', 'confirmed')`,
+      [s.id, date],
+    ))!.n;
+    const reason = date < today ? 'past'
+      : dayStart.getTime() > now.getTime() + maxDays * 86_400_000 ? 'too_far'
+      : rules.blockedDates?.includes(date) ? 'blocked'
+      : rules.workingDays && !rules.workingDays.includes(new Date(`${date}T00:00:00Z`).getUTCDay()) ? 'closed'
+      : rules.maxPerDay && booked >= rules.maxPerDay ? 'full'
+      : null;
+    // The car or hall itself, or the vendor's team (never created here: no team means nothing booked yet).
+    const resourceId = s.resource_id ?? (await this.db.one<{ id: string }>(this.db, `SELECT id FROM resources WHERE vendor_id = $1 AND kind = 'crew' ORDER BY created_at LIMIT 1`, [vendorId]))?.id ?? null;
+    const busy = resourceId && !reason
+      ? (await this.db.query<{ from: Date; until: Date }>(
+          `SELECT greatest(lower(period), $2) AS "from", least(upper(period), $3) AS "until" FROM reservations
+            WHERE resource_id = $1 AND period && tstzrange($2, $3) AND (status = 'active' OR (status = 'hold' AND expires_at > now()))
+            ORDER BY lower(period)`,
+          [resourceId, dayStart, dayEnd],
+        )).rows
+      : [];
+    const earliest = new Date(now.getTime() + (rules.leadTimeHours ?? 0) * 3600_000);
+    return {
+      date,
+      open: !reason,
+      /** past, too_far, blocked, closed (not a working day) or full (the vendor's limit for the day). */
+      reason,
+      workingHours: rules.workingHours ?? null,
+      /** A start before this breaks the notice the vendor needs. */
+      earliestStart: earliest > dayStart ? earliest.toISOString() : dayStart.toISOString(),
+      /** Time the vendor needs before the start and after the end, which must also be free. */
+      setupMin: rules.setupMin ?? 0,
+      afterMin: (rules.dismantleMin ?? 0) + (rules.bufferAfterMin ?? 0),
+      busy: busy.map((b) => ({ from: b.from.toISOString(), until: b.until.toISOString() })),
+      maxPerDay: rules.maxPerDay ?? null,
+      booked,
+    };
+  }
+
   async publicServices(vendorId: string, eventType?: string) {
     const v = await this.db.one<{ template: CategoryTemplate }>(
       this.db,
@@ -629,6 +726,9 @@ export class EngineCatalogService {
     };
   }
 }
+
+const IST_MS = 5.5 * 3600_000;
+const istDayOf = (d: Date) => new Date(d.getTime() + IST_MS).toISOString().slice(0, 10);
 
 /** "UP70AB1234" → "UP70 •• 1234". */
 export const maskRegistration = (reg?: string) => (reg ? `${reg.slice(0, 4)} •• ${reg.slice(-4)}` : null);

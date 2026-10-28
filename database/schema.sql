@@ -2022,6 +2022,9 @@ CREATE TABLE public.services (
     event_types text[] DEFAULT '{}'::text[] NOT NULL,
     plans jsonb DEFAULT '[]'::jsonb NOT NULL,
     config_version integer DEFAULT 1 NOT NULL,
+    admin_disabled_at timestamp with time zone,
+    admin_disabled_reason text,
+    CONSTRAINT services_admin_disabled_reason_check CHECK (((admin_disabled_reason IS NULL) OR ((length(admin_disabled_reason) >= 3) AND (length(admin_disabled_reason) <= 500)))),
     CONSTRAINT services_config_version_check CHECK ((config_version >= 1)),
     CONSTRAINT services_plans_check CHECK ((jsonb_typeof(plans) = 'array'::text)),
     CONSTRAINT services_price_paise_check CHECK ((price_paise > 0)),
@@ -2087,6 +2090,12 @@ COMMENT ON COLUMN public.services.plans IS 'Rate plans: ways to book the service
 --
 
 COMMENT ON COLUMN public.services.config_version IS 'Goes up by one with every change to pricing, rules, questions, plans or event types';
+
+--
+-- Name: COLUMN services.admin_disabled_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.admin_disabled_at IS 'Set when an admin took the service off the app; the vendor cannot switch it back on';
 
 --
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -

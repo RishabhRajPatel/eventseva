@@ -9,7 +9,8 @@ const SELECT = `
   SELECT b.id, b.status, b.state, b.pay_mode, b.group_id, b.day, b.slot, b.quantity, b.details, b.amount_paise, b.advance_paise, b.commission_paise,
          b.refund_paise, b.discount_paise, b.payout_deduction_paise, b.respond_by, b.pay_by, b.cancel_reason, b.created_at,
          b.progress, b.progress_at, b.eta_at, b.booking_type, b.starts_at, b.ends_at, b.fulfilment, b.deposit_paise, b.tax_paise,
-         b.charges_paise, b.deposit_settled_at, b.snapshot->'answers' AS answers, b.snapshot->'route' AS route, cat.template->'questions' AS questions,
+         b.charges_paise, b.deposit_settled_at, b.snapshot->'answers' AS answers, b.snapshot->'route' AS route,
+         COALESCE(b.snapshot->'questions'->'fields', cat.template->'questions') AS questions, b.snapshot->'plan' AS plan,
          (SELECT json_agg(json_build_object('addonId', ba.addon_id, 'name', a.name, 'pricePaise', ba.price_paise, 'status', ba.status, 'note', ba.request_note)
                           ORDER BY a.name)
             FROM booking_addons ba JOIN service_addons a ON a.id = ba.addon_id WHERE ba.booking_id = b.id) AS addons,
@@ -119,6 +120,8 @@ function toView(r: any, viewer: 'customer' | 'vendor') {
     answers: r.answers ?? null,
     /** The category's questions, so the apps show the customer's answers with their labels (both languages). */
     questions: r.answers ? questionLabels(r.questions) : [],
+    /** The rate plan booked (name in both languages), when the service had several. */
+    plan: r.plan ?? null,
     addons: r.addons ?? [],
     route: showVenue ? (r.route ?? null) : null,
     // Coupon discount, paid by EventSeva: lowers what is paid in the app, never the vendor's share.

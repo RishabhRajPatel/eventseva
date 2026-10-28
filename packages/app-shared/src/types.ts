@@ -328,6 +328,8 @@ export interface Booking {
   /** online (Razorpay), or cash: the whole booking is paid to the vendor in person. */
   payMode?: PayMode;
   /** Customer view: the cart checkout it was booked in, if any (its accepted bookings can be paid together). */
+  /** The rate plan booked, when the service had several. */
+  plan?: { id: string; name: Bilingual } | null;
   checkoutId?: string | null;
   /** Engine bookings: exact start and end (ISO); null for slot bookings. */
   startsAt: string | null;
@@ -713,6 +715,11 @@ export interface RentalSettings {
   approval: 'vendor' | 'auto';
   instructions: string | null;
   cashAllowed?: boolean;
+  adjustments?: PriceAdjustment[];
+  workingDays?: number[] | null;
+  blockedDates?: string[];
+  maxAdvanceDays?: number | null;
+  maxPerDay?: number | null;
 }
 
 /** GET /v1/vendors/:id/rentals: what a customer can rent. */
@@ -810,7 +817,12 @@ export type PricingModel = 'fixed' | 'hourly' | 'daily' | 'per_unit' | 'per_pers
 export interface FieldDef {
   key: string;
   label: Bilingual;
-  type: 'text' | 'number' | 'boolean' | 'select' | 'multiselect';
+  /** text: one line; longtext: a paragraph; date: YYYY-MM-DD; time: HH:MM (India time). */
+  type: 'text' | 'longtext' | 'number' | 'boolean' | 'select' | 'multiselect' | 'date' | 'time';
+  /** A line shown under the question. */
+  help?: Bilingual;
+  /** Asked only when the answer to an earlier question is one of `values`. */
+  showIf?: { key: string; values: (string | boolean)[] };
   required?: boolean;
   options?: { value: string; label: Bilingual; pricePaise?: number; perPerson?: boolean }[];
   min?: number;
@@ -920,6 +932,25 @@ export interface EngineService {
   plans?: RatePlan[];
   /** Goes up with each change to price, rules, questions, plans or event types. */
   configVersion?: number;
+  /** Set when EventSeva took the service off the app; the vendor cannot change it until support puts it back. */
+  disabledReason?: string | null;
+}
+
+/** GET /v1/vendors/:id/engine-services/:serviceId/day?date=&planId= : one day of a service for the time picker. */
+export interface ServiceDay {
+  date: string;
+  open: boolean;
+  reason: 'past' | 'too_far' | 'blocked' | 'closed' | 'full' | null;
+  workingHours: { from: string; to: string } | null;
+  /** ISO; a start before this breaks the vendor's notice. */
+  earliestStart: string;
+  /** Minutes the vendor needs free before the start and after the end. */
+  setupMin: number;
+  afterMin: number;
+  /** When the car, hall or team is already taken (ISO), set-up and cleaning included. */
+  busy: { from: string; until: string }[];
+  maxPerDay: number | null;
+  booked: number;
 }
 
 /** GET /v1/partner/engine-services/:id/history and /v1/admin/services/:id/history */

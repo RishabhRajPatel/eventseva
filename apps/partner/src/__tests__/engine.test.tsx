@@ -191,6 +191,60 @@ describe('services and cars', () => {
   });
 });
 
+describe('service configuration', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('ways to book, a price rule, working days and a question are saved together; a disabled service says why', async () => {
+    const patch = api.patch as jest.Mock;
+    params.mockReturnValue({ id: 's1' });
+    const saved: EngineService = {
+      id: 's1', title: 'Wedding car', description: null, bookingType: 'transport', pricing: { model: 'fixed', ratePaise: 500_000, includedKm: 80 },
+      rules: { approval: 'vendor', leadTimeHours: 12 }, attributes: {}, resourceId: 'r1', minGuests: null, maxGuests: null, isActive: true,
+      plans: [], eventTypes: [], questions: [], disabledReason: 'Photos do not match the car',
+    };
+    routeGets({
+      '/v1/partner/service-setup': carSetup,
+      '/v1/partner/engine-services': { items: [saved] },
+      '/v1/partner/resources': { items: [innova] },
+      '/v1/partner/vendor': { businessName: 'Raj Cars', gstin: null, status: 'approved', media: [], services: [], packages: [] },
+    });
+    patch.mockResolvedValue(saved);
+    await renderScreen(<EngineServiceEditor />);
+    expect(await screen.findByText('EventSeva took this service off the app: Photos do not match the car. Contact support to change it.')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('service-history'));
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/engine/history/[id]', params: { id: 's1' } });
+
+    await fireEvent.press(screen.getByTestId('add-plan'));
+    await fireEvent.changeText(screen.getByTestId('plan-0-name'), 'Local');
+    await fireEvent.changeText(screen.getByTestId('plan-0-rate'), '5000');
+    await fireEvent.changeText(screen.getByTestId('plan-1-name'), 'Outstation');
+    await fireEvent.changeText(screen.getByTestId('plan-1-rate'), '800');
+    await fireEvent.press(screen.getByTestId('add-price-rule'));
+    await fireEvent.changeText(screen.getByTestId('price-rule-0-label'), 'Weekend');
+    await fireEvent.changeText(screen.getByTestId('price-rule-0-value'), '+20');
+    await fireEvent.press(screen.getByTestId('price-rule-0-day-6'));
+    await fireEvent.press(screen.getByTestId('working-day-1'));
+    await fireEvent.press(screen.getByTestId('event-type-wedding'));
+    await fireEvent.press(screen.getByTestId('add-question'));
+    await fireEvent.changeText(screen.getByTestId('question-0-label'), 'Decoration on the car?');
+    await fireEvent.press(screen.getByTestId('question-0-required'));
+    await fireEvent.press(screen.getByTestId('save-service'));
+
+    const weekend = { label: { en: 'Weekend', hi: 'Weekend' }, percent: 20, days: [6] };
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    const [url, body] = patch.mock.calls[0];
+    expect(url).toBe('/v1/partner/engine-services/s1');
+    expect(body.pricing).toEqual({ model: 'fixed', ratePaise: 500_000, includedKm: 80, adjustments: [weekend] });
+    expect(body.plans).toEqual([
+      { id: 'local', name: { en: 'Local', hi: 'Local' }, pricing: { model: 'fixed', ratePaise: 500_000, includedKm: 80, adjustments: [weekend] } },
+      { id: 'outstation', name: { en: 'Outstation', hi: 'Outstation' }, pricing: { model: 'hourly', ratePaise: 80_000, includedKm: 80, adjustments: [weekend] } },
+    ]);
+    expect(body.rules).toMatchObject({ approval: 'vendor', leadTimeHours: 12, workingDays: [1] });
+    expect(body.eventTypes).toEqual(['wedding']);
+    expect(body.questions).toEqual([{ key: 'decoration_on_the_car', label: { en: 'Decoration on the car?', hi: 'Decoration on the car?' }, type: 'text', required: true, maxLength: 300 }]);
+  });
+});
+
 describe('engine bookings', () => {
   beforeEach(() => jest.clearAllMocks());
 

@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import { SignedPhotoDto } from '../media/signed-photo.dto';
+import type { PriceAdjustment } from '../engine/types';
 import type { AuthContext } from '../auth/token.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { StepUp } from '../admin/admin-2fa';
@@ -91,6 +92,12 @@ class RentalSettingsDto {
   @IsOptional() @IsIn(['vendor', 'auto']) approval?: 'vendor' | 'auto';
   @IsOptional() @IsString() @MaxLength(1000) instructions?: string;
   @IsOptional() @IsBoolean() cashAllowed?: boolean;
+  /** Price rules on the rent (checked on the server like a service's). */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) adjustments?: PriceAdjustment[];
+  @IsOptional() @IsArray() @ArrayMaxSize(7) @IsInt({ each: true }) @Min(0, { each: true }) @Max(6, { each: true }) workingDays?: number[];
+  @IsOptional() @IsArray() @ArrayMaxSize(366) @Matches(/^\d{4}-\d{2}-\d{2}$/, { each: true }) blockedDates?: string[];
+  @IsOptional() @IsInt() @Min(1) @Max(730) maxAdvanceDays?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(1000) maxPerDay?: number;
 }
 
 class LineQtyDto {

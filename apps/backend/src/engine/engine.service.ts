@@ -281,15 +281,15 @@ export class EngineService {
    * The vendor's limit of bookings of this service starting on one India day. Taken under a lock per
    * service and day, so two requests at the same moment cannot both take the last place.
    */
-  private async checkDayLimit(q: Queryable, loaded: Loaded, starts: Date) {
+  private async checkDayLimit(q: Queryable, loaded: Loaded, starts: Date, exceptBookingId?: string) {
     const max = loaded.ctx.rules.maxPerDay;
     if (!max) return;
     const day = istDay(starts);
     await q.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`day-limit:${loaded.ctx.service.id}:${day}`]);
     const n = (await this.db.one<{ n: number }>(
       q,
-      `SELECT count(*)::int AS n FROM bookings WHERE service_id = $1 AND day = $2 AND status IN ('requested', 'accepted', 'confirmed')`,
-      [loaded.ctx.service.id, day],
+      `SELECT count(*)::int AS n FROM bookings WHERE service_id = $1 AND day = $2 AND status IN ('requested', 'accepted', 'confirmed') AND id IS DISTINCT FROM $3::uuid`,
+      [loaded.ctx.service.id, day, exceptBookingId ?? null],
     ))!.n;
     if (n >= max) throw new AppError('DAY_FULL', 'This vendor is fully booked for this service on that day.', HttpStatus.CONFLICT, { day, maxPerDay: max });
   }
@@ -453,6 +453,8 @@ export class EngineService {
     const lead = ((snap.rules?.leadTimeHours ?? 0) + 1) * HOUR;
     const now = new Date(Math.min(Date.now(), startsAt.getTime() - lead));
     const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0, maxAdvanceDays: undefined }, items, questions: snap.questions?.fields }, snap.bundle?.discountPercent ?? 0);
+    // Moving to another day counts against that day's limit (the booking itself is not counted twice).
+    await this.checkDayLimit(q, p.loaded, p.plan.starts, b.id);
     return { plan: p.plan, quote: p.quote, commissionPaise: p.commissionPaise };
   }
 

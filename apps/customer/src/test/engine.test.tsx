@@ -5,7 +5,7 @@ import CartScreen from '../app/cart';
 import EngineBookScreen from '../app/vendor/[id]/engine';
 import { api } from '../lib/api';
 import { cart, missingBundleServices, restoreCart } from '../lib/cart';
-import { carModes, countKind, durationChoices, extendedEnd, formProblem, licenceProblem, movedTimes, perModel, toRequest, withPlan, type EngineForm } from '../lib/engine';
+import { answerErrors, carModes, countKind, durationChoices, extendedEnd, formProblem, licenceProblem, movedTimes, perModel, startProblem, toRequest, visibleQuestions, withPlan, type EngineForm } from '../lib/engine';
 import { istIso } from '../lib/rental';
 import { booking, event, inDays, vendor } from './fixtures';
 import { renderApp } from './render';
@@ -89,6 +89,33 @@ describe('engine booking rules', () => {
     expect(formProblem(svc, form({ ...ok, planId: 'full_night' }))).toBeNull();
     expect(toRequest(svc, form({ ...ok, planId: 'full_night' })).planId).toBe('full_night');
     expect(toRequest(catering, form({ ...ok, planId: 'full_night' })).planId).toBeUndefined();
+  });
+
+  it('conditional questions, dates and times: hidden ones are neither required nor sent', () => {
+    const qs = [
+      { key: 'venue', label: { en: 'Venue', hi: 'जगह' }, type: 'select' as const, required: true, options: [{ value: 'indoor', label: { en: 'In', hi: 'अंदर' } }, { value: 'outdoor', label: { en: 'Out', hi: 'बाहर' } }] },
+      { key: 'generator', label: { en: 'Generator', hi: 'जनरेटर' }, type: 'boolean' as const, required: true, showIf: { key: 'venue', values: ['outdoor'] } },
+      { key: 'on', label: { en: 'Date', hi: 'तारीख़' }, type: 'date' as const },
+      { key: 'by', label: { en: 'By', hi: 'तक' }, type: 'time' as const },
+    ];
+    expect(visibleQuestions(qs, {}).map((q) => q.key)).toEqual(['venue', 'on', 'by']);
+    expect(visibleQuestions(qs, { venue: 'outdoor' }).map((q) => q.key)).toEqual(['venue', 'generator', 'on', 'by']);
+    expect(answerErrors(qs, { venue: 'outdoor' })).toEqual({ generator: 'required' });
+    expect(answerErrors(qs, { venue: 'indoor', on: '2026-02-30', by: '7pm' })).toEqual({ on: 'invalid', by: 'invalid' });
+    const svc = { ...catering, questions: qs };
+    expect(toRequest(svc, form({ count: '300', answers: { venue: 'indoor', generator: true, on: '2026-12-01' } })).answers).toEqual({ venue: 'indoor', on: '2026-12-01' });
+  });
+
+  it('start times: the vendor\'s notice, working hours and busy times (with set-up and clean-up)', () => {
+    const day = { date: '2026-12-01', open: true, reason: null, workingHours: { from: '10:00', to: '23:59' }, earliestStart: istIso('2026-12-01', '12:00'),
+      setupMin: 60, afterMin: 60, busy: [{ from: istIso('2026-12-01', '17:00'), until: istIso('2026-12-01', '19:00') }], maxPerDay: null, booked: 0 };
+    expect(startProblem(day, istIso('2026-12-01', '11:00'), 60)).toBe('notice');
+    expect(startProblem(day, istIso('2026-12-01', '21:00'), 240)).toBe('hours');
+    expect(startProblem(day, istIso('2026-12-01', '12:00'), 240)).toBeNull(); // 12–16, cleaned up by 17:00: just fits
+    expect(startProblem(day, istIso('2026-12-01', '13:00'), 240)).toBe('busy');
+    expect(startProblem(day, istIso('2026-12-01', '12:00'), 180)).toBeNull();
+    expect(startProblem(day, istIso('2026-12-01', '20:00'), 180)).toBeNull();
+    expect(startProblem({ ...day, workingHours: null }, istIso('2026-12-01', '19:30'), 60)).toBe('busy');
   });
 
   it('moves and extends bookings in India time, and checks licences', () => {

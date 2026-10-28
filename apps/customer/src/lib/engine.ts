@@ -1,7 +1,7 @@
 // Booking services priced by time or quantity (DJ, decor, catering, cars, staff, makeup, planners):
 // what the form asks for each kind, the request it sends, and checks that guide the customer.
 // The server checks and prices everything again.
-import type { BookingType, EngineBookingRequest, FieldDef, Language, Place, PublicEngineService } from '@eventseva/app-shared';
+import type { BookingType, EngineBookingRequest, FieldDef, Language, Place, PublicEngineService, ServiceDay } from '@eventseva/app-shared';
 import { addDaysTo, istIso } from './rental';
 
 /** Start times offered, India time. */
@@ -88,10 +88,33 @@ export function formProblem(s: PublicEngineService, f: EngineForm): FormProblem 
   return null;
 }
 
+/** Whether a question is asked, given the answers before it (same rule as the server). */
+export function isShown(f: FieldDef, answers: Record<string, unknown>): boolean {
+  if (!f.showIf) return true;
+  const given = answers[f.showIf.key];
+  const list = Array.isArray(given) ? given : [given];
+  return list.some((v) => f.showIf!.values.includes(v as string | boolean));
+}
+
+/** The questions to show now: a question waits until the earlier answer it depends on is given. */
+export function visibleQuestions(fields: FieldDef[], answers: Record<string, unknown>): FieldDef[] {
+  const shown: FieldDef[] = [];
+  const seen: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (!isShown(f, seen)) continue;
+    shown.push(f);
+    seen[f.key] = answers[f.key];
+  }
+  return shown;
+}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /** Required questions not answered, numbers out of range. */
 export function answerErrors(fields: FieldDef[], values: Record<string, unknown>): Record<string, 'required' | 'invalid'> {
   const out: Record<string, 'required' | 'invalid'> = {};
-  for (const f of fields) {
+  for (const f of visibleQuestions(fields, values)) {
     const v = values[f.key];
     const empty = v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length);
     if (empty) {
@@ -102,8 +125,43 @@ export function answerErrors(fields: FieldDef[], values: Record<string, unknown>
       const n = Number(v);
       if (!Number.isFinite(n) || (f.min !== undefined && n < f.min) || (f.max !== undefined && n > f.max)) out[f.key] = 'invalid';
     }
+    if (f.type === 'date') {
+      const d = String(v);
+      if (!DAY_RE.test(d) || Number.isNaN(Date.parse(`${d}T00:00:00Z`)) || !new Date(`${d}T00:00:00Z`).toISOString().startsWith(d)) out[f.key] = 'invalid';
+    }
+    if (f.type === 'time' && !TIME_RE.test(String(v))) out[f.key] = 'invalid';
   }
   return out;
+}
+
+export type StartProblem = 'notice' | 'hours' | 'busy' | null;
+const MIN = 60_000;
+const minutesOfDay = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3));
+
+/**
+ * Why a start time cannot work on a day, from the vendor's day view: too soon for their notice,
+ * outside their working hours, or overlapping when their car / hall / team is already taken (with
+ * the set-up before and the clean-up after). Null: worth asking the server for a quote.
+ */
+export function startProblem(day: ServiceDay, startsAt: string, minutes: number): StartProblem {
+  const from = Date.parse(startsAt);
+  const until = from + minutes * MIN;
+  if (from < Date.parse(day.earliestStart)) return 'notice';
+  if (day.workingHours) {
+    const { from: open, to: close } = day.workingHours;
+    const istMin = (t: number) => {
+      const d = new Date(t + 5.5 * 3_600_000);
+      return d.getUTCHours() * 60 + d.getUTCMinutes();
+    };
+    const f = minutesOfDay(open);
+    const to = minutesOfDay(close);
+    const inside = (m: number) => (f <= to ? m >= f && m <= to : m >= f || m <= to);
+    if (!inside(istMin(from)) || !inside(istMin(until))) return 'hours';
+  }
+  const needFrom = from - day.setupMin * MIN;
+  const needUntil = until + day.afterMin * MIN;
+  if (day.busy.some((b) => Date.parse(b.from) < needUntil && Date.parse(b.until) > needFrom)) return 'busy';
+  return null;
 }
 
 /** The request for POST /v1/quotes and /v1/engine-bookings. */
@@ -123,7 +181,7 @@ export function toRequest(s: PublicEngineService, f: EngineForm): EngineBookingR
     req.mode = f.mode;
   }
   const answers: Record<string, unknown> = {};
-  for (const q of s.questions) {
+  for (const q of visibleQuestions(s.questions, f.answers)) {
     const v = f.answers[q.key];
     if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
     answers[q.key] = q.type === 'number' ? Number(v) : typeof v === 'string' ? v.trim() : v;

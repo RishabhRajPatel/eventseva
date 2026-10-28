@@ -29,6 +29,7 @@ const KNOWN: Record<string, string> = {
   TOO_MANY_ATTEMPTS: 'errors.codeTooManyAttempts',
   CODE_EXPIRED: 'errors.codeExpired',
   PRICE_CHANGED: 'errors.priceChanged',
+  SERVICE_DISABLED: 'errors.serviceDisabled',
   RATE_PLAN_REQUIRED: 'errors.ratePlanRequired',
   RATE_PLAN_NOT_FOUND: 'errors.ratePlanNotFound',
   EVENT_TYPE_NOT_SERVED: 'errors.eventTypeNotServed',

@@ -183,7 +183,15 @@ export function QuestionsCard({ value, onChange, error, categoryQuestions }: { v
           <Field testID={`question-${i}-label`} label={t('serviceConfig.question')} value={q.labelEn} onChangeText={(labelEn) => onChange(replaceAt(value, i, { ...q, labelEn }))} maxLength={80} placeholder={t('serviceConfig.questionPlaceholder')} />
           <Field testID={`question-${i}-label-hi`} label={`${t('serviceConfig.inHindi')} ${t('form.optional')}`} value={q.labelHi} onChangeText={(labelHi) => onChange(replaceAt(value, i, { ...q, labelHi }))} maxLength={80} />
           <Segmented
-            options={[{ key: 'text', label: t('serviceConfig.typeText') }, { key: 'boolean', label: t('serviceConfig.typeYesNo') }, { key: 'select', label: t('serviceConfig.typeChoice') }]}
+            options={[
+              { key: 'text', label: t('serviceConfig.typeText') },
+              { key: 'longtext', label: t('serviceConfig.typeLongText') },
+              { key: 'number', label: t('serviceConfig.typeNumber') },
+              { key: 'boolean', label: t('serviceConfig.typeYesNo') },
+              { key: 'select', label: t('serviceConfig.typeChoice') },
+              { key: 'date', label: t('serviceConfig.typeDate') },
+              { key: 'time', label: t('serviceConfig.typeTime') },
+            ]}
             value={q.type}
             onChange={(type) => onChange(replaceAt(value, i, { ...q, type }))}
           />

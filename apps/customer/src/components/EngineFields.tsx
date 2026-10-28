@@ -19,17 +19,23 @@ export function AnswerField({ field: f, value, onChange, error }: { field: Field
   const label = fieldLabel(f, lang) + (f.required ? '' : ` ${t('engineBook.optional')}`);
   const message = error === 'required' ? t('engineBook.answerRequired') : error === 'invalid' ? t('engineBook.answerInvalid') : null;
 
-  if (f.type === 'text' || f.type === 'number') {
+  const help = f.help ? (lang === 'hi' ? f.help.hi : f.help.en) : null;
+  if (f.type === 'text' || f.type === 'longtext' || f.type === 'number' || f.type === 'date' || f.type === 'time') {
+    const text = f.type === 'text' || f.type === 'longtext';
     return (
-      <TextField
-        label={label}
-        value={value === undefined || value === null ? '' : String(value)}
-        onChangeText={(v) => onChange(f.type === 'number' ? v.replace(/[^\d.]/g, '') : v)}
-        keyboardType={f.type === 'number' ? 'number-pad' : 'default'}
-        maxLength={f.type === 'text' ? f.maxLength ?? 500 : 10}
-        multiline={f.type === 'text' && (f.maxLength ?? 500) > 200}
-        error={message}
-      />
+      <View style={styles.group}>
+        <TextField
+          label={label}
+          value={value === undefined || value === null ? '' : String(value)}
+          onChangeText={(v) => onChange(f.type === 'number' ? v.replace(/[^\d.]/g, '') : f.type === 'date' ? v.replace(/[^\d-]/g, '') : f.type === 'time' ? v.replace(/[^\d:]/g, '') : v)}
+          keyboardType={f.type === 'number' ? 'number-pad' : f.type === 'date' || f.type === 'time' ? 'numbers-and-punctuation' : 'default'}
+          maxLength={text ? f.maxLength ?? (f.type === 'longtext' ? 2000 : 500) : f.type === 'date' ? 10 : f.type === 'time' ? 5 : 10}
+          multiline={f.type === 'longtext' || (f.type === 'text' && (f.maxLength ?? 500) > 200)}
+          placeholder={f.type === 'date' ? t('engineBook.datePlaceholder') : f.type === 'time' ? t('engineBook.timePlaceholder') : undefined}
+          error={message}
+        />
+        {help ? <AppText size="xs" color={c.textMuted}>{help}</AppText> : null}
+      </View>
     );
   }
   const options =
@@ -56,6 +62,7 @@ export function AnswerField({ field: f, value, onChange, error }: { field: Field
           <Chip key={String(o.value)} label={o.label} selected={isOn(o.value)} role={multi ? 'checkbox' : 'radio'} onPress={() => toggle(o.value)} />
         ))}
       </View>
+      {help ? <AppText size="xs" color={c.textMuted}>{help}</AppText> : null}
       <FieldError>{message}</FieldError>
     </View>
   );
