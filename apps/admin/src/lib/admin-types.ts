@@ -28,6 +28,8 @@ export interface Dashboard {
   pendingChecks: number;
   /** Disputed charges and inspection records. */
   openDisputes: number;
+  /** Razorpay webhooks in the last 7 days that failed or did not confirm a payment. */
+  paymentProblems?: number;
   bookingsByStatus: Partial<Record<BookingStatus, number>>;
   last14Days: Array<{ day: string; bookings: number }>;
   topCategories: Array<{ slug: string; name: string; bookings: number }>;
@@ -314,4 +316,21 @@ export interface PublicCategory {
   id: number;
   slug: string;
   name: string;
+}
+
+/** GET /v1/admin/payment-events: one Razorpay webhook as received. */
+export interface PaymentEvent {
+  id: string;
+  eventId: string;
+  event: string;
+  status: 'received' | 'processed' | 'ignored' | 'failed';
+  result: string | null;
+  attempts: number;
+  lastError: string | null;
+  receivedAt: string;
+  processedAt: string | null;
+  orderId: string | null;
+  paymentId: string | null;
+  amountPaise: number | null;
+  bookingId: string | null;
 }

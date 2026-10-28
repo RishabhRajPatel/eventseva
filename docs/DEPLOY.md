@@ -133,6 +133,13 @@ It reads OTP codes from `docker compose logs api`; set `SMOKE_LOGS` to another c
 elsewhere. It uses new phone numbers each run, so it can be repeated on the same database. If logins start
 failing after several runs, raise the `OTP_MAX_PER_IP_*` limits on the test stack.
 
+## Watching payments
+
+Admin → **Payment events** (finance) lists every Razorpay webhook once. "Problems only" shows webhooks that
+failed and payments that were not confirmed because the amount did not match or the payment was not
+captured; the dashboard counts them for the last 7 days. Unpaid orders are checked with Razorpay every few
+minutes by the API itself; "Check unpaid orders now" runs that check at once.
+
 ## Checks before each release
 
 - CI is green on GitHub (Actions tab): lint and tests for every package.

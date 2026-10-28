@@ -1,6 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { IsDateString, IsIn, IsOptional, Length } from 'class-validator';
 import { Db } from '../db/db.service';
+import { PaymentEventsService } from '../payments/payment-events.service';
 import { RefundsService } from '../payments/refunds.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from './admin-auth';
 import { StepUp } from './admin-2fa';
@@ -8,6 +9,10 @@ import { StepUp } from './admin-2fa';
 class RangeQuery {
   @IsOptional() @IsDateString({ strict: true }) @Length(10, 10) from?: string;
   @IsOptional() @IsDateString({ strict: true }) @Length(10, 10) to?: string;
+}
+
+class PaymentEventsQuery {
+  @IsOptional() @IsIn(['received', 'processed', 'ignored', 'failed', 'problems']) status?: string;
 }
 
 class RefundsQuery {
@@ -30,6 +35,7 @@ export class AdminReportsController {
   constructor(
     private readonly db: Db,
     private readonly refunds: RefundsService,
+    private readonly paymentEvents: PaymentEventsService,
   ) {}
 
   /** Event days from `from` to `to` (default: this whole month, so upcoming events count too), India time. */
@@ -97,5 +103,38 @@ export class AdminReportsController {
   @HttpCode(HttpStatus.OK)
   retry(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.refunds.retry(admin.adminId, id);
+  }
+
+  /**
+   * Razorpay webhooks as received, newest first (last 200). `problems`: failed ones, and payments that
+   * were not confirmed because the amount did not match the order or the payment was not captured.
+   */
+  @AdminRoles('finance')
+  @Get('payment-events')
+  async paymentEventList(@Query() q: PaymentEventsQuery) {
+    const { rows } = await this.db.query(
+      `SELECT w.id::text, w.event_id AS "eventId", w.event, w.status, w.result, w.attempts, w.last_error AS "lastError",
+              w.received_at AS "receivedAt", w.processed_at AS "processedAt",
+              w.payload->'payload'->'payment'->'entity'->>'order_id' AS "orderId",
+              w.payload->'payload'->'payment'->'entity'->>'id' AS "paymentId",
+              (w.payload->'payload'->'payment'->'entity'->>'amount')::bigint AS "amountPaise",
+              p.booking_id AS "bookingId"
+         FROM webhook_events w
+         LEFT JOIN payments p ON p.razorpay_order_id = w.payload->'payload'->'payment'->'entity'->>'order_id'
+        WHERE $1::text IS NULL
+           OR ($1 = 'problems' AND (w.status = 'failed' OR w.result IN ('amount_mismatch', 'not_captured')))
+           OR w.status = $1
+        ORDER BY w.id DESC LIMIT 200`,
+      [q.status ?? null],
+    );
+    return { items: rows.map((r) => ({ ...r, amountPaise: r.amountPaise === null ? null : Number(r.amountPaise) })) };
+  }
+
+  /** Asks Razorpay now about unpaid orders older than 10 minutes, instead of waiting for the next run. */
+  @AdminRoles('finance')
+  @Post('payment-events/reconcile')
+  @HttpCode(HttpStatus.OK)
+  async reconcileNow() {
+    return { confirmed: await this.paymentEvents.reconcile() };
   }
 }

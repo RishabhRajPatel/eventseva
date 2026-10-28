@@ -22,6 +22,7 @@ export type Section =
   | 'payouts'
   | 'disputes'
   | 'refunds'
+  | 'payments'
   | 'checks'
   | 'reports'
   | 'complaints'
@@ -38,7 +39,7 @@ export interface NavItem {
   href: `/${string}`;
   label: string;
   /** Dashboard count shown as a badge next to the link. */
-  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts' | 'openAlerts' | 'pendingChecks' | 'openDisputes';
+  badge?: 'pendingVendors' | 'pendingMedia' | 'openComplaints' | 'duePayouts' | 'openAlerts' | 'pendingChecks' | 'openDisputes' | 'paymentProblems';
 }
 
 export const NAV_ITEMS: readonly NavItem[] = [
@@ -53,6 +54,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   // Rental / car charges the customer disputes, and refunds with their Razorpay result.
   { section: 'disputes', href: '/disputes', label: 'Disputes', badge: 'openDisputes' },
   { section: 'refunds', href: '/refunds', label: 'Refunds' },
+  // Razorpay webhooks: failures and payments that were not confirmed (wrong amount, not captured).
+  { section: 'payments', href: '/payment-events', label: 'Payment events', badge: 'paymentProblems' },
   { section: 'reports', href: '/reports', label: 'Reports' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
@@ -69,7 +72,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
   verifier: ['dashboard', 'vendors', 'photos', 'checks', 'security'],
   support: ['dashboard', 'vendors', 'bookings', 'disputes', 'reports', 'complaints', 'users', 'security'],
-  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'reports', 'coupons', 'featured', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'payments', 'reports', 'coupons', 'featured', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {

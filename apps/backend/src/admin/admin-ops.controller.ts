@@ -99,6 +99,8 @@ export class AdminOpsController {
          ((SELECT count(*)::int FROM booking_charges WHERE status = 'disputed')
           + (SELECT count(*)::int FROM booking_inspections i JOIN bookings b ON b.id = i.booking_id
               WHERE i.customer_ack = 'disputed' AND b.status IN ('confirmed', 'completed'))) AS "openDisputes",
+         (SELECT count(*)::int FROM webhook_events WHERE received_at > now() - interval '7 days'
+           AND (status = 'failed' OR result IN ('amount_mismatch', 'not_captured'))) AS "paymentProblems",
          (SELECT COALESCE(sum(r.discount_paise), 0)::bigint FROM coupon_redemptions r JOIN bookings b ON b.id = r.booking_id
            WHERE r.status = 'used' AND to_char(b.day, 'YYYY-MM') = $1) AS "monthDiscountPaise",
          (SELECT COALESCE(sum(amount_paise), 0)::bigint FROM featured_purchases

@@ -12,6 +12,7 @@ import { execSync } from 'node:child_process';
 import { randomInt } from 'node:crypto';
 import { signParams } from '../src/media/cloudinary.service';
 import { totpAt } from '../src/admin/totp';
+import { FakeGateway } from '../src/payments/gateway';
 
 const need = (name: string) => {
   const v = process.env[name];
@@ -178,6 +179,7 @@ async function main() {
   await ok('POST', `/v1/partner/bookings/${b1.id}/accept`, { token: vendor.token });
   const paid = await ok('POST', `/v1/bookings/${b1.id}/pay/dev`, { token: cust.token });
   check(paid.status === 'confirmed', 'advance paid, booking confirmed', paid.status);
+  check(paid.state === 'confirmed', 'the state machine says confirmed', paid.state);
   const inv = await ok('GET', `/v1/bookings/${b1.id}/invoice`, { token: cust.token });
   check(inv.title === 'Proforma invoice' && inv.number === 'PROFORMA' && inv.totalPaise === paid.amountPaise && inv.paidPaise === paid.advancePaise, 'proforma invoice in the vendor name while the booking can change', inv);
   const comm = await ok('GET', `/v1/partner/bookings/${b1.id}/commission-invoice`, { token: vendor.token });
@@ -217,6 +219,22 @@ async function main() {
 
   step('Admin: booking detail, invoices, reports, refunds');
   const det = await ok('GET', `/v1/admin/bookings/${b1.id}`, { token: admin });
+  const movers = (det.history as { to: string; actorKind: string }[]).map((h) => `${h.to}:${h.actorKind}`);
+  check(movers.includes('pending_vendor:customer') && movers.includes('awaiting_payment:vendor'), 'state history records who moved the booking', movers);
+  // Razorpay sending the same webhook twice (fake provider: signed with its test secret).
+  const order = (det.payments as { type: string; orderId: string; amountPaise: number }[]).find((x) => x.type === 'advance')!;
+  const hook = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: `pay_smoke_${run}`, order_id: order.orderId, amount: order.amountPaise, status: 'captured' } } } });
+  const sendHook = () =>
+    fetch(`${API}/v1/payments/webhook`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-razorpay-signature': FakeGateway.signWebhook(hook), 'x-razorpay-event-id': `evt_smoke_${run}` },
+      body: hook,
+    }).then((r) => r.json() as Promise<{ ok: boolean; duplicate?: boolean }>);
+  const first = await sendHook();
+  const second = await sendHook();
+  check(first.ok && second.duplicate === true, 'a repeated webhook is logged once and skipped', { first, second });
+  const events = (await ok('GET', '/v1/admin/payment-events', { token: admin })).items as { eventId: string }[];
+  check(events.some((e) => e.eventId === `evt_smoke_${run}`), 'finance sees the webhook under Payment events');
   check(det.bookingType === 'time_window' && det.startsAt, 'admin booking page has engine fields');
   const both = await ok('GET', `/v1/admin/bookings/${b1.id}/invoices`, { token: admin });
   check(both.customer.title === 'Proforma invoice', 'admin sees the proforma too');

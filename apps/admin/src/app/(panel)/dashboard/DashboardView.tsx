@@ -119,6 +119,7 @@ function NeedsAction({ data, role }: { data: Dashboard; role: AdminRole }) {
     { section: 'payouts' as const, href: '/payouts?status=scheduled&due=true', label: 'Payouts due', n: data.duePayouts, warn: true },
     { section: 'checks' as const, href: '/checks', label: 'Cars, drivers and licences to check', n: data.pendingChecks, warn: false },
     { section: 'disputes' as const, href: '/disputes', label: 'Disputed charges', n: data.openDisputes, warn: true },
+    { section: 'payments' as const, href: '/payment-events?status=problems', label: 'Payment problems (last 7 days)', n: data.paymentProblems ?? 0, warn: true },
   ].filter((item) => canView(role, item.section) && item.n > 0);
 
   return (

@@ -50,7 +50,14 @@ Tick each line. If something fails, note the phone model, Android version, scree
 - [ ] Vendor accepts; mobile number appears for both after the advance.
 - [ ] Car handover: vendor records odometer, fuel and photos; customer sees photos (tap to zoom) and
       accepts or disputes.
+- [ ] Handover code: the customer's booking shows a 6-digit code. The vendor types it in at the
+      handover (or rental delivery): the record shows as agreed without the customer tapping anything.
+      A wrong code shows a clear error; saving without a code still works.
 - [ ] Return with extra km: the charge appears; customer disputes; admin decides under Disputes.
+- [ ] Damage with no photos, disputed: admin cannot keep the money ("No photos back this charge"),
+      only waive it. With photos, admin can keep part of it.
+- [ ] Admin → Payment events lists each payment webhook once; "Check unpaid orders now" answers.
+- [ ] Admin → booking page shows "State history" with who made each change.
 - [ ] Reschedule or extend; the price difference is charged or refunded.
 - [ ] Before completion, invoice says "Proforma"; after the event is marked completed, it has a number.
 - [ ] Share invoice opens the Android share sheet.

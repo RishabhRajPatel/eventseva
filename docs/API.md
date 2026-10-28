@@ -317,6 +317,11 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
   the customer disputes, oldest first. `GET /v1/admin/refunds?status=` (finance) → `{items}` with the
   Razorpay result; `POST /v1/admin/refunds/:id/retry` (finance, 2FA re-check) sends a failed refund once more
   (`NOT_FOUND` 404 when it is not failed or was already retried).
+- **Payment events:** `GET /v1/admin/payment-events?status=` (finance; `received`, `processed`, `ignored`,
+  `failed`, or `problems` = failed plus payments not confirmed because of a wrong amount or no capture) →
+  `{items: [{eventId, event, status, result, attempts, lastError, receivedAt, processedAt, orderId, paymentId,
+  amountPaise, bookingId}]}`, last 200. `POST /v1/admin/payment-events/reconcile` (finance) asks Razorpay now
+  about unpaid orders older than 10 minutes → `{confirmed}`. The dashboard has `paymentProblems` (last 7 days).
 
 ## Services booked by time or quantity (DJ, decor, catering, cars, staff, makeup, planners)
 

@@ -162,6 +162,11 @@ describe('booking lifecycle (production hardening)', () => {
       expect((await webhook(ev, 'evt_1').expect(200)).body).toEqual({ ok: true, duplicate: true });
       const rows = (await t.db.query(`SELECT status, result, attempts FROM webhook_events WHERE event_id = 'evt_1'`)).rows;
       expect(rows).toEqual([{ status: 'processed', result: 'confirmed', attempts: 1 }]);
+      // Only ids, amounts and statuses are kept; Razorpay's customer details are dropped.
+      await webhook({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_x', order_id: 'order_none', amount: 1, status: 'captured', email: 'a@b.in', contact: '+919800000000', card: { last4: '1111' } } } } }, 'evt_pii').expect(200);
+      const kept = (await t.db.query(`SELECT payload FROM webhook_events WHERE event_id = 'evt_pii'`)).rows[0].payload;
+      expect(JSON.stringify(kept)).not.toMatch(/a@b\.in|9800000000|1111/);
+      expect(kept.payload.payment.entity).toEqual({ id: 'pay_x', order_id: 'order_none', amount: 1, status: 'captured' });
       expect((await as(c.token).get(`/v1/bookings/${id}`).expect(200)).body.state).toBe('confirmed');
       expect((await history(id)).at(-1)).toMatchObject({ to_state: 'confirmed', actor_kind: 'gateway' });
       // Events we do not use are logged as ignored.
@@ -181,6 +186,15 @@ describe('booking lifecycle (production hardening)', () => {
       // A forged webhook is refused before anything is logged.
       await t.http().post('/v1/payments/webhook').set('Content-Type', 'application/json').set('X-Razorpay-Signature', '00'.repeat(32)).send({ event: 'payment.captured' }).expect(401);
       expect((await t.db.query(`SELECT 1 FROM webhook_events`)).rowCount).toBe(2);
+      // Finance sees both problems, with the order and booking; support cannot open the list.
+      const problems = (await as(admin).get('/v1/admin/payment-events?status=problems').expect(200)).body.items;
+      expect(problems.map((e: { result: string }) => e.result).sort()).toEqual(['amount_mismatch', 'not_captured']);
+      expect(problems[0]).toMatchObject({ orderId: order.orderId, bookingId: id });
+      expect((await as(admin).get('/v1/admin/dashboard').expect(200)).body.paymentProblems).toBe(2);
+      const support = await t.adminLogin('support', 's2@eventseva.test');
+      await as(support).get('/v1/admin/payment-events').expect(403);
+      // "Check now" runs the reconciliation at once (nothing is paid at the provider here).
+      expect((await as(admin).post('/v1/admin/payment-events/reconcile').expect(200)).body).toEqual({ confirmed: 0 });
     });
   });
 

@@ -16,6 +16,18 @@ export interface RazorpayEvent {
   };
 }
 
+/**
+ * What the log keeps of an event: ids, amounts and statuses only. Razorpay's entities also carry the
+ * customer's email, phone and card or UPI details, which EventSeva does not need to store.
+ */
+function slim(body: RazorpayEvent) {
+  const pick = <T extends object>(o: T | undefined, keys: string[]) =>
+    o ? Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k))) : undefined;
+  const payment = pick(body.payload?.payment?.entity, ['id', 'order_id', 'amount', 'currency', 'status', 'method', 'captured']);
+  const refund = pick(body.payload?.refund?.entity, ['id', 'payment_id', 'amount', 'status', 'error_description']);
+  return { event: body.event, payload: { ...(payment && { payment: { entity: payment } }), ...(refund && { refund: { entity: refund } }) } };
+}
+
 /** Unpaid orders are asked about after this long without a webhook, and again at most this often. */
 const RECONCILE_AFTER_MIN = 10;
 /** Orders older than this are not checked any more (the checkout has long closed). */
@@ -66,7 +78,7 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
       `INSERT INTO webhook_events (event_id, event, payload) VALUES ($1, $2, $3)
        ON CONFLICT (provider, event_id) DO UPDATE SET attempts = webhook_events.attempts
        RETURNING id, status, result`,
-      [id, String(body.event ?? 'unknown').slice(0, 100), body],
+      [id, String(body.event ?? 'unknown').slice(0, 100), slim(body)],
     );
     if (row!.status === 'processed' || row!.status === 'ignored') return { result: row!.result ?? row!.status, duplicate: true };
     try {
