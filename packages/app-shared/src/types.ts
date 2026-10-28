@@ -720,6 +720,7 @@ export interface RentalSettings {
   blockedDates?: string[];
   maxAdvanceDays?: number | null;
   maxPerDay?: number | null;
+  breaks?: { from: string; to: string }[];
 }
 
 /** GET /v1/vendors/:id/rentals: what a customer can rent. */
@@ -818,7 +819,7 @@ export interface FieldDef {
   key: string;
   label: Bilingual;
   /** text: one line; longtext: a paragraph; date: YYYY-MM-DD; time: HH:MM (India time). */
-  type: 'text' | 'longtext' | 'number' | 'boolean' | 'select' | 'multiselect' | 'date' | 'time';
+  type: 'text' | 'longtext' | 'number' | 'boolean' | 'select' | 'multiselect' | 'date' | 'time' | 'photo';
   /** A line shown under the question. */
   help?: Bilingual;
   /** Asked only when the answer to an earlier question is one of `values`. */
@@ -893,6 +894,10 @@ export interface EngineRules {
   blockedDates?: string[];
   maxAdvanceDays?: number;
   maxPerDay?: number;
+  /** Daily breaks, India time. */
+  breaks?: { from: string; to: string }[];
+  /** Team services: bookings that may run at the same time (several teams). */
+  maxConcurrent?: number;
 }
 
 export type ResourceKind = 'vehicle' | 'driver' | 'staff' | 'artist' | 'venue' | 'equipment';

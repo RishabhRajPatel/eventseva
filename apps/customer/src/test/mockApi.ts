@@ -6,7 +6,7 @@ export function mockApiModule() {
     'cancelBooking', 'review', 'shortlist', 'save', 'unsave', 'startChat', 'conversations', 'messages', 'sendMessage',
     'complaints', 'createComplaint', 'notifications', 'markNotificationsRead', 'offers', 'applyCoupon', 'removeCoupon',
     'rentals', 'quote', 'requestRental', 'rental', 'answerCharge', 'vendorTravel', 'updateEvent',
-    'engineServices', 'bundles', 'engineQuote', 'requestEngine', 'checkoutQuote', 'checkout', 'licence', 'saveLicence', 'signLicencePhoto', 'trip', 'ackInspection',
+    'engineServices', 'bundles', 'engineQuote', 'requestEngine', 'checkoutQuote', 'checkout', 'licence', 'saveLicence', 'signLicencePhoto', 'signAnswerUpload', 'answerFile', 'trip', 'ackInspection',
     'changes', 'requestChange', 'cancelChange', 'invoice', 'cash', 'handoverCode',
     'cancelPreview', 'money', 'serviceDay', 'checkoutView', 'checkoutPay', 'checkoutPayVerify', 'checkoutDevPay',
   ];

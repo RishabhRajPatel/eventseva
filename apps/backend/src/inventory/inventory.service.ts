@@ -64,6 +64,7 @@ export interface RentalSettings {
   blockedDates?: string[];
   maxAdvanceDays?: number;
   maxPerDay?: number;
+  breaks?: { from: string; to: string }[];
 }
 
 interface ItemRow {
@@ -450,6 +451,7 @@ export class InventoryService {
       blockedDates: rules.blockedDates ?? [],
       maxAdvanceDays: rules.maxAdvanceDays ?? null,
       maxPerDay: rules.maxPerDay ?? null,
+      breaks: rules.breaks ?? [],
     };
   }
 
@@ -478,6 +480,7 @@ export class InventoryService {
       ...(body.blockedDates?.length && { blockedDates: body.blockedDates }),
       ...(body.maxAdvanceDays !== undefined && { maxAdvanceDays: body.maxAdvanceDays }),
       ...(body.maxPerDay !== undefined && { maxPerDay: body.maxPerDay }),
+      ...(body.breaks?.length && { breaks: body.breaks }),
     });
     await this.db.tx(async (client) => {
       const id = await this.ensureRentalService(client, vendorId);

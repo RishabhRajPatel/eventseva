@@ -139,7 +139,14 @@ export function travelLine(p: Pricing, from: Point | null, to: Point | null): Qu
   return chargeable > 0 ? line('travel', `Travel ${km} km (${p.travelFreeKm ?? 0} km free)`, chargeable, p.travelPerKmPaise, 'fee') : null;
 }
 
+/** The service's own pool when the vendor runs several teams at once (rules.maxConcurrent). */
+export const servicePoolKey = (serviceId: string) => `service:${serviceId}`;
+
 function exclusive(ctx: PlanContext): Need[] {
+  // Several teams: a place in the service's pool instead of the one team exclusively.
+  if (!ctx.resource && (ctx.rules.maxConcurrent ?? 1) > 1) {
+    return [{ kind: 'pool', poolKey: servicePoolKey(ctx.service.id), qty: 1, total: ctx.rules.maxConcurrent!, label: 'vendor teams' }];
+  }
   const id = ctx.resource?.id ?? ctx.crewId;
   if (!id) throw new AppError('SERVICE_NOT_CONFIGURED', 'This vendor has not set up who does this service yet.', HttpStatus.CONFLICT);
   return [{ kind: 'resource', resourceId: id, label: ctx.resource?.name ?? 'vendor team' }];

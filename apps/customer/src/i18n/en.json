@@ -540,6 +540,7 @@
     "DATE_BLOCKED": "The vendor does not take bookings on this date. Try another day.",
     "CLOSED_THAT_DAY": "The vendor does not work on this day of the week. Try another day.",
     "DAY_FULL": "The vendor is fully booked for this on that day. Try another day.",
+    "DURING_BREAK": "The vendor takes a break then. Pick a time before or after it.",
     "NOTHING_TO_PAY": "Nothing here is waiting for payment right now.",
     "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
     "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}.",
@@ -944,6 +945,13 @@
       "closed": "Not available on this day."
     },
     "yourAnswers": "Your answers",
+    "photoAttach": "Attach a photo",
+    "photoChange": "Change the photo",
+    "photoRemove": "Remove the photo",
+    "photoAttached": "Photo attached. Only you and the vendor can open it.",
+    "photoTooBig": "This photo is too big. Pick a smaller one.",
+    "photoFailed": "The photo did not upload. Check your internet and try again.",
+    "openFile": "Open {{type}}",
     "plan": "How do you want to book?",
     "useHere": "Use my location"
   },

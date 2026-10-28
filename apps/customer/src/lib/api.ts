@@ -198,6 +198,10 @@ export const api = {
   money: (bookingId: string) => client.get<MoneySummary>(`/v1/bookings/${bookingId}/money`),
   licence: async () => (await client.get<{ licence: DriverLicence | null }>('/v1/me/licence')).licence,
   signLicencePhoto: () => client.post<UploadSignature>('/v1/me/licence/upload'),
+  /** A private upload for a photo or PDF answer to a vendor's question. */
+  signAnswerUpload: () => client.post<UploadSignature>('/v1/me/answer-upload'),
+  /** A 10-minute link to a file attached to the booking. */
+  answerFile: (bookingId: string, key: string) => client.get<{ url: string }>(`/v1/bookings/${bookingId}/answer-files/${encodeURIComponent(key)}`),
   saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) =>
     client.put<DriverLicence>('/v1/me/licence', body),
   trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),

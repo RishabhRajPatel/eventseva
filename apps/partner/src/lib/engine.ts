@@ -381,10 +381,12 @@ export function checkReadings(odometer: string, fuel: number | null, handoverKm?
 // ---------- the customer's answers on a booking ----------
 
 /** Answers with the question and option labels in the vendor's language; internal keys (car mode, km estimate) left out. */
-export function answerRows(b: Pick<Booking, 'answers' | 'questions'>, lang: Language): { key: string; label: string; value: string | boolean | number }[] {
+export type AnswerRow = { key: string; label: string; value: string | boolean | number; file?: boolean };
+
+export function answerRows(b: Pick<Booking, 'answers' | 'questions'>, lang: Language): AnswerRow[] {
   const answers = b.answers ?? {};
   const name = (l: { en: string; hi: string }) => (lang === 'hi' ? l.hi : l.en);
-  const rows: { key: string; label: string; value: string | boolean | number }[] = [];
+  const rows: AnswerRow[] = [];
   for (const q of b.questions ?? []) {
     const v = answers[q.key];
     if (v === undefined || v === null || v === '' || (Array.isArray(v) && !v.length)) continue;
@@ -392,6 +394,11 @@ export function answerRows(b: Pick<Booking, 'answers' | 'questions'>, lang: Lang
       const o = q.options?.find((op) => op.value === x);
       return o ? name(o.label) : String(x);
     };
+    // A photo or PDF answer: shown as a file to open (EngineDetails asks the server for a short link).
+    if (typeof v === 'object' && !Array.isArray(v)) {
+      rows.push({ key: q.key, label: name(q.label), value: String((v as { format?: string }).format ?? 'file').toUpperCase(), file: true });
+      continue;
+    }
     rows.push({ key: q.key, label: name(q.label), value: Array.isArray(v) ? v.map(option).join(', ') : typeof v === 'boolean' || typeof v === 'number' ? v : option(v) });
   }
   return rows;

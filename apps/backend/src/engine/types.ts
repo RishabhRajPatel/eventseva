@@ -13,12 +13,15 @@ export type PricingModel = (typeof PRICING_MODELS)[number];
 export type Bilingual = { en: string; hi: string };
 
 /** A field a vendor fills (attributes) or a customer answers (questions). */
-export const FIELD_TYPES = ['text', 'longtext', 'number', 'boolean', 'select', 'multiselect', 'date', 'time'] as const;
+export const FIELD_TYPES = ['text', 'longtext', 'number', 'boolean', 'select', 'multiselect', 'date', 'time', 'photo'] as const;
 
 export interface FieldDef {
   key: string;
   label: Bilingual;
-  /** text: one line; longtext: a paragraph; date: YYYY-MM-DD; time: HH:MM (India time). */
+  /**
+   * text: one line; longtext: a paragraph; date: YYYY-MM-DD; time: HH:MM (India time); photo: a picture or
+   * PDF the customer uploads privately (only they and the vendor can open it).
+   */
   type: (typeof FIELD_TYPES)[number];
   /** A line under the question. */
   help?: Bilingual;
@@ -57,6 +60,13 @@ export interface RuleSet {
   maxAdvanceDays?: number;
   /** Bookings of this service that may start on one India day (requests waiting for an answer count). */
   maxPerDay?: number;
+  /**
+   * Services done by the vendor's own team (no specific car, hall or artist): how many bookings may run
+   * at the same time (several teams). Unset or 1: one at a time.
+   */
+  maxConcurrent?: number;
+  /** Daily breaks, India time (lunch, prayers, rest): no booking may run through one. */
+  breaks?: { from: string; to: string }[];
   setupMin?: number;
   dismantleMin?: number;
   /** Cleaning / turnaround / repair time after the booking before the resource is free again. */

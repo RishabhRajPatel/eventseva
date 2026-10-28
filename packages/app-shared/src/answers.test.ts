@@ -21,3 +21,8 @@ test('answers read in the app language, with choice labels and yes / no, skippin
   assert.deepEqual(answerLines({ questions, answers: null }, 'en', yesNo), []);
   assert.deepEqual(answerLines({ answers: { menu: 'veg' } }, 'en', yesNo), []);
 });
+
+test('an attached file is a line of its own, marked as a file', () => {
+  const lines = answerLines({ questions: [{ key: 'photo', label: { en: 'Venue photo', hi: 'जगह की फ़ोटो' } }], answers: { photo: { publicId: 'x/y', format: 'jpg' } } }, 'en', yesNo);
+  assert.deepEqual(lines, [{ key: 'photo', label: 'Venue photo', value: 'JPG', file: true }]);
+});

@@ -834,7 +834,8 @@
     "cashNotAvailable": "Cash is not available for this vendor right now. Choose online payment.",
     "cashNotInCart": "The cart is paid online. Book this item on its own to pay in cash.",
     "dueClosed": "This commission is already settled.",
-    "serviceDisabled": "EventSeva took this service off the app. Contact support."
+    "serviceDisabled": "EventSeva took this service off the app. Contact support.",
+    "duringBreak": "You take a break then. Pick a time before or after it."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1175,7 +1176,10 @@
       "advance": "Days ahead: from 1 to 730.",
       "perDay": "Bookings per day: from 1 to 1000.",
       "question_label": "Question {{n}}: write the question.",
-      "question_options": "Question {{n}}: add 2 to 20 choices, separated by commas."
+      "question_options": "Question {{n}}: add 2 to 20 choices, separated by commas.",
+      "question_condition": "Question {{n}}: pick the earlier question and at least one answer.",
+      "breaks": "Breaks: up to 5, like 13:00-14:00, each ending after it starts.",
+      "concurrent": "Bookings at the same time: from 1 to 100."
     },
     "typeLongText": "Long text",
     "typeNumber": "Number",
@@ -1193,7 +1197,14 @@
       "eventTypes": "Events",
       "active": "On / off by EventSeva"
     },
-    "disabled": "EventSeva took this service off the app: {{reason}}. Contact support to change it."
+    "disabled": "EventSeva took this service off the app: {{reason}}. Contact support to change it.",
+    "typePhoto": "Photo / PDF",
+    "askWhen": "Ask this only when",
+    "always": "Always",
+    "breaks": "Daily breaks",
+    "breaksHint": "From-to, India time, separated by commas, e.g. 13:00-14:00.",
+    "maxConcurrent": "Bookings you can do at the same time",
+    "maxConcurrentHint": "If you have several teams. Empty: one at a time."
   },
   "engine": {
     "title": "Services & bookings",
@@ -1464,7 +1475,8 @@
     "bundleAdded": "Package added",
     "bundleSaved": "Package saved",
     "bundleRemoved": "Package removed",
-    "deleteBundleBody": "Customers can no longer book it as a package."
+    "deleteBundleBody": "Customers can no longer book it as a package.",
+    "openFile": "Open {{type}}"
   },
   "carTrip": {
     "title": "Trip",

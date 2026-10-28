@@ -5,6 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { EVENT_TYPES, type EventType, type PricingModel } from '@eventseva/app-shared';
 import {
+  conditionAnswers,
+  removeQuestion,
   newPlan,
   newPriceRule,
   newQuestion,
@@ -56,7 +58,7 @@ const Problem = ({ text }: { text: string | null }) =>
     </Txt>
   ) : null;
 
-export function AvailabilityCard({ value, onChange, error }: { value: AvailabilityForm; onChange: (v: AvailabilityForm) => void; error: string | null }) {
+export function AvailabilityCard({ value, onChange, error, teams }: { value: AvailabilityForm; onChange: (v: AvailabilityForm) => void; error: string | null; teams?: boolean }) {
   const { t } = useTranslation();
   return (
     <Card style={styles.card}>
@@ -81,6 +83,27 @@ export function AvailabilityCard({ value, onChange, error }: { value: Availabili
         keyboardType="number-pad"
         maxLength={3}
       />
+      <Field
+        testID="breaks"
+        label={`${t('serviceConfig.breaks')} ${t('form.optional')}`}
+        hint={t('serviceConfig.breaksHint')}
+        value={value.breaks}
+        onChangeText={(breaks) => onChange({ ...value, breaks: breaks.replace(/[^\d:,\- ]/g, '') })}
+        placeholder="13:00-14:00"
+        keyboardType="numbers-and-punctuation"
+        maxLength={80}
+      />
+      {teams ? (
+        <Field
+          testID="max-concurrent"
+          label={`${t('serviceConfig.maxConcurrent')} ${t('form.optional')}`}
+          hint={t('serviceConfig.maxConcurrentHint')}
+          value={value.maxConcurrent}
+          onChangeText={(v) => onChange({ ...value, maxConcurrent: v.replace(/\D/g, '') })}
+          keyboardType="number-pad"
+          maxLength={3}
+        />
+      ) : null}
       <Field
         testID="max-per-day"
         label={`${t('serviceConfig.maxPerDay')} ${t('form.optional')}`}
@@ -171,6 +194,46 @@ export function PriceRulesCard({ value, onChange, error }: { value: PriceRuleFor
   );
 }
 
+/** "Ask only when …": an earlier yes / no or choice question, and the answers that show this one. */
+function Condition({ questions, index, onChange }: { questions: QuestionForm[]; index: number; onChange: (v: QuestionForm['showIf']) => void }) {
+  const { t } = useTranslation();
+  const q = questions[index];
+  const earlier = questions.slice(0, index).map((x, i) => ({ x, i })).filter(({ x }) => conditionAnswers(x).length && (x.labelEn.trim() || x.labelHi.trim()));
+  if (!earlier.length) return null;
+  const ref = q.showIf ? questions[q.showIf.question] : null;
+  return (
+    <View style={styles.item}>
+      <Txt variant="bold" size="sm">{t('serviceConfig.askWhen')}</Txt>
+      <View style={styles.chips}>
+        <ChoiceChip testID={`question-${index}-always`} label={t('serviceConfig.always')} selected={!q.showIf} onPress={() => onChange(null)} />
+        {earlier.map(({ x, i }) => (
+          <ChoiceChip
+            key={i}
+            testID={`question-${index}-when-${i}`}
+            label={x.labelEn.trim() || x.labelHi.trim()}
+            selected={q.showIf?.question === i}
+            onPress={() => onChange({ question: i, answers: [] })}
+          />
+        ))}
+      </View>
+      {ref && q.showIf ? (
+        <View style={styles.chips}>
+          {conditionAnswers(ref).map((a) => (
+            <ChoiceChip
+              key={a}
+              multi
+              testID={`question-${index}-answer-${a}`}
+              label={a === 'yes' && ref.type === 'boolean' ? t('common.yes') : a === 'no' && ref.type === 'boolean' ? t('common.no') : a}
+              selected={q.showIf!.answers.includes(a)}
+              onPress={() => onChange({ ...q.showIf!, answers: toggle(q.showIf!.answers, a) })}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export function QuestionsCard({ value, onChange, error, categoryQuestions }: { value: QuestionForm[]; onChange: (v: QuestionForm[]) => void; error: string | null; categoryQuestions: string[] }) {
   const { t } = useTranslation();
   return (
@@ -191,6 +254,7 @@ export function QuestionsCard({ value, onChange, error, categoryQuestions }: { v
               { key: 'select', label: t('serviceConfig.typeChoice') },
               { key: 'date', label: t('serviceConfig.typeDate') },
               { key: 'time', label: t('serviceConfig.typeTime') },
+              { key: 'photo', label: t('serviceConfig.typePhoto') },
             ]}
             value={q.type}
             onChange={(type) => onChange(replaceAt(value, i, { ...q, type }))}
@@ -199,7 +263,8 @@ export function QuestionsCard({ value, onChange, error, categoryQuestions }: { v
             <Field testID={`question-${i}-options`} label={t('serviceConfig.choices')} hint={t('serviceConfig.choicesHint')} value={q.options} onChangeText={(options) => onChange(replaceAt(value, i, { ...q, options }))} maxLength={500} />
           ) : null}
           <ChoiceChip multi testID={`question-${i}-required`} label={t('serviceConfig.required')} selected={q.required} onPress={() => onChange(replaceAt(value, i, { ...q, required: !q.required }))} />
-          <LinkButton testID={`question-${i}-remove`} label={t('serviceConfig.remove')} color={c.danger} onPress={() => onChange(removeAt(value, i))} />
+          <Condition questions={value} index={i} onChange={(showIf) => onChange(replaceAt(value, i, { ...q, showIf }))} />
+          <LinkButton testID={`question-${i}-remove`} label={t('serviceConfig.remove')} color={c.danger} onPress={() => onChange(removeQuestion(value, i))} />
         </View>
       ))}
       {value.length < 15 ? <Button testID="add-question" kind="outline" icon="plus" label={t('serviceConfig.addQuestion')} onPress={() => onChange([...value, newQuestion()])} /> : null}

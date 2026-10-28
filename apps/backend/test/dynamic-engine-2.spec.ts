@@ -4,6 +4,7 @@
 import { todayIst } from '../src/bookings/booking.rules';
 import { checkFields, checkValues } from '../src/engine/rules';
 import type { FieldDef } from '../src/engine/types';
+import { signParams } from '../src/media/cloudinary.service';
 import { createTestApp, TestApp } from './helpers';
 
 const inDays = (n: number) => {
@@ -196,5 +197,60 @@ describe('vendor-configurable booking engine, part 2', () => {
     // The team is busy from set-up (90 min before) to after packing up (60 min after); nothing about who.
     expect(taken.busy).toEqual([{ from: new Date(at(DAY, '17:30')).toISOString(), until: new Date(at(DAY, '23:00')).toISOString() }]);
     expect(JSON.stringify(taken)).not.toMatch(/9833333333|customer/);
+  });
+
+  it('daily breaks: a booking may not run through one, and the day view shows them as taken', async () => {
+    const dj = await vendor('9811111111', 'dj');
+    await as(dj.token).post('/v1/partner/engine-services', { title: 'DJ', pricing: { model: 'hourly', ratePaise: 300_000 }, rules: { breaks: [{ from: '14:00', to: '13:00' }] } }).expect(400);
+    const svc = (await as(dj.token).post('/v1/partner/engine-services', { title: 'DJ', pricing: { model: 'hourly', ratePaise: 300_000 }, rules: { breaks: [{ from: '13:00', to: '14:00' }] } }).expect(201)).body.id;
+    const c = await customer('9833333333');
+    expect((await as(c.token).post('/v1/quotes', djLine(c.eventId, svc, DAY, '12:00', '15:00')).expect(400)).body.error).toMatchObject({ code: 'DURING_BREAK', from: '13:00', to: '14:00' });
+    await as(c.token).post('/v1/quotes', djLine(c.eventId, svc, DAY, '10:00', '13:00')).expect(200);
+    await as(c.token).post('/v1/quotes', djLine(c.eventId, svc, DAY, '14:00', '18:00')).expect(200);
+    const day = (await t.http().get(`/v1/vendors/${dj.id}/engine-services/${svc}/day`).query({ date: DAY }).expect(200)).body;
+    expect(day.breaks).toEqual([{ from: '13:00', to: '14:00' }]);
+    expect(day.busy).toEqual([{ from: new Date(at(DAY, '13:00')).toISOString(), until: new Date(at(DAY, '14:00')).toISOString() }]);
+  });
+
+  it('several teams: that many bookings can overlap, one more is refused, and the day view shows when all are out', async () => {
+    const decor = await vendor('9811111111', 'decor');
+    const svc = (await as(decor.token).post('/v1/partner/engine-services', { title: 'Stage', pricing: { model: 'fixed', ratePaise: 1_000_000 }, rules: { maxConcurrent: 2 } }).expect(201)).body.id;
+    await as(decor.token).post('/v1/partner/engine-services', { title: 'X', pricing: { model: 'fixed', ratePaise: 1_000_000 }, rules: { maxConcurrent: 500 } }).expect(400);
+    const line = (e: string, from: string, until: string) => ({ eventId: e, serviceId: svc, startsAt: at(DAY, from), endsAt: at(DAY, until), answers: { theme: 'floral' } });
+    const people = await Promise.all(['9833333333', '9844444444', '9855555555'].map((p) => customer(p)));
+    const results = await Promise.all(people.map((c) => as(c.token).post('/v1/engine-bookings', line(c.eventId, '12:00', '16:00'))));
+    expect(results.map((r) => r.status).sort()).toEqual([201, 201, 409]);
+    expect(results.find((r) => r.status === 409)!.body.error.code).toBe('NOT_AVAILABLE');
+    const day = (await t.http().get(`/v1/vendors/${decor.id}/engine-services/${svc}/day`).query({ date: DAY }).expect(200)).body;
+    // Both teams are out from set-up (4 h before) to after dismantling (2 h after).
+    expect(day.busy).toEqual([{ from: new Date(at(DAY, '08:00')).toISOString(), until: new Date(at(DAY, '18:00')).toISOString() }]);
+  });
+
+  it('a photo answer must be the customer\'s own signed upload; only the customer and the vendor can open it', async () => {
+    const dj = await vendor('9811111111', 'dj');
+    const questions = [{ key: 'venue_photo', label: bi('Photo of the venue'), type: 'photo', required: true }];
+    const svc = (await as(dj.token).post('/v1/partner/engine-services', { title: 'DJ', pricing: { model: 'hourly', ratePaise: 300_000 }, questions }).expect(201)).body.id;
+    const c = await customer('9833333333');
+    const me = (await t.db.one<{ id: string }>(t.db, `SELECT id FROM users WHERE phone LIKE '%9833333333'`))!.id;
+    const sign = (await as(c.token).post('/v1/me/answer-upload').expect(200)).body;
+    expect(sign.folder ?? sign.params?.folder ?? JSON.stringify(sign)).toContain(`eventseva/customers/${me}/answers`);
+    const upload = (publicId: string, signature?: string) => ({ publicId, version: 7, format: 'jpg', signature: signature ?? signParams({ public_id: publicId, version: 7 }, 'test-secret') });
+    const body = (photo: object) => ({ ...djLine(c.eventId, svc, DAY, '19:00', '22:00', { occasion: 'sangeet', venue_photo: photo }) });
+    // Someone else's file, or a forged signature, is refused.
+    expect((await as(c.token).post('/v1/engine-bookings', body(upload('eventseva/customers/someone/answers/a'))).expect(403)).body.error.code).toBe('UPLOAD_INVALID');
+    expect((await as(c.token).post('/v1/engine-bookings', body(upload(`eventseva/customers/${me}/answers/a`, 'ab'.repeat(20)))).expect(403)).body.error.code).toBe('UPLOAD_INVALID');
+    expect((await as(c.token).post('/v1/engine-bookings', body({ publicId: 'x', version: 7, format: 'exe', signature: 'x' })).expect(400)).body.error.code).toBe('ANSWER_INVALID');
+    const id = (await as(c.token).post('/v1/engine-bookings', body(upload(`eventseva/customers/${me}/answers/venue1`))).expect(201)).body.id;
+    // Only the file's id and format are kept.
+    const saved = (await t.db.one<{ snapshot: { answers: Record<string, unknown> } }>(t.db, 'SELECT snapshot FROM bookings WHERE id = $1', [id]))!.snapshot.answers.venue_photo;
+    expect(saved).toEqual({ publicId: `eventseva/customers/${me}/answers/venue1`, format: 'jpg' });
+    const mine = (await as(c.token).get(`/v1/bookings/${id}/answer-files/venue_photo`).expect(200)).body;
+    expect(mine.url).toMatch(/^https:\/\/api\.cloudinary\.com\/v1_1\/testcloud\/image\/download\?/);
+    await as(dj.token).get(`/v1/partner/bookings/${id}/answer-files/venue_photo`).expect(200);
+    const other = await vendor('9822222222', 'dj');
+    await as(other.token).get(`/v1/partner/bookings/${id}/answer-files/venue_photo`).expect(404);
+    const stranger = await customer('9844444444');
+    await as(stranger.token).get(`/v1/bookings/${id}/answer-files/venue_photo`).expect(404);
+    await as(c.token).get(`/v1/bookings/${id}/answer-files/occasion`).expect(404);
   });
 });

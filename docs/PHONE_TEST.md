@@ -58,6 +58,15 @@ Tick each line. If something fails, note the phone model, Android version, scree
       the difference, and sends only on the second press.
 - [ ] Cart of two vendors, both accept: the payment screen offers "Pay all together"; one payment confirms both.
 - [ ] Cancel a paid booking: the refund shown before confirming matches the refund afterwards.
+- [ ] Partner: a service with two ways to book, a weekend price rule, a 13:00–14:00 break, "2 at the same
+      time", and questions: a yes/no, then a text asked only after "yes", a date, a time and a photo.
+- [ ] Customer: picking a way to book changes the price and durations; start times in the break or when the
+      vendor is busy are greyed out; the follow-up question appears only after "yes"; the date opens a
+      calendar, the time shows half-hour chips; the photo uploads from the gallery and can be removed.
+- [ ] After booking: both apps show the way booked and the answers; the photo opens in the browser for the
+      customer and the vendor, and the link stops working after 10 minutes.
+- [ ] Partner → service → "Change history" lists each change; Admin → vendor → "Booking settings" shows the
+      same and can take the service off (the vendor sees the reason).
 - [ ] Return with extra km: the charge appears; customer disputes; admin decides under Disputes.
 - [ ] Damage with no photos, disputed: admin cannot keep the money ("No photos back this charge"),
       only waive it. With photos, admin can keep part of it.

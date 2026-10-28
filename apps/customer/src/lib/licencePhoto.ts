@@ -28,6 +28,16 @@ export async function pickAndUploadLicence(): Promise<LicencePhoto | null> {
   return uploadSigned({ uri: a.uri, name: a.fileName ?? 'licence.jpg', type: a.mimeType ?? 'image/jpeg' }, sig);
 }
 
+/** A photo for a vendor's question, uploaded privately the same way (only the customer and the vendor can open it). */
+export async function pickAndUploadAnswerPhoto(): Promise<LicencePhoto | null> {
+  const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+  if (picked.canceled || !picked.assets.length) return null;
+  const a = picked.assets[0];
+  const sig = await api.signAnswerUpload();
+  if (a.fileSize && a.fileSize > sig.maxBytes) throw new LicencePhotoError('FILE_TOO_BIG');
+  return uploadSigned({ uri: a.uri, name: a.fileName ?? 'photo.jpg', type: a.mimeType ?? 'image/jpeg' }, sig);
+}
+
 /** POSTs the file with exactly the signed params (changing any of them breaks the signature). */
 export async function uploadSigned(file: { uri: string; name: string; type: string }, sig: UploadSignature, doFetch: typeof fetch = fetch): Promise<LicencePhoto> {
   const form = new FormData();

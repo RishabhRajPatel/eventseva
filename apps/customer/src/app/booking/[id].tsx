@@ -275,7 +275,11 @@ function AnswersCard({ booking: b }: { booking: Booking }) {
       {lines.map((l) => (
         <View key={l.key} style={styles.answer}>
           <AppText size="sm" color={c.textMuted}>{l.label}</AppText>
-          <AppText size="md">{l.value}</AppText>
+          {l.file ? (
+            <Button variant="ghost" size="md" label={t('engineBook.openFile', { type: l.value })} onPress={() => api.answerFile(b.id, l.key).then(({ url }) => void openLink(url))} />
+          ) : (
+            <AppText size="md">{l.value}</AppText>
+          )}
         </View>
       ))}
     </Card>

@@ -264,7 +264,9 @@ export class EngineService {
 
   /** The vendor's own calendar blocks (and old slot bookings) also stop their team being booked. */
   private async checkVendorCalendar(q: Queryable, vendorId: string, needs: Need[], from: Date, until: Date, crewId: string | null) {
-    if (!crewId || !needs.some((n) => n.kind === 'resource' && n.resourceId === crewId)) return;
+    // The vendor's own team, one or several (a pool per service): their calendar blocks apply.
+    const team = needs.some((n) => (n.kind === 'resource' && n.resourceId === crewId) || (n.kind === 'pool' && n.poolKey.startsWith('service:')));
+    if (!team) return;
     const clash = await this.db.one(
       q,
       `SELECT 1 FROM availability a
@@ -275,6 +277,33 @@ export class EngineService {
       [vendorId, from, until],
     );
     if (clash) throw new Unavailable('vendor calendar');
+  }
+
+  /**
+   * Photo answers must be the customer's own private uploads, with Cloudinary's signature. Only the
+   * file's id and format are kept with the booking.
+   */
+  private checkAnswerFiles(customerId: string, questions: FieldDef[], answers: Record<string, unknown>) {
+    for (const q of questions) {
+      if (q.type !== 'photo' || !answers[q.key]) continue;
+      const p = answers[q.key] as { publicId: string; version: number; signature: string; format: string };
+      if (!p.publicId.startsWith(this.cloudinary.answerFolder(customerId) + '/') || p.publicId.includes('..') || !this.cloudinary.verifyUploadResponse(p.publicId, p.version, p.signature)) {
+        throw new AppError('UPLOAD_INVALID', 'We could not verify this upload. Please attach it again.', HttpStatus.FORBIDDEN, { field: q.key });
+      }
+      answers[q.key] = { publicId: p.publicId, format: p.format };
+    }
+  }
+
+  /** A 10-minute link to a file answer, for the booking's customer or its vendor. */
+  async answerFileUrl(bookingId: string, key: string, who: { customerId?: string; vendorUserId?: string }) {
+    const row = await this.db.one<{ file: { publicId: string; format: string } | null }>(
+      this.db,
+      `SELECT b.snapshot->'answers'->$4 AS file FROM bookings b JOIN vendors v ON v.id = b.vendor_id
+        WHERE b.id = $1 AND ($2::uuid IS NULL OR b.customer_id = $2) AND ($3::uuid IS NULL OR v.user_id = $3)`,
+      [bookingId, who.customerId ?? null, who.vendorUserId ?? null, key],
+    );
+    if (!row?.file?.publicId) throw new AppError('NOT_FOUND', 'File not found.', HttpStatus.NOT_FOUND);
+    return { url: this.cloudinary.privateDownloadUrl(row.file.publicId, row.file.format), expiresInSec: 600 };
   }
 
   /**
@@ -337,6 +366,7 @@ export class EngineService {
     await this.checkLicence(client, customerId, p);
     const { plan, quote, loaded } = p;
     assertExpectedTotal(req.expectedTotalPaise, quote.totalPaise);
+    this.checkAnswerFiles(customerId, loaded.ctx.template.questions ?? [], plan.answers);
     await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
     await this.checkDayLimit(client, loaded, plan.starts);
     const respondBy = engineRespondBy(plan.starts, now);

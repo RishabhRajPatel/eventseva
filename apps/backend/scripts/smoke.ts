@@ -217,6 +217,64 @@ async function main() {
   const statuses = (await ok('GET', '/v1/bookings', { token: cust.token })).items.map((x: { status: string }) => x.status).sort();
   check(JSON.stringify(statuses) === JSON.stringify(['cancelled_by_customer', 'confirmed', 'rejected']), 'statuses are right', statuses);
 
+  step('Vendor-configured booking: plans, price rule, break, photo question, day view');
+  const conf = await ok('POST', '/v1/partner/engine-services', {
+    token: vendor.token,
+    body: {
+      title: 'DJ by the hour or full night',
+      pricing: { model: 'hourly', ratePaise: 300_000, adjustments: [{ label: { en: 'Wedding', hi: 'शादी' }, eventTypes: ['wedding'], amountPaise: 50_000 }] },
+      plans: [
+        { id: 'per_hour', name: { en: 'Per hour', hi: 'प्रति घंटा' }, pricing: { model: 'hourly', ratePaise: 300_000, adjustments: [{ label: { en: 'Wedding', hi: 'शादी' }, eventTypes: ['wedding'], amountPaise: 50_000 }] } },
+        { id: 'full_night', name: { en: 'Full night', hi: 'पूरी रात' }, pricing: { model: 'fixed', ratePaise: 2_000_000, includedHours: 8 }, rules: { minDurationMin: 360 } },
+      ],
+      rules: { breaks: [{ from: '14:00', to: '15:00' }], maxPerDay: 3 },
+      questions: [{ key: 'venue_photo', label: { en: 'Photo of the venue', hi: 'जगह की फ़ोटो' }, type: 'photo', required: true }],
+      eventTypes: ['wedding', 'party'],
+    },
+  });
+  check(conf.plans.length === 2 && conf.configVersion === 1, 'service with two ways to book, a price rule, a break and a photo question', conf);
+  const listed = (await ok('GET', `/v1/vendors/${v.id}/engine-services?eventType=wedding`)).items as { id: string; plans: unknown[] }[];
+  check(listed.some((x) => x.id === conf.id && x.plans.length === 2), 'customer sees both ways to book');
+  check((await ok('GET', `/v1/vendors/${v.id}/engine-services?eventType=puja`)).items.every((x: { id: string }) => x.id !== conf.id), 'hidden for an event it is not offered for');
+  const dayView = await ok('GET', `/v1/vendors/${v.id}/engine-services/${conf.id}/day?date=${day(30)}&planId=per_hour`);
+  check(dayView.open && dayView.busy.some((b: { from: string }) => Date.parse(b.from) === Date.parse(at(day(30), '14:00'))), 'day view shows the break as taken', dayView);
+  const ev3 = await ok('POST', '/v1/events', { token: cust.token, body: { title: 'Sangeet', eventType: 'wedding', eventDate: day(30), cityId: 1 } });
+  const confReq = { eventId: ev3.id, serviceId: conf.id, startsAt: at(day(30), '18:00'), endsAt: at(day(30), '22:00'), answers: { occasion: 'sangeet' } };
+  const noPlan = await call('POST', '/v1/quotes', { token: cust.token, body: confReq });
+  check(noPlan.status === 400 && noPlan.body.error.code === 'RATE_PLAN_REQUIRED', 'a way to book must be chosen', noPlan.body);
+  const thruBreak = await call('POST', '/v1/quotes', { token: cust.token, body: { ...confReq, planId: 'per_hour', startsAt: at(day(30), '13:00'), endsAt: at(day(30), '17:00') } });
+  check(thruBreak.status === 400 && thruBreak.body.error.code === 'DURING_BREAK', 'a booking through the break is refused', thruBreak.body);
+  const answerPhotoId = `eventseva/customers/${cust.userId}/answers/venue-${run}`;
+  const photo = { publicId: answerPhotoId, version: 3, format: 'jpg', signature: signParams({ public_id: answerPhotoId, version: 3 }, SECRET) };
+  const q2 = await ok('POST', '/v1/quotes', { token: cust.token, body: { ...confReq, planId: 'per_hour', answers: { occasion: 'sangeet', venue_photo: photo } } });
+  check(q2.lines.some((l: { code: string }) => l.code === 'rule_0'), 'the wedding price rule is on the quote', q2.lines);
+  const changed = await call('POST', '/v1/engine-bookings', { token: cust.token, body: { ...confReq, planId: 'per_hour', answers: { occasion: 'sangeet', venue_photo: photo }, expectedTotalPaise: q2.totalPaise - 100 } });
+  check(changed.status === 409 && changed.body.error.code === 'PRICE_CHANGED', 'a total the customer did not see is not booked', changed.body);
+  const b3 = await ok('POST', '/v1/engine-bookings', { token: cust.token, body: { ...confReq, planId: 'per_hour', answers: { occasion: 'sangeet', venue_photo: photo }, expectedTotalPaise: q2.totalPaise } });
+  const b3v = await ok('GET', `/v1/partner/bookings/${b3.id}`, { token: vendor.token });
+  check(b3v.plan?.id === 'per_hour' && b3v.answers.venue_photo.publicId === answerPhotoId && !b3v.answers.venue_photo.signature, 'vendor sees the plan and the photo (its id only)', b3v.answers);
+  const link = await ok('GET', `/v1/partner/bookings/${b3.id}/answer-files/venue_photo`, { token: vendor.token });
+  check(String(link.url).startsWith('https://api.cloudinary.com/'), 'vendor opens the photo through a short-lived link');
+  check((await call('GET', `/v1/bookings/${b3.id}/answer-files/venue_photo`, { token: rival.token })).status === 404, 'another customer cannot open it');
+
+  step('Pay together, money summary, cancel estimate');
+  const cart = await ok('POST', '/v1/checkouts', {
+    token: cust.token,
+    body: { items: [
+      { eventId: ev3.id, serviceId: svc.id, startsAt: at(day(31), '18:00'), endsAt: at(day(31), '22:00'), answers: { occasion: 'sangeet' } },
+      { eventId: ev3.id, serviceId: svc.id, startsAt: at(day(32), '18:00'), endsAt: at(day(32), '22:00'), answers: { occasion: 'party' } },
+    ] },
+    headers: { 'idempotency-key': `smoke-cart-${run}-3` },
+  });
+  for (const b of cart.bookings) await ok('POST', `/v1/partner/bookings/${b.id}/accept`, { token: vendor.token });
+  const together = await ok('POST', `/v1/checkouts/${cart.id}/pay/dev`, { token: cust.token });
+  check(together.bookings.every((b: { status: string }) => b.status === 'confirmed'), 'one payment confirms both bookings', together.bookings);
+  const money = await ok('GET', `/v1/bookings/${cart.bookings[0].id}/money`, { token: cust.token });
+  check(money.paidOnline.sharedOrder === true && money.paymentState !== 'unpaid', 'money summary knows it was paid together', money);
+  const est = await ok('GET', `/v1/bookings/${cart.bookings[0].id}/cancel-preview`, { token: cust.token });
+  const cancelled = await ok('POST', `/v1/bookings/${cart.bookings[0].id}/cancel`, { token: cust.token, body: { reason: 'Mehendi at home' } });
+  check(cancelled.refundPaise === est.refundPaise, 'the refund matches the estimate shown first', { est: est.refundPaise, got: cancelled.refundPaise });
+
   step('Admin: booking detail, invoices, reports, refunds');
   const det = await ok('GET', `/v1/admin/bookings/${b1.id}`, { token: admin });
   const movers = (det.history as { to: string; actorKind: string }[]).map((h) => `${h.to}:${h.actorKind}`);
@@ -242,6 +300,12 @@ async function main() {
   check(Number(rep.money.bookedValuePaise) >= after.amountPaise, 'report counts the confirmed booking value', rep.money);
   await ok('GET', '/v1/admin/refunds', { token: admin });
   await ok('GET', '/v1/admin/disputes', { token: admin });
+  const off = await ok('PATCH', `/v1/admin/services/${conf.id}/status`, { token: admin, body: { active: false, reason: 'Smoke test: photos to check' } });
+  check(off.active === false, 'admin takes a service off the app with a reason');
+  check((await ok('GET', `/v1/vendors/${v.id}/engine-services`)).items.every((x: { id: string }) => x.id !== conf.id), 'customers no longer see it');
+  await ok('PATCH', `/v1/admin/services/${conf.id}/status`, { token: admin, body: { active: true } });
+  const hist = (await ok('GET', `/v1/admin/services/${conf.id}/history`, { token: admin })).items;
+  check(hist.length === 2, 'both changes are in the service history', hist);
   const forbidden = await call('GET', '/v1/admin/refunds', { token: cust.token });
   check(forbidden.status === 401 || forbidden.status === 403, 'a customer token cannot open admin routes', forbidden.status);
 

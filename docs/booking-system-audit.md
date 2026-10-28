@@ -205,3 +205,15 @@ Not built, and why:
   be added as a new rule key (see "Adding a setting later" in BOOKING_ENGINE.md).
 - **Several simultaneous bookings of one service.** Capacity is modelled per resource: several cars or
   crews, staff pools, catering capacity per day. There is no separate per-service count.
+
+## 11. Fourth round: what was left
+
+| Item | Done |
+|---|---|
+| Flaky CI failure | The cause could not be found. The logs cannot be downloaded from this environment, and many local runs passed: full suites on a CI-like postgres:16 and repeated concurrency tests. Backend tests now also report as GitHub annotations (`github-actions` reporter), so the next failure names its test |
+| Breaks within a day | `rules.breaks`, enforced on quote, booking and reschedule; shown in the day view; editor in the Partner app (services and rentals) |
+| File / photo answers | `photo` question type: private signed upload, signature and folder checked, only id and format kept, 10-minute links for the customer and the vendor only |
+| Conditional questions in the Partner app | "Ask this only when" picks an earlier yes/no or choice question and its answers; kept through edits and removals |
+| Several bookings at once | `rules.maxConcurrent` for team services: a pool per service, under the pool lock; day view shows when every team is out; vendor calendar blocks still apply |
+| Date and time pickers | Date questions open the calendar; time questions show half-hour chips |
+| Phone checklist | No phone or emulator in this environment, and the apps do not include react-native-web. Instead `pnpm smoke` now walks the new checklist items against a real running API (55 checks, run in this round); the on-phone list is updated in PHONE_TEST.md |

@@ -117,7 +117,7 @@ Wi-Fi (see `docs/PHONE_TEST.md`).
 ## Smoke test
 
 After a deploy to a **test** stack, run the end-to-end smoke test. It signs up a vendor, approves it, books,
-pays, extends, checks out a cart, cancels and checks the admin reports: 34 checks over HTTP, like the apps.
+pays, extends, checks out a cart, cancels and checks the admin reports, then the vendor-configured booking (plans, price rule, break, photo question, day view), paying a cart together, the cancel estimate and an admin taking a service off: 55 checks over HTTP, like the apps.
 It creates real rows, so it only works with the development settings above and cannot pass against
 production.
 

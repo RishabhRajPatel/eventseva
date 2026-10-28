@@ -70,6 +70,15 @@ export class CloudinaryService {
     return `eventseva/customers/${userId}/licence`;
   }
 
+  /** Pictures or PDFs a customer attaches to a booking question: private, like the licence. */
+  answerFolder(userId: string) {
+    return `eventseva/customers/${userId}/answers`;
+  }
+
+  signAnswerUpload(userId: string) {
+    return this.signInto(this.answerFolder(userId), 'document');
+  }
+
   signLicenceUpload(userId: string) {
     return this.signInto(this.licenceFolder(userId), 'document');
   }

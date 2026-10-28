@@ -416,7 +416,12 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
       </View>
 
       <View {...form.at('availability')}>
-        <AvailabilityCard value={availability} onChange={setAvailability} error={form.show('availability') ? errors.availability : null} />
+        <AvailabilityCard
+          value={availability}
+          onChange={setAvailability}
+          error={form.show('availability') ? errors.availability : null}
+          teams={(type === 'time_window' || type === 'appointment') && (!setup.resourceKind || setup.resourceKind === 'crew')}
+        />
       </View>
       <EventTypesCard value={eventTypes} onChange={setEventTypes} />
       <View {...form.at('questions')}>

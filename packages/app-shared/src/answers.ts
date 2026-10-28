@@ -6,6 +6,8 @@ export interface AnswerLine {
   key: string;
   label: string;
   value: string;
+  /** A photo or PDF the customer attached: open it through …/answer-files/:key (a 10-minute link). */
+  file?: boolean;
 }
 
 /** Answers kept with the booking that are not questions (worked out by the server). */
@@ -20,6 +22,10 @@ export function answerLines(b: Pick<Booking, 'questions' | 'answers'>, lang: Lan
   for (const q of b.questions ?? []) {
     const v = answers[q.key];
     if (v === undefined || v === null || v === '' || INTERNAL.has(q.key)) continue;
+    if (typeof v === 'object' && !Array.isArray(v) && 'publicId' in (v as object)) {
+      out.push({ key: q.key, label: pick(q.label, lang), value: String((v as { format?: string }).format ?? '').toUpperCase(), file: true });
+      continue;
+    }
     const one = (x: unknown) => {
       if (typeof x === 'boolean') return x ? yesNo.yes : yesNo.no;
       const o = q.options?.find((opt) => opt.value === x);

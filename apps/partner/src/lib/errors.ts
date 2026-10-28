@@ -36,6 +36,7 @@ const KNOWN: Record<string, string> = {
   DATE_BLOCKED: 'errors.dateBlocked',
   CLOSED_THAT_DAY: 'errors.closedThatDay',
   DAY_FULL: 'errors.dayFull',
+  DURING_BREAK: 'errors.duringBreak',
   EVIDENCE_REQUIRED: 'errors.evidenceRequired',
   VENDOR_UNDER_REVIEW: 'errors.underReview',
   CATEGORY_LOCKED: 'errors.categoryLocked',

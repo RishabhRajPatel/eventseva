@@ -41,7 +41,7 @@ import { AdminCouponsController, CouponsController } from './coupons/coupons.con
 import { FeaturedService } from './featured/featured.service';
 import { AdminFeaturedController, PartnerFeaturedController } from './featured/featured.controller';
 import { AdminExtrasController } from './admin/admin-extras.controller';
-import { EngineController } from './engine/engine.controller';
+import { EngineController, PartnerAnswerFilesController } from './engine/engine.controller';
 import { EngineCatalogService } from './engine/catalog.service';
 import { HandoverCodes } from './engine/handover-code';
 import { TripService } from './engine/trip.service';
@@ -111,6 +111,7 @@ class ConfigModule {}
     AdminExtrasController,
     MediaController,
     EngineController,
+    PartnerAnswerFilesController,
     PartnerEngineCatalogController,
     PublicEngineServicesController,
     AdminResourcesController,

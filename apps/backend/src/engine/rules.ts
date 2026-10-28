@@ -42,7 +42,7 @@ export const TYPE_DEFAULTS: Record<BookingTypeKey, RuleSet> = {
 export const VENDOR_RULE_KEYS: (keyof RuleSet)[] = [
   'minDurationMin', 'maxDurationMin', 'minQty', 'maxQty', 'workingHours', 'leadTimeHours', 'setupMin', 'dismantleMin',
   'bufferAfterMin', 'deposit', 'approval', 'capacity', 'perPersonMin', 'minAge', 'instructions',
-  'workingDays', 'blockedDates', 'maxAdvanceDays', 'maxPerDay',
+  'workingDays', 'blockedDates', 'maxAdvanceDays', 'maxPerDay', 'breaks', 'maxConcurrent',
 ];
 
 export function effectiveRules(type: BookingTypeKey, template: CategoryTemplate, serviceRules: RuleSet): RuleSet {
@@ -127,6 +127,13 @@ export function checkRules(r: unknown, where = 'rules'): RuleSet {
   }
   if (rules.maxAdvanceDays !== undefined && !isInt(rules.maxAdvanceDays, 1, 730)) throw bad(`${where}.maxAdvanceDays: 1–730 days.`, 'maxAdvanceDays');
   if (rules.maxPerDay !== undefined && !isInt(rules.maxPerDay, 1, 1000)) throw bad(`${where}.maxPerDay: 1–1000.`, 'maxPerDay');
+  if (rules.maxConcurrent !== undefined && !isInt(rules.maxConcurrent, 1, 100)) throw bad(`${where}.maxConcurrent: 1–100.`, 'maxConcurrent');
+  if (rules.breaks !== undefined) {
+    const list = rules.breaks;
+    if (!Array.isArray(list) || list.length > 5 || list.some((b) => !b || !HHMM.test(b.from) || !HHMM.test(b.to) || b.from >= b.to)) {
+      throw bad(`${where}.breaks: up to 5 daily breaks, each HH:MM to a later HH:MM.`, 'breaks');
+    }
+  }
   if (rules.minDurationMin !== undefined && rules.maxDurationMin !== undefined && rules.minDurationMin > rules.maxDurationMin) {
     throw bad(`${where}: the minimum duration is longer than the maximum.`, 'minDurationMin');
   }
@@ -245,6 +252,14 @@ export function checkValues(fields: FieldDef[], values: Record<string, unknown> 
         if (typeof val !== 'string' || !TIME_RE.test(val)) throw fail();
         out[f.key] = val;
         break;
+      case 'photo': {
+        // Cloudinary's signed reply; the engine checks the signature and the folder before saving.
+        const p = val as { publicId?: unknown; version?: unknown; signature?: unknown; format?: unknown };
+        if (!p || typeof p !== 'object' || typeof p.publicId !== 'string' || p.publicId.length > 300 || !Number.isInteger(p.version) || typeof p.signature !== 'string'
+          || typeof p.format !== 'string' || !['jpg', 'jpeg', 'png', 'pdf'].includes(p.format)) throw fail();
+        out[f.key] = { publicId: p.publicId, version: p.version, signature: p.signature, format: p.format };
+        break;
+      }
       case 'number':
         if (typeof val !== 'number' || !Number.isFinite(val) || (f.min !== undefined && val < f.min) || (f.max !== undefined && val > f.max)) throw fail();
         out[f.key] = val;
@@ -319,6 +334,22 @@ export function checkTimes(starts: Date, ends: Date, rules: RuleSet, now = new D
       throw new AppError('OUTSIDE_WORKING_HOURS', `This service works ${from}–${to}.`, HttpStatus.BAD_REQUEST, { from, to });
     }
   }
+  const hit = rules.breaks?.length ? breakDuring(rules.breaks, starts, ends) : null;
+  if (hit) throw new AppError('DURING_BREAK', `The vendor takes a break ${hit.from}–${hit.to}.`, HttpStatus.BAD_REQUEST, hit);
+}
+
+/** Each daily break as times on every India day from `from` to `until`. */
+export function breakPeriods(breaks: { from: string; to: string }[], from: Date, until: Date): { from: Date; until: Date; break: { from: string; to: string } }[] {
+  const out: { from: Date; until: Date; break: { from: string; to: string } }[] = [];
+  for (let day = istDay(new Date(from.getTime() - 86_400_000)); day <= istDay(until); day = istDay(new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000))) {
+    for (const b of breaks) out.push({ from: new Date(`${day}T${b.from}:00+05:30`), until: new Date(`${day}T${b.to}:00+05:30`), break: b });
+  }
+  return out;
+}
+
+/** The first break a booking from `starts` to `ends` runs into, if any (touching its edge is fine). */
+export function breakDuring(breaks: { from: string; to: string }[], starts: Date, ends: Date): { from: string; to: string } | null {
+  return breakPeriods(breaks, starts, ends).find((p) => p.from < ends && p.until > starts)?.break ?? null;
 }
 
 export function checkQty(qty: number | undefined, rules: RuleSet, what: string): number {

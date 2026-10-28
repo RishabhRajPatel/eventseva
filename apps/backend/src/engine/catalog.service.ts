@@ -6,7 +6,8 @@ import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
-import { checkPricing, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
+import { breakPeriods, checkPricing, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
+import { servicePoolKey } from './booking-types';
 import { recordConfigChange } from './config-history';
 import { allQuestions, checkEventTypes, checkPlans, checkVendorQuestions, pickPlan } from './service-config';
 import type { BookingTypeKey, CategoryTemplate, FieldDef, Pricing, RatePlan, ResourceKind, RuleSet } from './types';
@@ -636,7 +637,14 @@ export class EngineCatalogService {
       : null;
     // The car or hall itself, or the vendor's team (never created here: no team means nothing booked yet).
     const resourceId = s.resource_id ?? (await this.db.one<{ id: string }>(this.db, `SELECT id FROM resources WHERE vendor_id = $1 AND kind = 'crew' ORDER BY created_at LIMIT 1`, [vendorId]))?.id ?? null;
-    const busy = resourceId && !reason
+    const teams = !s.resource_id && (rules.maxConcurrent ?? 1) > 1 ? rules.maxConcurrent! : 0;
+    const busy = teams && !reason
+      ? fullTimes((await this.db.query<{ from: Date; until: Date; qty: number }>(
+          `SELECT greatest(lower(period), $2) AS "from", least(upper(period), $3) AS "until", qty FROM capacity_holds
+            WHERE pool_key = $1 AND period && tstzrange($2, $3) AND (status = 'active' OR (status = 'hold' AND expires_at > now()))`,
+          [servicePoolKey(s.id), dayStart, dayEnd],
+        )).rows, teams)
+      : resourceId && !reason
       ? (await this.db.query<{ from: Date; until: Date }>(
           `SELECT greatest(lower(period), $2) AS "from", least(upper(period), $3) AS "until" FROM reservations
             WHERE resource_id = $1 AND period && tstzrange($2, $3) AND (status = 'active' OR (status = 'hold' AND expires_at > now()))
@@ -656,7 +664,12 @@ export class EngineCatalogService {
       /** Time the vendor needs before the start and after the end, which must also be free. */
       setupMin: rules.setupMin ?? 0,
       afterMin: (rules.dismantleMin ?? 0) + (rules.bufferAfterMin ?? 0),
-      busy: busy.map((b) => ({ from: b.from.toISOString(), until: b.until.toISOString() })),
+      // Taken times, and the vendor's daily breaks on this day.
+      busy: [
+        ...busy.map((b) => ({ from: b.from, until: b.until })),
+        ...(reason ? [] : breakPeriods(rules.breaks ?? [], dayStart, new Date(dayEnd.getTime() - 1)).filter((p) => p.from >= dayStart && p.from < dayEnd)),
+      ].sort((a, b) => a.from.getTime() - b.from.getTime()).map((b) => ({ from: b.from.toISOString(), until: b.until.toISOString() })),
+      breaks: rules.breaks ?? [],
       maxPerDay: rules.maxPerDay ?? null,
       booked,
     };
@@ -694,6 +707,7 @@ export class EngineCatalogService {
           workingHours: r.workingHours ?? null, leadTimeHours: r.leadTimeHours ?? null, perPersonMin: r.perPersonMin ?? null, minAge: r.minAge ?? null,
           approval: r.approval ?? 'vendor', cancellation: r.cancellation ?? null, requiredDocuments: r.requiredDocuments ?? [], instructions: r.instructions ?? null,
           workingDays: r.workingDays ?? null, blockedDates: r.blockedDates ?? [], maxAdvanceDays: r.maxAdvanceDays ?? null, maxPerDay: r.maxPerDay ?? null,
+          breaks: r.breaks ?? [],
         });
         // A vehicle's registration is shown masked; the full number is shared after confirmation.
         const resource = s.resource
@@ -728,6 +742,23 @@ export class EngineCatalogService {
 }
 
 const IST_MS = 5.5 * 3600_000;
+
+/** When every team is taken: the stretches where holds add up to the number of teams. */
+export function fullTimes(holds: { from: Date; until: Date; qty: number }[], teams: number): { from: Date; until: Date }[] {
+  const edges = holds.flatMap((h) => [{ t: h.from.getTime(), d: h.qty }, { t: h.until.getTime(), d: -h.qty }]).sort((a, b) => a.t - b.t || a.d - b.d);
+  const out: { from: Date; until: Date }[] = [];
+  let used = 0;
+  let start: number | null = null;
+  for (const e of edges) {
+    used += e.d;
+    if (used >= teams && start === null) start = e.t;
+    if (used < teams && start !== null) {
+      if (e.t > start) out.push({ from: new Date(start), until: new Date(e.t) });
+      start = null;
+    }
+  }
+  return out;
+}
 const istDayOf = (d: Date) => new Date(d.getTime() + IST_MS).toISOString().slice(0, 10);
 
 /** "UP70AB1234" → "UP70 •• 1234". */

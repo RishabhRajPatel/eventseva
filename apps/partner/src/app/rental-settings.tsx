@@ -46,6 +46,7 @@ function SettingsForm({ settings }: { settings: RentalSettings }) {
   const [cashAllowed, setCashAllowed] = useState(settings.cashAllowed ?? false);
   const [availability, setAvailability] = useState<AvailabilityForm>(availabilityForm({
     workingDays: settings.workingDays ?? undefined, blockedDates: settings.blockedDates, maxAdvanceDays: settings.maxAdvanceDays ?? undefined, maxPerDay: settings.maxPerDay ?? undefined,
+    breaks: settings.breaks,
   }));
   const [priceRules, setPriceRules] = useState<PriceRuleForm[]>(priceRuleForms(settings.adjustments));
 

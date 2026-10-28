@@ -98,6 +98,8 @@ class RentalSettingsDto {
   @IsOptional() @IsArray() @ArrayMaxSize(366) @Matches(/^\d{4}-\d{2}-\d{2}$/, { each: true }) blockedDates?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(730) maxAdvanceDays?: number;
   @IsOptional() @IsInt() @Min(1) @Max(1000) maxPerDay?: number;
+  /** Daily breaks, checked on the server (up to 5, HH:MM to a later HH:MM). */
+  @IsOptional() @IsArray() @ArrayMaxSize(5) breaks?: { from: string; to: string }[];
 }
 
 class LineQtyDto {

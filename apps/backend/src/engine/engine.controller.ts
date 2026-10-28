@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Type } from 'class-transformer';
 import {
@@ -21,6 +21,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
+import { PartnerAppGuard } from '../partner/partner.controller';
 import type { AuthContext } from '../auth/token.service';
 import { AppError } from '../common/errors';
 import { CloudinaryService } from '../media/cloudinary.service';
@@ -118,6 +119,20 @@ export class EngineController {
     return { licence: await this.engine.licence(auth.userId) };
   }
 
+  /** A signed, private upload for a photo or PDF answer to a vendor's question. */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('me/answer-upload')
+  @HttpCode(HttpStatus.OK)
+  signAnswerUpload(@Auth() auth: AuthContext) {
+    return this.cloudinary.signAnswerUpload(auth.userId);
+  }
+
+  /** A link (10 minutes) to a file the customer attached to their booking. */
+  @Get('bookings/:id/answer-files/:key')
+  answerFile(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('key') key: string) {
+    return this.engine.answerFileUrl(id, key, { customerId: auth.userId });
+  }
+
   /** A signed, private upload for the licence photo. */
   @Post('me/licence/upload')
   @HttpCode(HttpStatus.OK)
@@ -128,5 +143,17 @@ export class EngineController {
   @Put('me/licence')
   saveLicence(@Auth() auth: AuthContext, @Body() body: LicenceDto) {
     return this.engine.saveLicence(auth.userId, body);
+  }
+}
+
+/** Partner app: files a customer attached to a booking of this vendor. */
+@UseGuards(AuthGuard, PartnerAppGuard)
+@Controller('v1/partner')
+export class PartnerAnswerFilesController {
+  constructor(private readonly engine: EngineService) {}
+
+  @Get('bookings/:id/answer-files/:key')
+  answerFile(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string, @Param('key') key: string) {
+    return this.engine.answerFileUrl(id, key, { vendorUserId: auth.userId });
   }
 }

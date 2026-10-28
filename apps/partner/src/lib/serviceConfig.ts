@@ -20,6 +20,10 @@ export interface AvailabilityForm {
   blockedDates: string;
   maxAdvanceDays: string;
   maxPerDay: string;
+  /** Daily breaks as typed: "13:00-14:00, 19:00-19:30". */
+  breaks: string;
+  /** Bookings that may run at once (several teams); empty: one at a time. */
+  maxConcurrent: string;
 }
 
 export function availabilityForm(r: EngineRules | undefined): AvailabilityForm {
@@ -28,14 +32,19 @@ export function availabilityForm(r: EngineRules | undefined): AvailabilityForm {
     blockedDates: (r?.blockedDates ?? []).join(', '),
     maxAdvanceDays: r?.maxAdvanceDays ? String(r.maxAdvanceDays) : '',
     maxPerDay: r?.maxPerDay ? String(r.maxPerDay) : '',
+    breaks: (r?.breaks ?? []).map((b) => `${b.from}-${b.to}`).join(', '),
+    maxConcurrent: r?.maxConcurrent && r.maxConcurrent > 1 ? String(r.maxConcurrent) : '',
   };
 }
 
-export type AvailabilityProblem = 'dates' | 'advance' | 'perDay';
+export type AvailabilityProblem = 'dates' | 'advance' | 'perDay' | 'breaks' | 'concurrent';
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** The rule keys to merge into the service's rules (absent keys switch the limit off). */
-export function toAvailability(f: AvailabilityForm): { ok: true; rules: Pick<EngineRules, 'workingDays' | 'blockedDates' | 'maxAdvanceDays' | 'maxPerDay'> } | { ok: false; problem: AvailabilityProblem } {
-  const rules: Pick<EngineRules, 'workingDays' | 'blockedDates' | 'maxAdvanceDays' | 'maxPerDay'> = {};
+type AvailabilityRules = Pick<EngineRules, 'workingDays' | 'blockedDates' | 'maxAdvanceDays' | 'maxPerDay' | 'breaks' | 'maxConcurrent'>;
+
+export function toAvailability(f: AvailabilityForm): { ok: true; rules: AvailabilityRules } | { ok: false; problem: AvailabilityProblem } {
+  const rules: AvailabilityRules = {};
   if (f.workingDays.length && f.workingDays.length < 7) rules.workingDays = [...f.workingDays].sort();
   const dates = f.blockedDates.split(/[\s,]+/).filter(Boolean);
   if (dates.some((d) => !realDay(d)) || dates.length > 366) return { ok: false, problem: 'dates' };
@@ -49,6 +58,14 @@ export function toAvailability(f: AvailabilityForm): { ok: true; rules: Pick<Eng
     const n = Number(f.maxPerDay);
     if (!/^\d{1,4}$/.test(f.maxPerDay.trim()) || n < 1 || n > 1000) return { ok: false, problem: 'perDay' };
     rules.maxPerDay = n;
+  }
+  const breaks = (f.breaks ?? '').split(',').map((b) => b.trim()).filter(Boolean).map((b) => b.split(/\s*[-–]\s*/));
+  if (breaks.length > 5 || breaks.some((b) => b.length !== 2 || !HHMM.test(b[0]) || !HHMM.test(b[1]) || b[0] >= b[1])) return { ok: false, problem: 'breaks' };
+  if (breaks.length) rules.breaks = breaks.map(([from, to]) => ({ from, to }));
+  if ((f.maxConcurrent ?? '').trim()) {
+    const n = Number(f.maxConcurrent);
+    if (!/^\d{1,3}$/.test(f.maxConcurrent.trim()) || n < 1 || n > 100) return { ok: false, problem: 'concurrent' };
+    if (n > 1) rules.maxConcurrent = n;
   }
   return { ok: true, rules };
 }
@@ -159,25 +176,60 @@ export interface QuestionForm {
   key: string;
   labelEn: string;
   labelHi: string;
-  type: 'text' | 'longtext' | 'number' | 'date' | 'time' | 'boolean' | 'select';
+  type: 'text' | 'longtext' | 'number' | 'date' | 'time' | 'boolean' | 'select' | 'photo';
   required: boolean;
   /** Choices, one per comma: "Veg, Jain, Non-veg". */
   options: string;
+  /**
+   * Asked only after an earlier question (by its place in the list) got one of these answers: choice
+   * names as typed, or "yes" / "no" for a yes / no question. Null: always asked.
+   */
+  showIf: { question: number; answers: string[] } | null;
 }
 
-export const questionForms = (fields: FieldDef[] | undefined): QuestionForm[] =>
-  (fields ?? []).map((f) => ({
-    key: f.key,
-    labelEn: f.label.en,
-    labelHi: f.label.hi,
-    type: f.type === 'multiselect' ? 'select' : f.type,
-    required: !!f.required,
-    options: (f.options ?? []).map((o) => o.label.en).join(', '),
-  }));
+/** The answers an earlier question offers to a condition: its choices, or yes / no. */
+export function conditionAnswers(q: QuestionForm): string[] {
+  if (q.type === 'boolean') return ['yes', 'no'];
+  if (q.type === 'select') return [...new Set(q.options.split(',').map((o) => o.trim()).filter(Boolean))];
+  return [];
+}
 
-export const newQuestion = (): QuestionForm => ({ key: '', labelEn: '', labelHi: '', type: 'text', required: false, options: '' });
+/** After removing question `index`, conditions on it go away and later references shift up. */
+export function removeQuestion(forms: QuestionForm[], index: number): QuestionForm[] {
+  return forms
+    .filter((_, i) => i !== index)
+    .map((f) => {
+      if (!f.showIf) return f;
+      if (f.showIf.question === index) return { ...f, showIf: null };
+      return f.showIf.question > index ? { ...f, showIf: { ...f.showIf, question: f.showIf.question - 1 } } : f;
+    });
+}
 
-export type QuestionProblem = { index: number; field: 'label' | 'options' };
+export const questionForms = (fields: FieldDef[] | undefined): QuestionForm[] => {
+  const list = fields ?? [];
+  return list.map((f) => {
+    const ref = f.showIf ? list.findIndex((x) => x.key === f.showIf!.key) : -1;
+    const refField = list[ref];
+    return {
+      key: f.key,
+      labelEn: f.label.en,
+      labelHi: f.label.hi,
+      type: f.type === 'multiselect' ? 'select' : f.type,
+      required: !!f.required,
+      options: (f.options ?? []).map((o) => o.label.en).join(', '),
+      showIf: f.showIf && refField
+        ? {
+            question: ref,
+            answers: f.showIf.values.map((v) => (typeof v === 'boolean' ? (v ? 'yes' : 'no') : refField.options?.find((o) => o.value === v)?.label.en ?? String(v))),
+          }
+        : null,
+    };
+  });
+};
+
+export const newQuestion = (): QuestionForm => ({ key: '', labelEn: '', labelHi: '', type: 'text', required: false, options: '', showIf: null });
+
+export type QuestionProblem = { index: number; field: 'label' | 'options' | 'condition' };
 
 /** Questions to send. Keys stay once saved (answers refer to them) and never clash with the category's. */
 export function toQuestions(forms: QuestionForm[], categoryKeys: string[]): { ok: true; questions: FieldDef[] } | { ok: false; problem: QuestionProblem } {
@@ -202,6 +254,16 @@ export function toQuestions(forms: QuestionForm[], categoryKeys: string[]): { ok
         values.add(value);
         return { value, label: both(name, name) };
       });
+    }
+    if (f.showIf) {
+      // Only an earlier yes / no or choice question, and answers it really offers.
+      const ref = out[f.showIf.question];
+      if (!ref || f.showIf.question >= index || !f.showIf.answers.length || (ref.type !== 'boolean' && ref.type !== 'select')) {
+        return { ok: false, problem: { index, field: 'condition' } };
+      }
+      const values = f.showIf.answers.map((a) => (ref.type === 'boolean' ? a === 'yes' : ref.options!.find((o) => o.label.en === a)?.value));
+      if (values.some((v) => v === undefined)) return { ok: false, problem: { index, field: 'condition' } };
+      q.showIf = { key: ref.key, values: values as (string | boolean)[] };
     }
     out.push(q);
   }
