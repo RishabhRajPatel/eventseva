@@ -18,6 +18,8 @@ export interface PaymentGateway {
   refund(paymentId: string, amountPaise: number, notes: Record<string, string>): Promise<{ refundId: string }>;
   /** The refund made earlier for this payment with `notes.refund_ref = ref`, if any. */
   findRefund(paymentId: string, ref: string): Promise<{ refundId: string } | null>;
+  /** The captured payment for an order, if the customer paid (reconciliation asks when no webhook came). */
+  capturedPayment(orderId: string): Promise<{ paymentId: string; amountPaise: number } | null>;
 }
 
 const hmacHex = (secret: string, data: string | Buffer) => createHmac('sha256', secret).update(data).digest('hex');
@@ -85,6 +87,12 @@ export class RazorpayGateway implements PaymentGateway {
     const hit = list.items.find((r) => r.notes?.refund_ref === ref);
     return hit ? { refundId: hit.id } : null;
   }
+
+  async capturedPayment(orderId: string) {
+    const list = await this.call<{ items: { id: string; status: string; amount: number }[] }>(`/orders/${encodeURIComponent(orderId)}/payments`);
+    const hit = list.items.find((p) => p.status === 'captured');
+    return hit ? { paymentId: hit.id, amountPaise: hit.amount } : null;
+  }
 }
 
 /**
@@ -100,6 +108,8 @@ export class FakeGateway implements PaymentGateway {
   failRefunds = 0;
   /** Tests: the refund goes through at the provider but the reply is lost. */
   loseNextRefundReply = false;
+  /** Tests: orders the customer paid at the provider (whether or not a webhook arrived). */
+  readonly captured = new Map<string, { paymentId: string; amountPaise: number }>();
 
   static sign(orderId: string, paymentId: string) {
     return hmacHex(FakeGateway.SECRET, `${orderId}|${paymentId}`);
@@ -139,6 +149,10 @@ export class FakeGateway implements PaymentGateway {
   async findRefund(paymentId: string, ref: string) {
     const refundId = this.refs.get(`${paymentId}|${ref}`);
     return refundId ? { refundId } : null;
+  }
+
+  async capturedPayment(orderId: string) {
+    return this.captured.get(orderId) ?? null;
   }
 }
 

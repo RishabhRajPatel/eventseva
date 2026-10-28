@@ -1,5 +1,6 @@
 import { Controller, Get, Global, INestApplication, Module, ValidationPipe } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ActorInterceptor } from './db/actor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import compression from 'compression';
 import helmet from 'helmet';
@@ -22,6 +23,7 @@ import { BookingsController } from './bookings/bookings.controller';
 import { PartnerBookingsController } from './bookings/partner-bookings.controller';
 import { BookingsService } from './bookings/bookings.service';
 import { PaymentWebhookController } from './payments/webhook.controller';
+import { PaymentEventsService } from './payments/payment-events.service';
 import { RefundsService } from './payments/refunds.service';
 import { PublicReviewsController, SocialController } from './social/social.controller';
 import { ChatController } from './chat/chat.controller';
@@ -39,6 +41,7 @@ import { AdminFeaturedController, PartnerFeaturedController } from './featured/f
 import { AdminExtrasController } from './admin/admin-extras.controller';
 import { EngineController } from './engine/engine.controller';
 import { EngineCatalogService } from './engine/catalog.service';
+import { HandoverCodes } from './engine/handover-code';
 import { TripService } from './engine/trip.service';
 import { ChangesService } from './engine/changes.service';
 import { CheckoutService } from './engine/checkout.service';
@@ -128,6 +131,7 @@ class ConfigModule {}
   providers: [
     { provide: OTP_SENDER, useClass: ConsoleOtpSender },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: ActorInterceptor },
     Db,
     OtpService,
     TokenService,
@@ -138,12 +142,14 @@ class ConfigModule {}
     EngineService,
     EngineCatalogService,
     TripService,
+    HandoverCodes,
     ChangesService,
     CheckoutService,
     InvoicesService,
     InventoryService,
     FulfilmentService,
     RefundsService,
+    PaymentEventsService,
     CloudinaryService,
     PushService,
     CouponsService,

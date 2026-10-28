@@ -125,11 +125,67 @@ A booking can also end as `cancelled`, `rejected` or `expired`.
   follows the same tier, and the deposit always comes back in full.
 - **Sending refunds:** they go through the refund queue (`refunds`), which retries failures.
 
-## Not built yet
+## Booking state machine
 
-- Customer and partner screens for transport (cars), staffing, appointments and quotations.
-  - The engine supports these types.
-  - Only rentals have full app screens and fulfilment steps.
-- Reschedule and extension requests. The `booking_changes` table and `moveAll` exist, but there are no
-  endpoints yet.
-- Multi-vendor cart / package checkout.
+Each booking has one `state`, set by the database (trigger `booking_state_guard`) from its `status`,
+`fulfilment` step and any disputed charge. The code keeps updating `status` and `fulfilment` as before; the
+database works out the state and refuses any move that is not in `booking_state_moves`, whichever code path
+(API, admin, job, a manual SQL fix) tries it. The API answers such a refusal with `BOOKING_BAD_TRANSITION` 409.
+
+| State | When | Can move to |
+|---|---|---|
+| `draft` | Reserved (the cart lives on the phone until checkout) | pending_vendor, awaiting_payment, cancelled, expired |
+| `pending_vendor` | `requested`: waiting for the vendor | awaiting_payment, cancelled, expired |
+| `awaiting_payment` | `accepted`: waiting for the advance | confirmed, cancelled, expired |
+| `confirmed` | Advance paid, nothing handed over yet | in_progress, return_pending, completed, cancelled, disputed |
+| `in_progress` | Dispatched, delivered, or the car is out | return_pending, completed, cancelled, disputed |
+| `return_pending` | Back, being counted or settled | completed, disputed, cancelled |
+| `disputed` | A charge is disputed and not decided yet | confirmed, in_progress, return_pending, completed, cancelled |
+| `completed` | Done; payout created | disputed (a late dispute) |
+| `cancelled` | Rejected, or cancelled by either side | — |
+| `expired` | No reply, no payment, or no longer available when the money came | — |
+
+Every move is written to `booking_state_history`: from, to, the status and step, who (`customer`, `vendor`,
+`admin`, `system` for jobs, `gateway` for payment webhooks and reconciliation), their id and the reason. The API
+sets the actor for each request's transaction (`src/db/actor.ts`). Admins see it on the booking page.
+
+Payment, refund and payout statuses are separate columns on their own tables and do not follow this machine.
+
+## Reliability
+
+- **No double booking:** cars, halls and teams are rows in `reservations` with an exclusion constraint on
+  the time range; quantities (rental stock, driver pools) are counted under row locks. Requests, accepts and
+  payments lock the booking row (`FOR UPDATE`) and run in one transaction. Holds expire; an expired hold
+  can be taken by someone else.
+- **Payment confirmation:** never from the app alone. The app's verify call needs Razorpay's signature;
+  the webhook needs the webhook signature, the `captured` status and the exact order amount (else nothing
+  is confirmed and finance gets a `payment_amount_mismatch` alert).
+- **Webhook log:** every webhook is stored once in `webhook_events` by Razorpay's event id. A repeat is
+  answered without running again; one that fails is marked `failed` with the error and answered with 500,
+  so Razorpay retries it.
+- **Reconciliation:** every 5 sweeps (5 minutes by default) the API asks Razorpay about orders still unpaid
+  after 10 minutes (for up to 3 days) and confirms the ones that were paid but whose webhook never came.
+- **Payment after the hold ran out:** if the slot is still free the booking is confirmed; if someone else
+  took it, the whole payment is refunded and the booking expires.
+- **Refunds:** queued in `refunds` inside the same transaction, then sent and retried with backoff; Razorpay's
+  `refund.processed` / `refund.failed` webhooks close them.
+- **Notifications (outbox):** written to `notifications` in the same transaction as the change, then pushed by
+  a dispatcher woken by `pg_notify` and a 30-second poll, claiming rows with `SKIP LOCKED`.
+- **Payouts:** created at completion and paid by bank transfer outside the app; finance records the UTR
+  (`mark-paid`), can hold a payout, and can record it again if a transfer failed. There is no automatic
+  payout API yet, so there is nothing to retry automatically.
+
+## Handover code
+
+Car handovers and returns, and rental deliveries and returns, can be confirmed with the customer's
+6-digit code (`GET /v1/bookings/:id/handover-code`, shown on the booking in the customer app). The vendor
+types it in; the record is then agreed by the customer (`confirmedBy: "code"`). The code is an HMAC of the
+booking id, so nothing is stored. Five wrong codes in an hour lock it for that booking. Without a code the
+step is still recorded and the customer agrees or disputes it in the app.
+
+## Disputes
+
+Customers dispute a charge with a reason. Support or finance decides it (2FA re-check). Keeping money for
+damage, missing items or cleaning needs the vendor's photos on the charge or the return record
+(`EVIDENCE_REQUIRED`); otherwise the charge can only be waived. A decision can lower a charge but never raise it,
+and it is written to the admin audit log.

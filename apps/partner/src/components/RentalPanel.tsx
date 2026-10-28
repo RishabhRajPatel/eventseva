@@ -10,6 +10,7 @@ import { invalidateInventory, inventoryKeys, itemUnit, nextStep, useRental } fro
 import { invalidateBookings } from '../lib/queries';
 import { toast } from '../lib/toast';
 import { c, space } from '../lib/theme';
+import { customerCode } from '../lib/handoverCode';
 import { useEvidencePhotos } from '../hooks/useEvidencePhotos';
 import { useLang } from '../hooks/useLang';
 import { Button } from './Button';
@@ -38,6 +39,7 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [counts, setCounts] = useState<Counts>({});
   const [note, setNote] = useState('');
+  const [code, setCode] = useState('');
   const { photos, uploading, add: addPhotos, clear: clearPhotos, full } = useEvidencePhotos();
 
   const done = (r: RentalView) => {
@@ -45,6 +47,7 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
     invalidateBookings(qc, booking.id);
     invalidateInventory(qc);
     setNote('');
+    setCode('');
     clearPhotos();
   };
   const act = useMutation({
@@ -75,6 +78,11 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
     </View>
   );
   const body = () => ({ note: note.trim() || undefined, photos: photos.length ? photos : undefined });
+  // Delivery and return: the customer's code shows they were there and agree with the count.
+  const codeField = (
+    <Field testID="customer-code" label={`${t('handoverCode.label')} ${t('form.optional')}`} hint={t('handoverCode.hint')} value={code}
+      onChangeText={(v) => setCode(v.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={6} />
+  );
 
   return (
     <Card style={{ gap: space.md }} testID="rental-panel">
@@ -134,14 +142,16 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
       {step === 'deliver' ? (
         <>
           {evidence}
+          {codeField}
           <Button testID="rental-deliver" icon="check" label={t('rental.deliver')} loading={act.isPending}
-            onPress={() => act.mutate({ path: 'deliver', body: { lines: rental.lines.map((l) => ({ lineId: l.id, qty: lineQty(l, l.dispatchedQty) })), ...body() } })} />
+            onPress={() => act.mutate({ path: 'deliver', body: { lines: rental.lines.map((l) => ({ lineId: l.id, qty: lineQty(l, l.dispatchedQty) })), ...body(), ...customerCode(code) } })} />
         </>
       ) : null}
       {step === 'return' ? (
         <>
           <Notice tone="info">{t('rental.returnHint')}</Notice>
           {evidence}
+          {codeField}
           {mismatched.length ? <Txt size="sm" color={c.danger} accessibilityRole="alert">{t('rental.countMismatch', { name: mismatched[0].item.name, sent: mismatched[0].dispatchedQty })}</Txt> : null}
           <Button testID="rental-return" label={t('rental.saveReturn')} loading={act.isPending} disabled={mismatched.length > 0}
             onPress={() =>
@@ -153,6 +163,7 @@ function Panel({ booking, rental }: { booking: Booking; rental: RentalView }) {
                     return { lineId: l.id, returned: n(k.returned), damaged: n(k.damaged), missing: n(k.missing) };
                   }),
                   ...body(),
+                  ...customerCode(code),
                 },
               })
             } />

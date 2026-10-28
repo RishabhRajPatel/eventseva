@@ -3,6 +3,7 @@
 // extra hours, fuel, tolls or damage are proposed as charges from what was agreed in the booking.
 // The customer can agree to or dispute each inspection and charge; the deposit is then settled by the
 // same steps as rentals (FulfilmentService.settle).
+import { HandoverCodes } from './handover-code';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
@@ -21,6 +22,8 @@ export interface InspectionInput {
   fuelEighths: number;
   notes?: string;
   photos?: SignedUpload[];
+  /** The customer's handover code: the customer was there and agrees with this record. */
+  customerCode?: string;
 }
 
 export interface ReturnInput extends InspectionInput {
@@ -55,6 +58,7 @@ export class TripService {
     private readonly db: Db,
     private readonly cloudinary: CloudinaryService,
     private readonly fulfilment: FulfilmentService,
+    private readonly codes: HandoverCodes,
   ) {}
 
   private async lock(q: Queryable, bookingId: string, who: { vendorUserId?: string; customerId?: string }): Promise<TripBooking> {
@@ -132,6 +136,7 @@ export class TripService {
    * drive needs a verified licence and the deposit paid; with-driver trips need a driver assigned.
    */
   async handover(vendorUserId: string, bookingId: string, body: InspectionInput) {
+    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.confirmed(b);
@@ -154,6 +159,7 @@ export class TripService {
         `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, 'handover', $2, $3, $4, $5)`,
         [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths }, body.notes?.trim() || null, this.checkPhotos(b.vendor_id, body.photos), vendorUserId],
       );
+      if (byCode) await this.codes.confirm(client, b.id, 'handover');
       await client.query(`UPDATE bookings SET fulfilment = 'in_progress', actual_start_at = now(), updated_at = now() WHERE id = $1`, [b.id]);
       await this.event(client, b.id, 'handover', vendorUserId, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths });
       await notify(client, b.customer_id, 'trip_started', {
@@ -168,6 +174,7 @@ export class TripService {
    * tolls, parking and damage are entered by the vendor with photos. All become proposed charges.
    */
   async returnCar(vendorUserId: string, bookingId: string, body: ReturnInput) {
+    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.confirmed(b);
@@ -217,6 +224,7 @@ export class TripService {
         `INSERT INTO booking_inspections (booking_id, phase, readings, notes, photo_ids, recorded_by) VALUES ($1, 'return', $2, $3, $4, $5)`,
         [b.id, { odometerKm: body.odometerKm, fuelEighths: body.fuelEighths, km }, body.notes?.trim() || null, photos, vendorUserId],
       );
+      if (byCode) await this.codes.confirm(client, b.id, 'return');
       // The car and driver are back: free for other bookings from now.
       await client.query(`UPDATE reservations SET status = 'released' WHERE booking_id = $1 AND status IN ('hold', 'active')`, [b.id]);
       await client.query(`UPDATE capacity_holds SET status = 'released' WHERE booking_id = $1 AND status IN ('hold', 'active')`, [b.id]);
@@ -264,7 +272,8 @@ export class TripService {
     );
     if (!b || b.booking_type !== 'transport') throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
     const inspections = (await this.db.query(
-      `SELECT phase, readings, notes, photo_ids AS "photoIds", recorded_at AS "recordedAt", customer_ack AS "customerAck", customer_note AS "customerNote"
+      `SELECT phase, readings, notes, photo_ids AS "photoIds", recorded_at AS "recordedAt", customer_ack AS "customerAck", customer_note AS "customerNote",
+              confirmed_by AS "confirmedBy"
          FROM booking_inspections WHERE booking_id = $1 ORDER BY recorded_at`,
       [bookingId],
     )).rows;

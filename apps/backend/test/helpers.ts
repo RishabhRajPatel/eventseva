@@ -90,7 +90,7 @@ export async function createTestApp(): Promise<TestApp> {
     http,
     reset: async () => {
       sms.sent.length = 0;
-      await db.query('TRUNCATE otp_requests, sessions, users, admin_users CASCADE');
+      await db.query('TRUNCATE otp_requests, sessions, users, admin_users, webhook_events CASCADE');
       for (const c of itemCategories) {
         await db.query(
           `INSERT INTO item_categories (key, name_en, name_hi, examples_en, examples_hi, sort_order) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,

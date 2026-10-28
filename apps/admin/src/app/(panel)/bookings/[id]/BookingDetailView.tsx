@@ -16,6 +16,8 @@ import { BookingEngine } from './BookingEngine';
 // Finance only, opened on demand: its own chunk.
 const RefundDialog = dynamic(() => import('./RefundDialog').then((m) => m.RefundDialog));
 
+const ACTOR: Record<string, string> = { customer: 'Customer', vendor: 'Vendor', admin: 'Admin', system: 'System job', gateway: 'Payment gateway' };
+
 export function BookingDetailView() {
   const { id } = useParams<{ id: string }>();
   const state = useApiQuery<AdminBooking>(`/v1/admin/bookings/${id}`);
@@ -236,6 +238,35 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
                     <td className="mono">{r.refundId ?? '—'}</td>
                     <td className="nowrap">{formatDateTime(r.createdAt)}</td>
                     <td>{r.status === 'sent' ? '—' : (r.lastError ?? '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {b.history?.length ? (
+        <section className="box stack" aria-labelledby="history-title">
+          <h2 id="history-title">State history</h2>
+          <p className="small muted">Every change of the booking’s state, recorded by the database with who made it.</p>
+          <div className="table-wrap">
+            <table className="tbl" aria-label="State history">
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">From → to</th>
+                  <th scope="col">By</th>
+                  <th scope="col">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {b.history.map((h, i) => (
+                  <tr key={i}>
+                    <td className="nowrap">{formatDateTime(h.at)}</td>
+                    <td>{h.from ? `${humanize(h.from)} → ${humanize(h.to)}` : humanize(h.to)}</td>
+                    <td>{ACTOR[h.actorKind]}</td>
+                    <td>{h.reason ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

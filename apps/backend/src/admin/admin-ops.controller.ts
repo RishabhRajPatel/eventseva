@@ -213,9 +213,15 @@ export class AdminOpsController {
          FROM refunds WHERE booking_id = $1 ORDER BY created_at`,
       [id],
     );
+    const history = await this.db.query(
+      `SELECT from_state AS "from", to_state AS "to", status, fulfilment, actor_kind AS "actorKind", actor_id AS "actorId", reason, created_at AS "at"
+         FROM booking_state_history WHERE booking_id = $1 ORDER BY id`,
+      [id],
+    );
     return {
       id: b.id,
       status: b.status,
+      state: b.state,
       day: b.day,
       slot: b.slot,
       quantity: b.quantity,
@@ -243,6 +249,8 @@ export class AdminOpsController {
       /** The refund queue: pending / sending ones are still on their way to Razorpay. */
       refunds: refunds.rows,
       payout: payout ?? null,
+      /** Every state move: from, to, who (customer, vendor, admin, system, gateway) and why. */
+      history: history.rows,
     };
   }
 

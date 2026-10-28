@@ -585,7 +585,8 @@
     "BUNDLE_INCOMPLETE": "This package needs all its included services in the cart. Add the missing ones.",
     "CHANGE_PENDING": "A change is already waiting for the vendor. Wait for their answer or withdraw it.",
     "CHANGE_NOT_SUPPORTED": "This booking cannot be changed in the app. Chat with the vendor.",
-    "INVOICE_NOT_READY": "The invoice is ready once the booking is confirmed."
+    "INVOICE_NOT_READY": "The invoice is ready once the booking is confirmed.",
+    "BOOKING_BAD_TRANSITION": "This booking just changed. Pull down to refresh and try again."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1037,5 +1038,9 @@
   },
   "photos": {
     "evidence": "{{label}} photo {{n}} of {{total}}"
+  },
+  "handoverCode": {
+    "title": "Your handover code",
+    "body": "Read this code to the vendor when the car or the items are handed over to you and when they come back. Share it only in person, at the handover."
   }
 }

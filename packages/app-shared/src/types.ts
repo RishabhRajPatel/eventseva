@@ -263,6 +263,18 @@ export type BookingType = 'slot' | 'time_window' | 'rental' | 'per_person' | 'st
  * pending_confirmation → awaiting_payment → confirmed → preparing → dispatched → delivered →
  * return_pending → returned_verified → completed.
  */
+export type BookingState =
+  | 'draft'
+  | 'pending_vendor'
+  | 'awaiting_payment'
+  | 'confirmed'
+  | 'in_progress'
+  | 'return_pending'
+  | 'completed'
+  | 'cancelled'
+  | 'expired'
+  | 'disputed';
+
 export type BookingStage =
   | 'pending_confirmation'
   | 'awaiting_payment'
@@ -285,6 +297,8 @@ export interface Booking {
   status: BookingStatus;
   bookingType: BookingType;
   stage: BookingStage;
+  /** Lifecycle state kept by the database state machine (see docs/BOOKING_ENGINE.md). */
+  state?: BookingState;
   /** Engine bookings: exact start and end (ISO); null for slot bookings. */
   startsAt: string | null;
   endsAt: string | null;
@@ -931,6 +945,8 @@ export interface TripInspection {
   recordedAt: string;
   customerAck: 'agreed' | 'disputed' | null;
   customerNote: string | null;
+  /** code: the vendor entered the customer's handover code, so the customer agreed on the spot. */
+  confirmedBy?: 'code' | null;
 }
 
 /** GET /v1/bookings/:id/trip and /v1/partner/bookings/:id/trip */

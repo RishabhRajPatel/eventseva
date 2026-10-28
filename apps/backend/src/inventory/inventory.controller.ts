@@ -1,23 +1,6 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import {
-  ArrayMaxSize,
-  IsArray,
-  IsBoolean,
-  IsDateString,
-  IsIn,
-  IsInt,
-  IsObject,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Length,
-  Max,
-  MaxLength,
-  Min,
-  ValidateIf,
-  ValidateNested,
-} from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import { SignedPhotoDto } from '../media/signed-photo.dto';
 import type { AuthContext } from '../auth/token.service';
@@ -118,6 +101,7 @@ class StepDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => LineQtyDto) lines: LineQtyDto[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
+  @IsOptional() @Matches(/^\d{6}$/, { message: 'customerCode must be the 6 digits in the customer app' }) customerCode?: string;
 }
 
 class ReturnLineDto {
@@ -133,6 +117,7 @@ class ReturnDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => ReturnLineDto) lines: ReturnLineDto[];
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(10) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
+  @IsOptional() @Matches(/^\d{6}$/, { message: 'customerCode must be the 6 digits in the customer app' }) customerCode?: string;
 }
 
 class LoadDto {

@@ -4,6 +4,7 @@
 // leave the stock. Charges for damage or loss are proposed item by item; the customer accepts or
 // disputes them (silence for 48 h counts as accepted, an admin settles disputes), and the agreed
 // amount comes out of the security deposit before the rest is refunded.
+import { HandoverCodes } from '../engine/handover-code';
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
 import { Db, Queryable } from '../db/db.service';
@@ -32,9 +33,14 @@ export interface ReturnLine {
   /** Lower than the listed charge, to go easy on the customer; never higher. */
   chargePaise?: number;
 }
+/** Charges that keep money for damage or loss: an admin may uphold them only with photo evidence. */
+const EVIDENCE_KINDS = ['damage', 'missing', 'cleaning'];
+
 export interface StepBody {
   note?: string;
   photos?: SignedUpload[];
+  /** The customer's handover code: the customer was there and agrees with this record. */
+  customerCode?: string;
 }
 
 interface RentalBooking {
@@ -75,6 +81,7 @@ export class FulfilmentService {
     private readonly db: Db,
     private readonly refunds: RefundsService,
     private readonly cloudinary: CloudinaryService,
+    private readonly codes: HandoverCodes,
   ) {}
 
   private async lock(q: Queryable, bookingId: string, who: { vendorUserId?: string; customerId?: string }, types = ['rental']): Promise<RentalBooking> {
@@ -184,6 +191,7 @@ export class FulfilmentService {
   }
 
   async deliver(vendorUserId: string, bookingId: string, input: LineQty[], body: StepBody) {
+    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.expect(b, ['dispatched'], 'mark delivery');
@@ -198,6 +206,7 @@ export class FulfilmentService {
       for (const l of await this.lines(client, b.id)) if (l.delivered_qty < l.qty) short.push(`${l.item_snapshot.name} ${l.delivered_qty}/${l.qty}`);
       await client.query(`UPDATE bookings SET fulfilment = 'delivered', updated_at = now() WHERE id = $1`, [b.id]);
       await this.record(client, b, 'delivery', vendorUserId, body, { lines: input });
+      if (byCode) await this.codes.confirm(client, b.id, 'delivery');
       await this.event(client, b, 'delivered', vendorUserId, { lines: input, short });
       await notify(client, b.customer_id, 'rental_delivered', {
         en: { title: 'Items delivered', body: short.length ? `Delivered, but fewer than booked: ${short.join(', ')}. Check and tell the vendor if anything is wrong.` : 'All items are at your venue. Please check them now and tell the vendor if anything is wrong.' },
@@ -212,6 +221,7 @@ export class FulfilmentService {
    * missing charge per unit); the vendor may only lower them. Nothing goes back to stock yet.
    */
   async recordReturn(vendorUserId: string, bookingId: string, input: ReturnLine[], body: StepBody) {
+    const byCode = await this.codes.check(vendorUserId, bookingId, body.customerCode);
     await this.db.tx(async (client) => {
       const b = await this.lock(client, bookingId, { vendorUserId });
       this.expect(b, ['delivered', 'return_pending'], 'record the return');
@@ -250,6 +260,7 @@ export class FulfilmentService {
       }
       await client.query(`UPDATE bookings SET fulfilment = 'return_pending', updated_at = now() WHERE id = $1`, [b.id]);
       await this.record(client, b, 'return', vendorUserId, body, { lines: input });
+      if (byCode) await this.codes.confirm(client, b.id, 'return');
       await this.event(client, b, 'returned', vendorUserId, { chargesPaise: charges });
       await notify(client, b.customer_id, 'rental_returned', {
         en: { title: 'Return counted', body: charges ? `The vendor reported damaged or missing items: ${rupees(charges)}. Open the booking to accept or dispute within ${CHARGE_REPLY_HOURS} hours.` : 'Everything came back fine. Thank you!' },
@@ -326,14 +337,21 @@ export class FulfilmentService {
   /** Admin decision on a disputed charge: the amount that stands (0 waives it). */
   async resolveCharge(adminId: string, bookingId: string, chargeId: string, amountPaise: number, note: string) {
     await this.db.tx(async (client) => {
-      const c = await this.db.one<{ status: string; amount_paise: number }>(
+      const c = await this.db.one<{ status: string; amount_paise: number; kind: string; evidence: boolean }>(
         client,
-        'SELECT status, amount_paise FROM booking_charges WHERE id = $1 AND booking_id = $2 FOR UPDATE',
+        `SELECT c.status, c.amount_paise, c.kind,
+                (cardinality(c.evidence_ids) > 0 OR EXISTS (
+                  SELECT 1 FROM booking_inspections i WHERE i.booking_id = c.booking_id AND i.phase = 'return' AND cardinality(i.photo_ids) > 0)) AS evidence
+           FROM booking_charges c WHERE c.id = $1 AND c.booking_id = $2 FOR UPDATE OF c`,
         [chargeId, bookingId],
       );
       if (!c) throw new AppError('NOT_FOUND', 'Charge not found.', HttpStatus.NOT_FOUND);
       if (!['disputed', 'proposed'].includes(c.status)) throw bad('CHARGE_ALREADY_ANSWERED', 'This charge is already settled.', { status: c.status });
       if (amountPaise > c.amount_paise) throw new AppError('CHARGE_TOO_HIGH', 'A decision cannot raise the charge.', HttpStatus.BAD_REQUEST, { maxPaise: c.amount_paise });
+      // Keeping money for damage or loss needs the vendor's photos; without them it can only be waived.
+      if (amountPaise > 0 && EVIDENCE_KINDS.includes(c.kind) && !c.evidence) {
+        throw bad('EVIDENCE_REQUIRED', 'No photos back this charge, so it can only be waived.', { kind: c.kind });
+      }
       await client.query(
         `UPDATE booking_charges SET status = $2, amount_paise = CASE WHEN $3 > 0 THEN $3 ELSE amount_paise END, decided_by = $4, decision_note = $5 WHERE id = $1`,
         [chargeId, amountPaise > 0 ? 'resolved' : 'waived', amountPaise, adminId, note],
@@ -437,7 +455,7 @@ export class FulfilmentService {
       [bookingId],
     );
     const steps = await this.db.query(
-      `SELECT phase, notes, photo_ids AS "photoIds", recorded_at AS "recordedAt" FROM booking_inspections WHERE booking_id = $1 ORDER BY recorded_at`,
+      `SELECT phase, notes, photo_ids AS "photoIds", recorded_at AS "recordedAt", confirmed_by AS "confirmedBy" FROM booking_inspections WHERE booking_id = $1 ORDER BY recorded_at`,
       [bookingId],
     );
     const charges = await this.db.query(

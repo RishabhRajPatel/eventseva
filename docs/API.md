@@ -19,6 +19,10 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
   - Every error is `{"error": {"code": "SOME_CODE", "message": "Text to show", ...details}}`.
   - Show `message`; branch on `code`. Details are flat, for example `attemptsLeft` and `retryAfterSec`.
   - Common codes: `VALIDATION` 400, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `RATE_LIMITED` 429.
+- **Booking state:** every booking view has `state`, kept by the database: `pending_vendor`, `awaiting_payment`,
+  `confirmed`, `in_progress`, `return_pending`, `completed`, `cancelled`, `expired` or `disputed` (`draft` is
+  reserved). `status` and `stage` stay as before. A change that lost a race with another one gets
+  `BOOKING_BAD_TRANSITION` 409: refresh and try again.
 - **Data formats:**
   - **Money** is integer **paise** (₹1 = 100). Never send amounts for bookings; the server prices them.
   - **Days** are `YYYY-MM-DD` India dates. Timestamps are ISO strings.
@@ -286,13 +290,17 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
 | `GET …/rental` | Items, counts, photos, charges, deposit |
 | `POST …/rental/prepare` · `POST …/rental/load {lines: [{lineId, qty}]}` | Getting the order ready |
 | `POST …/rental/dispatch` | `{lines: [{lineId, qty}], note?, photos?}`. From now on the stock counts as out until the return is verified, even past the booking's end |
-| `POST …/rental/deliver` | `{lines: [{lineId, qty}], note?, photos?}`: delivered at the venue; the customer is told about any shortfall |
-| `POST …/rental/return` | `{lines: [{lineId, returned, damaged, missing, note?, chargePaise?}], note?, photos?}`: the three must add up to what was sent (`RETURN_COUNT_MISMATCH`). Charges come from the rates agreed in the booking; `chargePaise` may only lower them (`CHARGE_TOO_HIGH`). Stock does not change yet |
+| `POST …/rental/deliver` | `{lines: [{lineId, qty}], note?, photos?, customerCode?}`: delivered at the venue; the customer is told about any shortfall |
+| `POST …/rental/return` | `{lines: [{lineId, returned, damaged, missing, note?, chargePaise?}], note?, photos?, customerCode?}`: the three must add up to what was sent (`RETURN_COUNT_MISMATCH`). Charges come from the rates agreed in the booking; `chargePaise` may only lower them (`CHARGE_TOO_HIGH`). Stock does not change yet |
 | `POST …/rental/verify` | After counting (`RETURN_NOT_COUNTED`): returned units are free again, damaged ones go to repair, missing ones leave the stock. Agreed charges come off the deposit and the rest is refunded |
 
 - Steps out of order: `FULFILMENT_BAD_STEP` 409. `photos` are `[{publicId, version, signature}]` exactly as
   Cloudinary returned them for the vendor's own evidence upload; a wrong folder or a forged signature is
   refused (`UPLOAD_INVALID` 403). The same applies to car handover / return photos.
+- **Handover code:** `customerCode` is the 6 digits the customer reads out from their app
+  (`GET /v1/bookings/:id/handover-code`). With it the delivery / return record counts as agreed by the customer
+  (`confirmedBy: "code"`). A wrong code: `CODE_INVALID` 400; after 5 wrong codes in an hour: `TOO_MANY_ATTEMPTS` 429.
+  Without a code the step is still recorded and the customer answers it in the app.
 - Cancelling once items are on the way: `BOOKING_IN_PROGRESS` 409 (customers from `preparing`, vendors from
   `dispatched`).
 - **Booking fields:** `bookingType` (`slot` or `rental` …), `stage` (`pending_confirmation`,
@@ -303,7 +311,8 @@ quantity (`QUANTITY_OUT_OF_RANGE`) and days (`RENTAL_DAYS_OUT_OF_RANGE`), and st
   payout is the advance plus charges kept from the deposit and any balance paid in the app, minus commission.
 - **Admin:** `GET /v1/admin/bookings/:id/rental`; `POST /v1/admin/bookings/:id/charges/:chargeId/resolve`
   `{amountPaise, note}` (support / finance, 2FA re-check) settles a disputed charge (0 waives it; never more
-  than asked).
+  than asked). Keeping money for `damage`, `missing` or `cleaning` needs the vendor's photos on the charge or the
+  return record: `EVIDENCE_REQUIRED` 409 otherwise (it can only be waived).
 - **Admin disputes and refunds:** `GET /v1/admin/disputes` (support / finance) → `{charges, inspections}`
   the customer disputes, oldest first. `GET /v1/admin/refunds?status=` (finance) → `{items}` with the
   Razorpay result; `POST /v1/admin/refunds/:id/retry` (finance, 2FA re-check) sends a failed refund once more
@@ -327,8 +336,8 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | `POST /v1/partner/bookings/:id/accept` | Engine bookings may need `{pricePaise}` (quotation: `QUOTE_PRICE_REQUIRED`) and `{addons: [{addonId, approve}]}` for every extra asked for (`ADDON_DECISION_REQUIRED`) |
 | `GET /v1/partner/bookings/:id/trip` | Car trip: mode, car, driver, route, handover / return records, charges, deposit |
 | `POST …/trip/driver {driverId}` | An approved, free driver (`DRIVER_NOT_FOUND`, `DRIVER_BUSY` 409); not for self-drive (`SELF_DRIVE`) |
-| `POST …/trip/handover {odometerKm, fuelEighths, notes?, photos?}` | From 24 hours before the start (`TOO_EARLY`); with a driver assigned (`DRIVER_REQUIRED`); self-drive needs the customer's verified licence (`LICENCE_NOT_VERIFIED`) and the deposit paid (`DEPOSIT_REQUIRED`) |
-| `POST …/trip/return {odometerKm, fuelEighths, fuelPaise?, tollsPaise?, parkingPaise?, damage?: [{description, amountPaise}], notes?, photos?}` | Extra km and late return are charged at the agreed rates; the odometer cannot go back (`ODOMETER_BELOW_START`). The customer accepts or disputes the charges like rental charges |
+| `POST …/trip/handover {odometerKm, fuelEighths, notes?, photos?, customerCode?}` | From 24 hours before the start (`TOO_EARLY`); with a driver assigned (`DRIVER_REQUIRED`); self-drive needs the customer's verified licence (`LICENCE_NOT_VERIFIED`) and the deposit paid (`DEPOSIT_REQUIRED`) |
+| `POST …/trip/return {odometerKm, fuelEighths, fuelPaise?, tollsPaise?, parkingPaise?, damage?: [{description, amountPaise}], notes?, photos?, customerCode?}` | Extra km and late return are charged at the agreed rates; the odometer cannot go back (`ODOMETER_BELOW_START`). The customer accepts or disputes the charges like rental charges |
 | `GET /v1/partner/bookings/:id/changes` · `POST …/:changeId/approve` · `POST …/:changeId/reject {reason}` | Reschedules and extensions asked by the customer |
 | `GET /v1/partner/bookings/:id/invoice` · `…/commission-invoice` | The invoice in the vendor's name, and EventSeva's commission invoice (`INVOICE_NOT_READY` 409 before confirmation). While the booking can still change it is a `Proforma invoice` with number `PROFORMA` and today's amounts; on completion the final one is numbered once and never changes |
 
@@ -341,13 +350,14 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | `POST /v1/engine-bookings` (`Idempotency-Key`) | `{eventId, serviceId, startsAt, endsAt?, quantity? / guestCount? / people?, answers?, addons?, route?, mode?, note?}` → `{id}`. Errors: `SERVICE_NOT_FOUND`, `USE_SLOT_BOOKING`, `SERVICE_NOT_CONFIGURED`, `ANSWER_REQUIRED`, `ANSWER_INVALID`, `ADDON_NOT_FOUND`, `NOT_AVAILABLE` 409, `DATE_IN_PAST`. Cars: `ROUTE_REQUIRED`, `MODE_NOT_OFFERED`, `VEHICLE_NOT_AVAILABLE`, `NO_DRIVER`; self-drive: `LICENCE_REQUIRED`, `LICENCE_EXPIRED`, `TOO_YOUNG` |
 | `POST /v1/checkouts/quote` · `POST /v1/checkouts` (`Idempotency-Key`) · `GET /v1/checkouts/:id` | Up to 10 requests for one event, booked all or none; `details.itemIndex` says which line failed. A package: `bundleId` (`BUNDLE_NOT_FOUND`, `BUNDLE_INCOMPLETE`) |
 | `GET /v1/me/licence` · `POST /v1/me/licence/upload` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn, photo?}` | Driving licence for self-drive; EventSeva verifies it. The photo is a private upload signed by `POST …/upload` (into the customer's own folder); send Cloudinary's reply as `photo: {publicId, version, signature, format}` (`UPLOAD_INVALID` otherwise). `hasPhoto` says one is on file |
-| `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records |
+| `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records (`confirmedBy: "code"` when the customer's code was entered) |
+| `GET /v1/bookings/:id/handover-code` | `{code}`: 6 digits for confirmed car and rental bookings, read out to the vendor at the handover / delivery and the return (see "Handover code" under Rentals) |
 | `GET/POST /v1/bookings/:id/changes` · `POST …/:changeId/cancel` | `{kind: reschedule / extension, startsAt?, endsAt, reason?}`; one open change at a time (`CHANGE_PENDING` 409); day + slot bookings: `CHANGE_NOT_SUPPORTED` |
 | `GET /v1/bookings/:id/invoice` · `…/invoice.html` | Invoice in the vendor's name |
 
 **Admin:** `GET /v1/admin/resources/pending`, `GET …/:id/documents`, `POST …/:id/verify {decision, reason?}` (verifier;
 approving needs the RC and insurance, or the licence: `DOCUMENTS_MISSING` 409). `GET /v1/admin/licences/pending`,
-`POST /v1/admin/licences/:userId/verify {decision, reason?}` (pending licences carry `photoUrl`, a 10-minute link). `GET /v1/admin/reports/summary?from&to`. `GET /v1/admin/dashboard` also counts `pendingChecks` and `openDisputes`. `GET /v1/admin/bookings/:id` has `bookingType`, `startsAt`, `endsAt`, `fulfilment`, `taxPaise`, `depositPaise`, `depositSettledAt`. Booking views carry `questions` (labels of the category's questions) next to `answers`.
+`POST /v1/admin/licences/:userId/verify {decision, reason?}` (pending licences carry `photoUrl`, a 10-minute link). `GET /v1/admin/reports/summary?from&to`. `GET /v1/admin/dashboard` also counts `pendingChecks` and `openDisputes`. `GET /v1/admin/bookings/:id` has `bookingType`, `startsAt`, `endsAt`, `fulfilment`, `taxPaise`, `depositPaise`, `depositSettledAt`, `state` and `history` (every state move: `{from, to, status, fulfilment, actorKind, actorId, reason, at}`). Booking views carry `questions` (labels of the category's questions) next to `answers`.
 
 ## Admin panel (`/v1/admin/*`, admin token)
 

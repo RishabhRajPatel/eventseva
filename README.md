@@ -160,5 +160,5 @@ far they usually travel (Partner app → Business profile). Customers never see 
 - `NODE_ENV=production` refuses development settings. Set `BANK_DETAILS_KEY` (`openssl rand -base64 32`, never change it),
   long random `JWT_SECRET` and `OTP_PEPPER`, a real
   `OTP_PROVIDER` (SMS provider still to choose), and `PAYMENT_PROVIDER=razorpay` with the keys and webhook secret.
-- Razorpay webhook: `POST /v1/payments/webhook`, event `payment.captured`.
+- Razorpay webhook: `POST /v1/payments/webhook`, events `payment.captured`, `refund.processed` and `refund.failed`. Each delivery is logged once in `webhook_events`; orders a webhook never confirmed are checked with Razorpay every few minutes.
 - Secrets (Cloudinary, Razorpay, JWT) live only in the server's environment, never in the apps or in git.

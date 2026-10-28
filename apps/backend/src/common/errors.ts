@@ -55,6 +55,15 @@ export class ErrorFilter implements ExceptionFilter {
       return;
     }
 
+    // The database refused a booking state move (see booking_state_guard): a race lost, never a 500.
+    if ((exception as { constraint?: string } | null)?.constraint === 'booking_state_move') {
+      this.logger.warn((exception as Error).message);
+      res.status(HttpStatus.CONFLICT).json({
+        error: { code: 'BOOKING_BAD_TRANSITION', message: 'This booking has changed. Please refresh and try again.' },
+      });
+      return;
+    }
+
     // Stack traces stay in the logs; the user only gets a simple message.
     this.logger.error(exception instanceof Error ? exception.stack : String(exception));
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({

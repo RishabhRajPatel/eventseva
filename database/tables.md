@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-49 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+52 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,11 +15,12 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [checkouts](#checkouts), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles)
+- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [checkouts](#checkouts), [invoice_counters](#invoice_counters), [invoices](#invoices), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
 
 ## Allowed values (enums)
 
 - `admin_role`: `super`, `support`, `verifier`, `finance`
+- `booking_state`: `draft`, `pending_vendor`, `awaiting_payment`, `confirmed`, `in_progress`, `return_pending`, `completed`, `cancelled`, `expired`, `disputed`
 - `booking_status`: `requested`, `accepted`, `rejected`, `expired`, `confirmed`, `completed`, `cancelled_by_customer`, `cancelled_by_vendor`
 - `media_type`: `photo`, `video`
 - `payment_status`: `created`, `paid`, `failed`, `refunded`
@@ -471,6 +472,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `idempotency_key` | text |  |  |  |
 | `deposit_settled_at` | timestamp with time zone |  |  | When agreed charges were taken from the security deposit and the rest refunded; rentals complete only after this |
 | `group_id` | uuid |  |  | → [checkouts](#checkouts).id; The checkout this booking was made in, with the others booked at the same time |
+| `state` | booking_state | yes |  | Lifecycle state, set by the database from status, fulfilment and disputed charges; see booking_state_moves |
 
 <details><summary>Rules and indexes</summary>
 
@@ -493,6 +495,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Index: `CREATE INDEX ON bookings USING btree (package_id) WHERE (package_id IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (day) WHERE ((status = 'confirmed'::booking_status) AND (reminder_sent_at IS NULL))`
 - Index: `CREATE INDEX ON bookings USING btree (service_id) WHERE (service_id IS NOT NULL)`
+- Index: `CREATE INDEX ON bookings USING btree (state) WHERE (state = ANY (ARRAY['disputed'::booking_state, 'return_pending'::booking_state, 'in_progress'::booking_state]))`
 - Index: `CREATE INDEX ON bookings USING btree (status, day) WHERE (status = 'confirmed'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, pay_by) WHERE (status = 'accepted'::booking_status)`
 - Index: `CREATE INDEX ON bookings USING btree (status, respond_by) WHERE (status = 'requested'::booking_status)`
@@ -687,9 +690,11 @@ Condition at handover and return (odometer, fuel, damage, counts, photos) and th
 | `customer_ack` | text |  |  |  |
 | `customer_note` | text |  |  |  |
 | `acked_at` | timestamp with time zone |  |  |  |
+| `confirmed_by` | text |  |  | code: the customer gave the vendor their handover code, so this record counts as agreed |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK ((confirmed_by = 'code'::text))`
 - Check: `CHECK ((customer_ack = ANY (ARRAY['agreed'::text, 'disputed'::text])))`
 - Check: `CHECK ((phase = ANY (ARRAY['handover'::text, 'return'::text, 'dispatch'::text, 'delivery'::text])))`
 - Unique: `UNIQUE (booking_id, phase)`
@@ -969,6 +974,7 @@ Razorpay orders and payments for booking advances, and refunds (type = refund).
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 | `paid_at` | timestamp with time zone |  |  |  |
 | `razorpay_refund_id` | text |  |  |  |
+| `checked_at` | timestamp with time zone |  |  | Last time the reconciliation job asked the provider about this unpaid order |
 
 <details><summary>Rules and indexes</summary>
 
@@ -978,6 +984,7 @@ Razorpay orders and payments for booking advances, and refunds (type = refund).
 - Unique: `UNIQUE (razorpay_payment_id)`
 - Unique: `UNIQUE (razorpay_refund_id)`
 - Index: `CREATE INDEX ON payments USING btree (booking_id)`
+- Index: `CREATE INDEX ON payments USING btree (created_at) WHERE (status = 'created'::payment_status)`
 
 </details>
 
@@ -1140,6 +1147,7 @@ Each featured purchase or free grant, with its Razorpay payment and the period i
 | `ends_at` | timestamp with time zone |  |  |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
 | `paid_at` | timestamp with time zone |  |  |  |
+| `checked_at` | timestamp with time zone |  |  | Last time the reconciliation job asked the provider about this unpaid order |
 
 <details><summary>Rules and indexes</summary>
 
@@ -1291,6 +1299,45 @@ Problems the system raises for the team (e.g. the daily SMS budget running out),
 
 ## Other
 
+### booking_state_history
+
+Every booking state change: from, to, who (customer, vendor, admin, system job or payment gateway) and why
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('booking_state_history_id_seq'::regclass)` | primary key |
+| `booking_id` | uuid | yes |  | → [bookings](#bookings).id |
+| `from_state` | booking_state |  |  |  |
+| `to_state` | booking_state | yes |  |  |
+| `status` | booking_status | yes |  |  |
+| `fulfilment` | text | yes |  |  |
+| `actor_kind` | text | yes |  |  |
+| `actor_id` | uuid |  |  |  |
+| `reason` | text |  |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((actor_kind = ANY (ARRAY['customer'::text, 'vendor'::text, 'admin'::text, 'system'::text, 'gateway'::text])))`
+- Index: `CREATE INDEX ON booking_state_history USING btree (booking_id, id)`
+
+</details>
+
+### booking_state_moves
+
+The booking state machine: every allowed move (from_state NULL = a new booking)
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `from_state` | booking_state |  |  |  |
+| `to_state` | booking_state | yes |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Unique: `UNIQUE NULLS NOT DISTINCT (from_state, to_state)`
+
+</details>
+
 ### checkouts
 
 One customer action that booked several services (possibly several vendors) at once
@@ -1360,5 +1407,32 @@ A vendor's package of several services (e.g. car + decoration): mandatory items,
 - Check: `CHECK (((length(name) >= 2) AND (length(name) <= 80)))`
 - Check: `CHECK ((length(description) <= 500))`
 - Index: `CREATE INDEX ON service_bundles USING btree (vendor_id) WHERE is_active`
+
+</details>
+
+### webhook_events
+
+Payment webhooks by provider event id: duplicates are answered without running twice; failures keep their error and are retried by the provider
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('webhook_events_id_seq'::regclass)` | primary key |
+| `provider` | text | yes | `'razorpay'::text` |  |
+| `event_id` | text | yes |  |  |
+| `event` | text | yes |  |  |
+| `payload` | jsonb | yes |  |  |
+| `status` | text | yes | `'received'::text` |  |
+| `result` | text |  |  | What the event did, e.g. confirmed, refunded, already_done, amount_mismatch |
+| `attempts` | integer | yes | `0` |  |
+| `last_error` | text |  |  |  |
+| `received_at` | timestamp with time zone | yes | `now()` |  |
+| `processed_at` | timestamp with time zone |  |  |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK ((attempts >= 0))`
+- Check: `CHECK ((status = ANY (ARRAY['received'::text, 'processed'::text, 'ignored'::text, 'failed'::text])))`
+- Unique: `UNIQUE (provider, event_id)`
+- Index: `CREATE INDEX ON webhook_events USING btree (received_at) WHERE (status = ANY (ARRAY['received'::text, 'failed'::text]))`
 
 </details>

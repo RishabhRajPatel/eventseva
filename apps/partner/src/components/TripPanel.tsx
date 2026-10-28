@@ -11,6 +11,7 @@ import { rupeesInputToPaise } from '../lib/money';
 import { invalidateBookings } from '../lib/queries';
 import { toast } from '../lib/toast';
 import { c, space } from '../lib/theme';
+import { customerCode } from '../lib/handoverCode';
 import { useEvidencePhotos } from '../hooks/useEvidencePhotos';
 import { useLang } from '../hooks/useLang';
 import { Button, LinkButton } from './Button';
@@ -127,6 +128,7 @@ function InspectionForm({ phase, handoverKm, busy, onSave }: { phase: 'handover'
   const [parking, setParking] = useState('');
   const [damage, setDamage] = useState<Damage[]>([]);
   const [tried, setTried] = useState(false);
+  const [code, setCode] = useState('');
   const evidence = useEvidencePhotos();
 
   const readings = checkReadings(odometer, fuel, phase === 'return' ? handoverKm : undefined);
@@ -139,7 +141,9 @@ function InspectionForm({ phase, handoverKm, busy, onSave }: { phase: 'handover'
   async function submit() {
     setTried(true);
     if (error || busy) return;
-    const base = { odometerKm: Number(odometer), fuelEighths: fuel!, notes: notes.trim() || undefined, photos: evidence.photos.length ? evidence.photos : undefined };
+    const base = {
+      odometerKm: Number(odometer), fuelEighths: fuel!, notes: notes.trim() || undefined, photos: evidence.photos.length ? evidence.photos : undefined, ...customerCode(code),
+    };
     if (phase === 'handover') return onSave(base);
     const [fuelPaise, tollsPaise, parkingPaise] = money as number[];
     const ok = await confirm({ title: t('carTrip.returnConfirmTitle'), body: t('carTrip.returnConfirmBody'), confirmLabel: t('carTrip.saveReturn'), cancelLabel: t('common.back') });
@@ -192,6 +196,8 @@ function InspectionForm({ phase, handoverKm, busy, onSave }: { phase: 'handover'
       <Field testID={`${phase}-notes`} label={`${t('rental.note')} ${t('form.optional')}`} value={notes} onChangeText={setNotes} maxLength={500} multiline placeholder={t('carTrip.notesPlaceholder')} />
       <Button kind="outline" icon="image" testID={`${phase}-photos`} label={evidence.photos.length ? t('rental.photosAdded', { count: evidence.photos.length }) : t('carTrip.addPhotos')}
         loading={evidence.uploading} disabled={evidence.full} onPress={() => void evidence.add()} />
+      <Field testID={`${phase}-customer-code`} label={`${t('handoverCode.label')} ${t('form.optional')}`} hint={t('handoverCode.hint')} value={code}
+        onChangeText={(v) => setCode(v.replace(/\D/g, ''))} keyboardType="number-pad" maxLength={6} />
       {tried && error ? <Txt size="sm" color={c.danger} accessibilityRole="alert">{error}</Txt> : null}
       <Button testID={`save-${phase}`} icon="check" label={t(phase === 'handover' ? 'carTrip.saveHandover' : 'carTrip.saveReturn')} loading={busy} onPress={() => void submit()} />
     </View>

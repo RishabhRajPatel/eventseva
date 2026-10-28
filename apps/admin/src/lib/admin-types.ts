@@ -108,6 +108,15 @@ export interface AdminRefund {
   sentAt: string | null;
 }
 
+export interface BookingStateMove {
+  from: string | null;
+  to: string;
+  actorKind: 'customer' | 'vendor' | 'admin' | 'system' | 'gateway';
+  actorId: string | null;
+  reason: string | null;
+  at: string;
+}
+
 export interface AdminBooking {
   id: string;
   status: BookingStatus;
@@ -138,6 +147,9 @@ export interface AdminBooking {
   payments: AdminPayment[];
   /** The refund queue: pending / sending ones are still on their way to Razorpay. */
   refunds: AdminRefund[];
+  /** Lifecycle state from the database state machine, and every move with who made it. */
+  state?: string;
+  history?: BookingStateMove[];
   payout: { id: string; amountPaise: number; status: PayoutStatus; releaseAfter: string; reference: string | null } | null;
 }
 

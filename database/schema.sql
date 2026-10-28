@@ -53,6 +53,23 @@ CREATE TYPE public.admin_role AS ENUM (
 );
 
 --
+-- Name: booking_state; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.booking_state AS ENUM (
+    'draft',
+    'pending_vendor',
+    'awaiting_payment',
+    'confirmed',
+    'in_progress',
+    'return_pending',
+    'completed',
+    'cancelled',
+    'expired',
+    'disputed'
+);
+
+--
 -- Name: booking_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -170,6 +187,94 @@ CREATE TYPE public.vendor_status AS ENUM (
     'rejected',
     'on_hold'
 );
+
+--
+-- Name: booking_actor_kind(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.booking_actor_kind() RETURNS text
+    LANGUAGE sql STABLE
+    AS $$
+  SELECT COALESCE(NULLIF(current_setting('eventseva.actor_kind', true), ''), 'system')
+$$;
+
+--
+-- Name: booking_charge_touch(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.booking_charge_touch() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status THEN
+    UPDATE bookings SET updated_at = now() WHERE id = NEW.booking_id;
+  END IF;
+  RETURN NULL;
+END $$;
+
+--
+-- Name: booking_state_guard(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.booking_state_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  disputed boolean;
+BEGIN
+  disputed := TG_OP = 'UPDATE' AND NEW.status IN ('confirmed', 'completed')
+    AND EXISTS (SELECT 1 FROM booking_charges c WHERE c.booking_id = NEW.id AND c.status = 'disputed');
+  NEW.state := booking_state_of(NEW.status, NEW.fulfilment, disputed);
+  IF TG_OP = 'INSERT' OR OLD.state IS DISTINCT FROM NEW.state THEN
+    -- OLD.state is NULL only while existing rows are filled in by this migration.
+    IF NOT (TG_OP = 'UPDATE' AND OLD.state IS NULL) AND NOT EXISTS (
+      SELECT 1 FROM booking_state_moves m
+       WHERE m.from_state IS NOT DISTINCT FROM (CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.state END) AND m.to_state = NEW.state
+    ) THEN
+      RAISE EXCEPTION 'booking % cannot move from % to %', NEW.id, CASE WHEN TG_OP = 'INSERT' THEN 'new' ELSE OLD.state::text END, NEW.state
+        USING ERRCODE = 'check_violation', CONSTRAINT = 'booking_state_move';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+--
+-- Name: booking_state_log(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.booking_state_log() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF TG_OP = 'INSERT' OR (OLD.state IS NOT NULL AND OLD.state IS DISTINCT FROM NEW.state) THEN
+    INSERT INTO booking_state_history (booking_id, from_state, to_state, status, fulfilment, actor_kind, actor_id, reason)
+    VALUES (NEW.id, CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.state END, NEW.state, NEW.status, NEW.fulfilment,
+            booking_actor_kind(), NULLIF(current_setting('eventseva.actor_id', true), '')::uuid,
+            COALESCE(NULLIF(current_setting('eventseva.reason', true), ''),
+                     CASE WHEN NEW.state IN ('cancelled', 'expired') THEN NEW.cancel_reason END));
+  END IF;
+  RETURN NULL;
+END $$;
+
+--
+-- Name: booking_state_of(public.booking_status, text, boolean); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.booking_state_of(s public.booking_status, f text, disputed boolean) RETURNS public.booking_state
+    LANGUAGE sql IMMUTABLE
+    AS $$
+  SELECT CASE
+    WHEN s = 'requested' THEN 'pending_vendor'
+    WHEN s = 'accepted' THEN 'awaiting_payment'
+    WHEN s IN ('rejected', 'cancelled_by_customer', 'cancelled_by_vendor') THEN 'cancelled'
+    WHEN s = 'expired' THEN 'expired'
+    WHEN disputed THEN 'disputed'
+    WHEN s = 'completed' THEN 'completed'
+    WHEN f IN ('dispatched', 'delivered', 'in_progress') THEN 'in_progress'
+    WHEN f IN ('return_pending', 'closed') THEN 'return_pending'
+    ELSE 'confirmed'
+  END::booking_state
+$$;
 
 --
 -- Name: admin_audit_log; Type: TABLE; Schema: public; Owner: -
@@ -414,6 +519,8 @@ CREATE TABLE public.booking_inspections (
     customer_ack text,
     customer_note text,
     acked_at timestamp with time zone,
+    confirmed_by text,
+    CONSTRAINT booking_inspections_confirmed_by_check CHECK ((confirmed_by = 'code'::text)),
     CONSTRAINT booking_inspections_customer_ack_check CHECK ((customer_ack = ANY (ARRAY['agreed'::text, 'disputed'::text]))),
     CONSTRAINT booking_inspections_phase_check CHECK ((phase = ANY (ARRAY['handover'::text, 'return'::text, 'dispatch'::text, 'delivery'::text])))
 );
@@ -423,6 +530,12 @@ CREATE TABLE public.booking_inspections (
 --
 
 COMMENT ON TABLE public.booking_inspections IS 'Condition at handover and return (odometer, fuel, damage, counts, photos) and the customer''s agreement or dispute';
+
+--
+-- Name: COLUMN booking_inspections.confirmed_by; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.booking_inspections.confirmed_by IS 'code: the customer gave the vendor their handover code, so this record counts as agreed';
 
 --
 -- Name: booking_lines; Type: TABLE; Schema: public; Owner: -
@@ -473,6 +586,62 @@ COMMENT ON TABLE public.booking_lines IS 'Items a rental booking takes from stoc
 COMMENT ON COLUMN public.booking_lines.item_snapshot IS 'Item name, unit, quality, condition and charges as booked; later listing edits never change it';
 
 --
+-- Name: booking_state_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_state_history (
+    id bigint NOT NULL,
+    booking_id uuid NOT NULL,
+    from_state public.booking_state,
+    to_state public.booking_state NOT NULL,
+    status public.booking_status NOT NULL,
+    fulfilment text NOT NULL,
+    actor_kind text NOT NULL,
+    actor_id uuid,
+    reason text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT booking_state_history_actor_kind_check CHECK ((actor_kind = ANY (ARRAY['customer'::text, 'vendor'::text, 'admin'::text, 'system'::text, 'gateway'::text])))
+);
+
+--
+-- Name: TABLE booking_state_history; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_state_history IS 'Every booking state change: from, to, who (customer, vendor, admin, system job or payment gateway) and why';
+
+--
+-- Name: booking_state_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.booking_state_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: booking_state_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.booking_state_history_id_seq OWNED BY public.booking_state_history.id;
+
+--
+-- Name: booking_state_moves; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.booking_state_moves (
+    from_state public.booking_state,
+    to_state public.booking_state NOT NULL
+);
+
+--
+-- Name: TABLE booking_state_moves; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.booking_state_moves IS 'The booking state machine: every allowed move (from_state NULL = a new booking)';
+
+--
 -- Name: bookings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -520,6 +689,7 @@ CREATE TABLE public.bookings (
     idempotency_key text,
     deposit_settled_at timestamp with time zone,
     group_id uuid,
+    state public.booking_state NOT NULL,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
     CONSTRAINT bookings_deposit_paise_check CHECK ((deposit_paise >= 0)),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
@@ -603,6 +773,12 @@ COMMENT ON COLUMN public.bookings.deposit_settled_at IS 'When agreed charges wer
 --
 
 COMMENT ON COLUMN public.bookings.group_id IS 'The checkout this booking was made in, with the others booked at the same time';
+
+--
+-- Name: COLUMN bookings.state; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.state IS 'Lifecycle state, set by the database from status, fulfilment and disputed charges; see booking_state_moves';
 
 --
 -- Name: capacity_holds; Type: TABLE; Schema: public; Owner: -
@@ -1041,6 +1217,7 @@ CREATE TABLE public.featured_purchases (
     ends_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     paid_at timestamp with time zone,
+    checked_at timestamp with time zone,
     CONSTRAINT featured_purchases_amount_paise_check CHECK ((amount_paise >= 0)),
     CONSTRAINT featured_purchases_days_check CHECK ((days > 0)),
     CONSTRAINT featured_purchases_status_check CHECK ((status = ANY (ARRAY['created'::text, 'paid'::text, 'granted'::text])))
@@ -1051,6 +1228,12 @@ CREATE TABLE public.featured_purchases (
 --
 
 COMMENT ON TABLE public.featured_purchases IS 'Each featured purchase or free grant, with its Razorpay payment and the period it covers.';
+
+--
+-- Name: COLUMN featured_purchases.checked_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.featured_purchases.checked_at IS 'Last time the reconciliation job asked the provider about this unpaid order';
 
 --
 -- Name: inventory_items; Type: TABLE; Schema: public; Owner: -
@@ -1430,6 +1613,7 @@ CREATE TABLE public.payments (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     paid_at timestamp with time zone,
     razorpay_refund_id text,
+    checked_at timestamp with time zone,
     CONSTRAINT payments_check CHECK (((type = 'refund'::public.payment_type) = (razorpay_refund_id IS NOT NULL))),
     CONSTRAINT payments_check1 CHECK (((type = 'refund'::public.payment_type) OR (razorpay_order_id IS NOT NULL)))
 );
@@ -1439,6 +1623,12 @@ CREATE TABLE public.payments (
 --
 
 COMMENT ON TABLE public.payments IS 'Razorpay orders and payments for booking advances, and refunds (type = refund).';
+
+--
+-- Name: COLUMN payments.checked_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.payments.checked_at IS 'Last time the reconciliation job asked the provider about this unpaid order';
 
 --
 -- Name: payouts; Type: TABLE; Schema: public; Owner: -
@@ -1880,6 +2070,55 @@ COMMENT ON COLUMN public.vendors.service_radius_km IS 'Usual travel range from t
 COMMENT ON COLUMN public.vendors.gstin IS 'The vendor''s GST number, if registered; customer invoices are tax invoices only with it';
 
 --
+-- Name: webhook_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.webhook_events (
+    id bigint NOT NULL,
+    provider text DEFAULT 'razorpay'::text NOT NULL,
+    event_id text NOT NULL,
+    event text NOT NULL,
+    payload jsonb NOT NULL,
+    status text DEFAULT 'received'::text NOT NULL,
+    result text,
+    attempts integer DEFAULT 0 NOT NULL,
+    last_error text,
+    received_at timestamp with time zone DEFAULT now() NOT NULL,
+    processed_at timestamp with time zone,
+    CONSTRAINT webhook_events_attempts_check CHECK ((attempts >= 0)),
+    CONSTRAINT webhook_events_status_check CHECK ((status = ANY (ARRAY['received'::text, 'processed'::text, 'ignored'::text, 'failed'::text])))
+);
+
+--
+-- Name: TABLE webhook_events; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.webhook_events IS 'Payment webhooks by provider event id: duplicates are answered without running twice; failures keep their error and are retried by the provider';
+
+--
+-- Name: COLUMN webhook_events.result; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.webhook_events.result IS 'What the event did, e.g. confirmed, refunded, already_done, amount_mismatch';
+
+--
+-- Name: webhook_events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.webhook_events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: webhook_events_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.webhook_events_id_seq OWNED BY public.webhook_events.id;
+
+--
 -- Name: admin_audit_log id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1890,6 +2129,12 @@ ALTER TABLE ONLY public.admin_audit_log ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.booking_events ALTER COLUMN id SET DEFAULT nextval('public.booking_events_id_seq'::regclass);
+
+--
+-- Name: booking_state_history id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_state_history ALTER COLUMN id SET DEFAULT nextval('public.booking_state_history_id_seq'::regclass);
 
 --
 -- Name: categories id; Type: DEFAULT; Schema: public; Owner: -
@@ -1944,6 +2189,12 @@ ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('publi
 --
 
 ALTER TABLE ONLY public.system_alerts ALTER COLUMN id SET DEFAULT nextval('public.system_alerts_id_seq'::regclass);
+
+--
+-- Name: webhook_events id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.webhook_events ALTER COLUMN id SET DEFAULT nextval('public.webhook_events_id_seq'::regclass);
 
 --
 -- Name: admin_audit_log admin_audit_log_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -2028,6 +2279,20 @@ ALTER TABLE ONLY public.booking_lines
 
 ALTER TABLE ONLY public.booking_lines
     ADD CONSTRAINT booking_lines_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_state_history booking_state_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_state_history
+    ADD CONSTRAINT booking_state_history_pkey PRIMARY KEY (id);
+
+--
+-- Name: booking_state_moves booking_state_moves_from_state_to_state_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_state_moves
+    ADD CONSTRAINT booking_state_moves_from_state_to_state_key UNIQUE NULLS NOT DISTINCT (from_state, to_state);
 
 --
 -- Name: bookings bookings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -2457,6 +2722,20 @@ ALTER TABLE ONLY public.vendors
     ADD CONSTRAINT vendors_user_id_key UNIQUE (user_id);
 
 --
+-- Name: webhook_events webhook_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.webhook_events
+    ADD CONSTRAINT webhook_events_pkey PRIMARY KEY (id);
+
+--
+-- Name: webhook_events webhook_events_provider_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.webhook_events
+    ADD CONSTRAINT webhook_events_provider_event_id_key UNIQUE (provider, event_id);
+
+--
 -- Name: admin_audit_log_created_at_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2491,6 +2770,12 @@ CREATE INDEX booking_charges_booking_idx ON public.booking_charges USING btree (
 --
 
 CREATE INDEX booking_events_booking_idx ON public.booking_events USING btree (booking_id, id);
+
+--
+-- Name: booking_state_history_booking_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX booking_state_history_booking_idx ON public.booking_state_history USING btree (booking_id, id);
 
 --
 -- Name: bookings_customer_id_created_at_idx; Type: INDEX; Schema: public; Owner: -
@@ -2545,6 +2830,12 @@ CREATE INDEX bookings_reminder_due_idx ON public.bookings USING btree (day) WHER
 --
 
 CREATE INDEX bookings_service_id_idx ON public.bookings USING btree (service_id) WHERE (service_id IS NOT NULL);
+
+--
+-- Name: bookings_state_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_state_idx ON public.bookings USING btree (state) WHERE (state = ANY (ARRAY['disputed'::public.booking_state, 'return_pending'::public.booking_state, 'in_progress'::public.booking_state]));
 
 --
 -- Name: bookings_status_day_idx; Type: INDEX; Schema: public; Owner: -
@@ -2775,6 +3066,12 @@ CREATE INDEX packages_vendor_id_idx ON public.packages USING btree (vendor_id);
 CREATE INDEX payments_booking_id_idx ON public.payments USING btree (booking_id);
 
 --
+-- Name: payments_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX payments_open_idx ON public.payments USING btree (created_at) WHERE (status = 'created'::public.payment_status);
+
+--
 -- Name: payouts_one_per_booking; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2901,6 +3198,30 @@ CREATE INDEX vendors_business_name_trgm_idx ON public.vendors USING gin (busines
 CREATE INDEX vendors_city_id_category_id_status_idx ON public.vendors USING btree (city_id, category_id, status);
 
 --
+-- Name: webhook_events_open_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX webhook_events_open_idx ON public.webhook_events USING btree (received_at) WHERE (status = ANY (ARRAY['received'::text, 'failed'::text]));
+
+--
+-- Name: booking_charges booking_charges_state; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER booking_charges_state AFTER INSERT OR UPDATE OF status ON public.booking_charges FOR EACH ROW EXECUTE FUNCTION public.booking_charge_touch();
+
+--
+-- Name: bookings bookings_state_guard; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER bookings_state_guard BEFORE INSERT OR UPDATE ON public.bookings FOR EACH ROW EXECUTE FUNCTION public.booking_state_guard();
+
+--
+-- Name: bookings bookings_state_log; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER bookings_state_log AFTER INSERT OR UPDATE ON public.bookings FOR EACH ROW EXECUTE FUNCTION public.booking_state_log();
+
+--
 -- Name: admin_audit_log admin_audit_log_admin_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2990,6 +3311,13 @@ ALTER TABLE ONLY public.booking_lines
 
 ALTER TABLE ONLY public.booking_lines
     ADD CONSTRAINT booking_lines_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id);
+
+--
+-- Name: booking_state_history booking_state_history_booking_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.booking_state_history
+    ADD CONSTRAINT booking_state_history_booking_id_fkey FOREIGN KEY (booking_id) REFERENCES public.bookings(id);
 
 --
 -- Name: bookings bookings_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

@@ -179,6 +179,7 @@ export const api = {
   saveLicence: (body: { number: string; dateOfBirth: string; expiresOn: string; photo?: { publicId: string; version: number; signature: string; format: string } }) =>
     client.put<DriverLicence>('/v1/me/licence', body),
   trip: (bookingId: string) => client.get<TripView>(`/v1/bookings/${bookingId}/trip`),
+  handoverCode: (bookingId: string) => client.get<{ code: string }>(`/v1/bookings/${bookingId}/handover-code`),
   ackInspection: (bookingId: string, phase: 'handover' | 'return', decision: 'agreed' | 'disputed', note?: string) =>
     client.post<TripView>(`/v1/bookings/${bookingId}/inspections/${phase}/ack`, note ? { decision, note } : { decision }),
   changes: (bookingId: string) => client.get<{ items: BookingChange[] }>(`/v1/bookings/${bookingId}/changes`),

@@ -814,7 +814,11 @@
     "odometerBelowStart": "The odometer cannot be lower than at the handover. Check the reading.",
     "invoiceNotReady": "The invoice is ready once the booking is confirmed.",
     "answerRequired": "A required detail is missing. Fill it in and save again.",
-    "answerInvalid": "One of the details is not valid. Check it and save again."
+    "answerInvalid": "One of the details is not valid. Check it and save again.",
+    "bookingChanged": "This booking just changed. Pull down to refresh and try again.",
+    "codeInvalid": "That is not the customer’s handover code. Ask them to check the code on their booking.",
+    "codeTooManyAttempts": "Too many wrong codes. Try again in an hour, or save without the code.",
+    "evidenceRequired": "No photos back this charge, so it can only be waived."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1479,5 +1483,9 @@
     "share": "Share invoice",
     "proforma": "Proforma invoice",
     "notFinal": "Not final yet: the invoice is issued when the booking is completed."
+  },
+  "handoverCode": {
+    "label": "Customer’s handover code",
+    "hint": "Ask the customer for the 6-digit code in their app. With it, this record counts as agreed by them."
   }
 }

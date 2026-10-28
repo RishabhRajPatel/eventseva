@@ -1,6 +1,8 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { Db } from '../db/db.service';
+import { HandoverCodes } from './handover-code';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import { SignedPhotoDto } from '../media/signed-photo.dto';
 import { AppError } from '../common/errors';
@@ -19,6 +21,7 @@ class InspectionDto {
   @IsInt() @Min(0) @Max(8) fuelEighths: number;
   @IsOptional() @IsString() @MaxLength(500) notes?: string;
   @IsOptional() @IsArray() @ArrayMaxSize(12) @ValidateNested({ each: true }) @Type(() => SignedPhotoDto) photos?: SignedPhotoDto[];
+  @IsOptional() @Matches(/^\d{6}$/, { message: 'customerCode must be the 6 digits in the customer app' }) customerCode?: string;
 }
 
 class DamageDto {
@@ -80,7 +83,23 @@ export class PartnerTripController {
 @UseGuards(AuthGuard)
 @Controller('v1/bookings/:id')
 export class TripController {
-  constructor(private readonly trips: TripService) {}
+  constructor(
+    private readonly trips: TripService,
+    private readonly codes: HandoverCodes,
+    private readonly db: Db,
+  ) {}
+
+  /** The code the customer reads out at the handover and the return (cars and rentals, once confirmed). */
+  @Get('handover-code')
+  async handoverCode(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    const b = await this.db.one(
+      this.db,
+      `SELECT 1 FROM bookings WHERE id = $1 AND customer_id = $2 AND status = 'confirmed' AND booking_type IN ('transport', 'rental')`,
+      [id, auth.userId],
+    );
+    if (!b) throw new AppError('BOOKING_NOT_FOUND', 'Booking not found.', HttpStatus.NOT_FOUND);
+    return { code: this.codes.codeFor(id) };
+  }
 
   @Get('trip')
   get(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
