@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import type { EngineService, ServiceSetup, VendorResource } from '@eventseva/app-shared';
+import type { EngineService, EventType, ServiceSetup, VendorResource } from '@eventseva/app-shared';
 import { api } from '../../../lib/api';
 import { confirm } from '../../../lib/confirm';
 import { errorCode, errorText } from '../../../lib/errors';
@@ -29,6 +29,20 @@ import {
   type RuleForm,
   type RuleKey,
 } from '../../../lib/engine';
+import {
+  availabilityForm,
+  planForms,
+  priceRuleForms,
+  questionForms,
+  toAvailability,
+  toPlans,
+  toPriceRules,
+  toQuestions,
+  type AvailabilityForm,
+  type PlanForm,
+  type PriceRuleForm,
+  type QuestionForm,
+} from '../../../lib/serviceConfig';
 import { useVendor } from '../../../lib/queries';
 import { toast } from '../../../lib/toast';
 import { c, space } from '../../../lib/theme';
@@ -42,6 +56,7 @@ import { Notice } from '../../../components/Notice';
 import { PriceInput } from '../../../components/PriceInput';
 import { Screen } from '../../../components/Screen';
 import { CashToggle } from '../../../components/CashToggle';
+import { AvailabilityCard, EventTypesCard, PlansCard, PriceRulesCard, QuestionsCard } from '../../../components/ServiceConfigSections';
 import { Segmented } from '../../../components/Segmented';
 import { QueryView } from '../../../components/States';
 import { Txt } from '../../../components/Txt';
@@ -65,12 +80,13 @@ export default function EngineServiceEditor() {
   );
 }
 
-const FIELDS = ['title', 'resource', 'price', 'attributes', 'rules'] as const;
+const FIELDS = ['title', 'resource', 'price', 'plans', 'priceRules', 'attributes', 'rules', 'availability', 'questions'] as const;
 /** Typed with decimals: rupees and hours. */
 const DECIMAL_RULES: RuleKey[] = ['deposit', 'minHours', 'maxHours', 'setupHours', 'dismantleHours', 'bufferHours'];
 
 function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service: EngineService | null; missing?: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const lang = i18n.language === 'hi' ? 'hi' : 'en';
   const qc = useQueryClient();
   const form = useForm(FIELDS);
   const vendor = useVendor();
@@ -85,10 +101,24 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
   const [attrs, setAttrs] = useState<FieldValues>(initialValues(setup.attributes, service?.attributes));
   const [resourceId, setResourceId] = useState<string | null>(service?.resourceId ?? null);
   const [cashAllowed, setCashAllowed] = useState(service?.cashAllowed ?? false);
+  const [availability, setAvailability] = useState<AvailabilityForm>(availabilityForm(service?.rules));
+  const [eventTypes, setEventTypes] = useState<EventType[]>(service?.eventTypes ?? []);
+  const [plans, setPlans] = useState<PlanForm[]>(planForms(service?.plans));
+  const [priceRules, setPriceRules] = useState<PriceRuleForm[]>(priceRuleForms(service?.pricing.adjustments));
+  const [questions, setQuestions] = useState<QuestionForm[]>(questionForms(service?.questions));
 
   const choosable = (resources.data ?? []).filter((r) => r.kind === setup.resourceKind && r.status !== 'inactive');
   const needsResource = type === 'transport';
-  const pricing = toPricing(type, price);
+  const rulesForPrice = toPriceRules(priceRules);
+  const basePricing = toPricing(type, price);
+  // Price rules belong to the price, and every plan keeps them (and GST, included km …) too.
+  const pricing = basePricing.ok && rulesForPrice.ok && rulesForPrice.adjustments.length
+    ? { ok: true as const, pricing: { ...basePricing.pricing, adjustments: rulesForPrice.adjustments } }
+    : basePricing;
+  const { model: _model, ratePaise: _rate, ...shared } = pricing.ok ? pricing.pricing : { model: 'fixed', ratePaise: 0 };
+  const planCheck = toPlans(plans, shared);
+  const availabilityCheck = toAvailability(availability);
+  const questionCheck = toQuestions(questions, setup.questions.map((q) => q.key));
   const ruleCheck = toRules(type, rules, setup.defaultRules.leadTimeHours);
   const attrErrors = fieldErrors(setup.attributes, attrs);
   const hasGstin = !!vendor.data?.gstin;
@@ -102,6 +132,10 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
           n: setup.defaultRules.leadTimeHours ?? 0,
         }),
     attributes: Object.keys(attrErrors).length ? 'attributes' : null,
+    plans: planCheck.ok ? null : t(planCheck.problem.index < 0 ? 'serviceConfig.problem.planCount' : `serviceConfig.problem.plan_${planCheck.problem.field}`, { n: planCheck.problem.index + 1 }),
+    priceRules: rulesForPrice.ok ? null : t(`serviceConfig.problem.rule_${rulesForPrice.problem.field}`, { n: rulesForPrice.problem.index + 1 }),
+    availability: availabilityCheck.ok ? null : t(`serviceConfig.problem.${availabilityCheck.problem}`),
+    questions: questionCheck.ok ? null : t(`serviceConfig.problem.question_${questionCheck.problem.field}`, { n: questionCheck.problem.index + 1 }),
   };
 
   const save = useMutation({
@@ -132,12 +166,15 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
     );
 
   function submit() {
-    if (save.isPending || !form.check(errors) || !pricing.ok || !ruleCheck.ok) return;
+    if (save.isPending || !form.check(errors) || !pricing.ok || !ruleCheck.ok || !planCheck.ok || !availabilityCheck.ok || !questionCheck.ok) return;
     save.mutate({
       title: title.trim(),
       description: description.trim() || null,
       pricing: pricing.pricing,
-      rules: ruleCheck.rules,
+      rules: { ...ruleCheck.rules, ...availabilityCheck.rules },
+      plans: planCheck.plans,
+      eventTypes,
+      questions: questionCheck.questions,
       attributes: toValues(setup.attributes, attrs),
       ...(setup.resourceKind && setup.resourceKind !== 'crew' ? { resourceId } : {}),
       cashAllowed,
@@ -301,6 +338,13 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
         </Card>
       </View>
 
+      <View {...form.at('plans')}>
+        <PlansCard value={plans} onChange={setPlans} models={models} error={form.show('plans') ? errors.plans : null} />
+      </View>
+      <View {...form.at('priceRules')}>
+        <PriceRulesCard value={priceRules} onChange={setPriceRules} error={form.show('priceRules') ? errors.priceRules : null} />
+      </View>
+
       {setup.attributes.length ? (
         <View {...form.at('attributes')}>
           <Card style={{ gap: space.md }}>
@@ -365,6 +409,19 @@ function ServiceForm({ setup, service, missing }: { setup: ServiceSetup; service
             placeholder={t('engine.instructionsPlaceholder')}
           />
         </Card>
+      </View>
+
+      <View {...form.at('availability')}>
+        <AvailabilityCard value={availability} onChange={setAvailability} error={form.show('availability') ? errors.availability : null} />
+      </View>
+      <EventTypesCard value={eventTypes} onChange={setEventTypes} />
+      <View {...form.at('questions')}>
+        <QuestionsCard
+          value={questions}
+          onChange={setQuestions}
+          error={form.show('questions') ? errors.questions : null}
+          categoryQuestions={setup.questions.map((q) => (lang === 'hi' ? q.label.hi : q.label.en))}
+        />
       </View>
     </Screen>
   );

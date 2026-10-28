@@ -5,8 +5,9 @@ import type { AuthContext } from '../auth/token.service';
 import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { PartnerAppGuard } from '../partner/partner.controller';
 import { PublicCache } from '../common/cache';
+import { EVENT_TYPES } from '../bookings/booking.rules';
 import { EngineCatalogService, VENDOR_RESOURCE_KINDS, type VendorResourceKind } from './catalog.service';
-import type { Pricing, RuleSet } from './types';
+import type { FieldDef, Pricing, RatePlan, RuleSet } from './types';
 
 class EngineServiceDto {
   @IsString() @Length(2, 80) title: string;
@@ -20,6 +21,12 @@ class EngineServiceDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
   /** Customers may choose to pay the whole booking to you in cash. */
   @IsOptional() @IsBoolean() cashAllowed?: boolean;
+  /** Your own questions for the customer (same format as the category's; checked on the server). */
+  @IsOptional() @IsArray() @ArrayMaxSize(15) questions?: FieldDef[];
+  /** Event types you offer this for; empty: every event. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) eventTypes?: string[];
+  /** Ways to book (e.g. per hour, full night), each with its own price; empty: the price above. */
+  @IsOptional() @IsArray() @ArrayMaxSize(6) plans?: RatePlan[];
 }
 
 class UpdateEngineServiceDto {
@@ -33,6 +40,12 @@ class UpdateEngineServiceDto {
   @IsOptional() @ValidateIf((_o, v) => v !== null) @IsInt() @Min(1) @Max(100_000) maxGuests?: number | null;
   /** Customers may choose to pay the whole booking to you in cash. */
   @IsOptional() @IsBoolean() cashAllowed?: boolean;
+  /** Your own questions for the customer (same format as the category's; checked on the server). */
+  @IsOptional() @IsArray() @ArrayMaxSize(15) questions?: FieldDef[];
+  /** Event types you offer this for; empty: every event. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) eventTypes?: string[];
+  /** Ways to book (e.g. per hour, full night), each with its own price; empty: the price above. */
+  @IsOptional() @IsArray() @ArrayMaxSize(6) plans?: RatePlan[];
 }
 
 class ResourceDto {
@@ -112,6 +125,12 @@ export class PartnerEngineCatalogController {
     return this.catalog.updateService(auth.userId, id, body);
   }
 
+  /** Every change to the service's price, rules, questions, plans or event types, newest first. */
+  @Get('engine-services/:id/history')
+  history(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.catalog.configHistory(id, auth.userId);
+  }
+
   @Delete('engine-services/:id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async removeService(@Auth() auth: AuthContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -166,15 +185,33 @@ export class PartnerEngineCatalogController {
   }
 }
 
+class PublicServicesQuery {
+  @IsOptional() @IsIn(EVENT_TYPES) eventType?: string;
+}
+
 /** Customers: a vendor's bookable services with what the booking form needs. */
 @Controller('v1/vendors')
 export class PublicEngineServicesController {
   constructor(private readonly catalog: EngineCatalogService) {}
 
+  /** `?eventType=wedding` leaves out services the vendor does not offer for that event. */
   @PublicCache(30)
   @Get(':id/engine-services')
-  services(@Param('id', ParseUUIDPipe) id: string) {
-    return this.catalog.publicServices(id);
+  services(@Param('id', ParseUUIDPipe) id: string, @Query() q: PublicServicesQuery) {
+    return this.catalog.publicServices(id, q.eventType);
+  }
+}
+
+/** Admin: what a vendor changed on a service (price, rules, questions, plans, event types). */
+@UseGuards(AdminGuard)
+@Controller('v1/admin/services')
+export class AdminServiceConfigController {
+  constructor(private readonly catalog: EngineCatalogService) {}
+
+  @AdminRoles('verifier', 'support')
+  @Get(':id/history')
+  history(@Param('id', ParseUUIDPipe) id: string) {
+    return this.catalog.configHistory(id, null);
   }
 }
 

@@ -23,6 +23,7 @@ import {
   perModel,
   START_TIMES,
   toRequest,
+  withPlan,
   type EngineForm,
 } from '../../../lib/engine';
 import { errorText } from '../../../lib/errors';
@@ -101,7 +102,10 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
   const toast = useToast();
   const today = todayIst();
   const [serviceId, setServiceId] = useState(services.find((s) => s.id === initialService)?.id ?? services[0].id);
-  const s = services.find((x) => x.id === serviceId)!;
+  const listed = services.find((x) => x.id === serviceId)!;
+  const [planId, setPlanId] = useState<string | undefined>(listed.plans?.[0]?.id);
+  // With several ways to book, the chosen plan's price and rules are the ones that apply.
+  const s = withPlan(listed, planId);
   const [eventId, setEventId] = useState(events[0].id);
   const event = events.find((e) => e.id === eventId)!;
   const venue = event.venueAddress && event.venueLocation ? { address: event.venueAddress, ...event.venueLocation } : null;
@@ -121,6 +125,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
     answers: {},
     addons: {},
     note: '',
+    planId,
   }));
   const set = (patch: Partial<EngineForm>) => setForm((f) => ({ ...f, ...patch }));
   const [tried, setTried] = useState(false);
@@ -129,9 +134,17 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
 
   // Switching service or event resets what depends on it.
   useEffect(() => {
-    set({ hours: defaultHours(s), mode: carModes(s)[0], answers: {}, addons: {}, count: kind === 'guests' && event.guestCount ? String(event.guestCount) : kind ? String(s.rules.minQty ?? 1) : '' });
+    const first = listed.plans?.[0]?.id;
+    setPlanId(first);
+    const fresh = withPlan(listed, first);
+    set({ planId: first, hours: defaultHours(fresh), mode: carModes(fresh)[0], answers: {}, addons: {}, count: kind === 'guests' && event.guestCount ? String(event.guestCount) : kind ? String(fresh.rules.minQty ?? 1) : '' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceId]);
+  const choosePlan = (id: string) => {
+    setPlanId(id);
+    const next = withPlan(listed, id);
+    set({ planId: id, hours: durationChoices(next).includes(form.hours) ? form.hours : defaultHours(next) });
+  };
   useEffect(() => {
     set({ eventId: event.id, eventDay: event.eventDate, dayOffset: 0, destination: venue ?? form.destination });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,6 +271,22 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
           {s.pricing.taxPercent ? <Pill label={t('engineBook.gst', { n: s.pricing.taxPercent })} /> : null}
         </View>
       </Card>
+
+      {listed.plans?.length ? (
+        <View style={styles.gap8} accessibilityRole="radiogroup" accessibilityLabel={t('engineBook.plan')}>
+          <AppText variant="bold" size="sm">{t('engineBook.plan')}</AppText>
+          {listed.plans.map((p) => (
+            <ChoiceRow
+              key={p.id}
+              icon="clock"
+              label={lang === 'hi' ? p.name.hi : p.name.en}
+              right={p.pricing.model === 'quote' ? t('engineBook.quotePrice') : `${rupees(p.pricing.ratePaise)} ${t(`engineBook.per.${perModel(p.pricing.model)}`)}`}
+              selected={p.id === planId}
+              onPress={() => choosePlan(p.id)}
+            />
+          ))}
+        </View>
+      ) : null}
 
       <View style={styles.gap8} accessibilityRole="radiogroup" accessibilityLabel={t('book.forEvent')}>
         <AppText variant="bold" size="sm">{t('book.forEvent')}</AppText>

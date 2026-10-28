@@ -12,6 +12,7 @@ import { Fact, QueryView, RefreshingHint, StatusPill } from '@/components/ui';
 import { useApiQuery } from '@/hooks/useApiQuery';
 import { api } from '@/lib/api';
 import type { AdminVendor } from '@/lib/admin-types';
+import type { ServiceConfigChange } from '@eventseva/app-shared';
 import { historyLabel, humanize, MEDIA_STATUS, UNIT_LABELS, VENDOR_STATUS, vendorDecisions, type VendorDecision } from '@/lib/labels';
 import { can } from '@/lib/roles';
 import { REASON_LIMITS } from '@/lib/validate';
@@ -161,7 +162,32 @@ function VendorDetail({
   );
 }
 
+/** What the vendor changed on one service, newest first (bookings keep their own copy). */
+function ServiceHistory({ serviceId }: { serviceId: string }) {
+  const state = useApiQuery<{ items: ServiceConfigChange[] }>(`/v1/admin/services/${serviceId}/history`);
+  return (
+    <QueryView state={state} loadingLabel="Loading changes" isEmpty={(d) => d.items.length === 0} empty={<p className="muted">No changes since it was added.</p>}>
+      {(d) => (
+        <ol className="stack" aria-label="Service changes">
+          {d.items.map((h) => (
+            <li key={h.version}>
+              <strong>Version {h.version}</strong> · {formatDateTime(h.createdAt)} · {Object.keys(h.changes).map(humanize).join(', ')}
+              <details>
+                <summary>Before and after</summary>
+                <pre className="code-block">{JSON.stringify(h.changes, null, 2)}</pre>
+              </details>
+            </li>
+          ))}
+        </ol>
+      )}
+    </QueryView>
+  );
+}
+
 function Services({ vendor: v }: { vendor: AdminVendor }) {
+  const { session } = useShell();
+  const [open, setOpen] = useState<string | null>(null);
+  const showHistory = can(session.admin.role, 'service.history');
   return (
     <section className="box stack" aria-labelledby="services-title">
       <h2 id="services-title">Services and packages</h2>
@@ -177,6 +203,7 @@ function Services({ vendor: v }: { vendor: AdminVendor }) {
                 </th>
                 <th scope="col">Guests</th>
                 <th scope="col">Active</th>
+                {showHistory ? <th scope="col">Changes</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -191,12 +218,20 @@ function Services({ vendor: v }: { vendor: AdminVendor }) {
                   </td>
                   <td className="nowrap">{s.minGuests || s.maxGuests ? `${s.minGuests ?? '—'} to ${s.maxGuests ?? '—'}` : '—'}</td>
                   <td>{s.isActive ? 'Yes' : 'No'}</td>
+                  {showHistory ? (
+                    <td>
+                      <button type="button" className="btn btn-small" aria-expanded={open === s.id} onClick={() => setOpen(open === s.id ? null : s.id)}>
+                        {open === s.id ? 'Hide' : 'Show'}
+                      </button>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       ) : null}
+      {open ? <ServiceHistory serviceId={open} /> : null}
       {v.packages.length ? (
         <div className="table-wrap">
           <table className="tbl">

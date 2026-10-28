@@ -50,7 +50,7 @@ import { CheckoutService } from './engine/checkout.service';
 import { CheckoutController, PartnerBundlesController } from './engine/checkout.controller';
 import { ChangesController, PartnerChangesController } from './engine/changes.controller';
 import { AdminLicencesController, PartnerTripController, TripController } from './engine/trip.controller';
-import { AdminResourcesController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
+import { AdminResourcesController, AdminServiceConfigController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
 import { EngineService } from './engine/engine.service';
 import { InventoryService } from './inventory/inventory.service';
 import { FulfilmentService } from './inventory/fulfilment.service';
@@ -114,6 +114,7 @@ class ConfigModule {}
     PartnerEngineCatalogController,
     PublicEngineServicesController,
     AdminResourcesController,
+    AdminServiceConfigController,
     PartnerTripController,
     TripController,
     AdminLicencesController,

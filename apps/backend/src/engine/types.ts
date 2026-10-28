@@ -42,6 +42,14 @@ export interface RuleSet {
   workingHours?: { from: string; to: string };
   /** Hours of notice needed before the start. */
   leadTimeHours?: number;
+  /** Days of the week the service works, India time (0 = Sunday … 6 = Saturday). Unset: every day. */
+  workingDays?: number[];
+  /** India dates the service is not offered (holidays, already promised elsewhere): YYYY-MM-DD. */
+  blockedDates?: string[];
+  /** How far ahead a booking may start, in days (the platform allows up to 730). */
+  maxAdvanceDays?: number;
+  /** Bookings of this service that may start on one India day (requests waiting for an answer count). */
+  maxPerDay?: number;
   setupMin?: number;
   dismantleMin?: number;
   /** Cleaning / turnaround / repair time after the booking before the resource is free again. */
@@ -81,6 +89,38 @@ export interface Pricing {
   earlyMorningPaise?: number;
   /** GST the vendor charges on this service. */
   taxPercent?: 0 | 5 | 12 | 18 | 28;
+  /** Price rules: weekends, peak dates, event types … applied to the service's own price lines, in order. */
+  adjustments?: PriceAdjustment[];
+}
+
+/**
+ * A price rule. It applies when every condition it sets holds (unset conditions match everything);
+ * `percent` changes the service's price lines (negative for a discount), `amountPaise` adds a flat sum.
+ */
+export interface PriceAdjustment {
+  label: Bilingual;
+  /** India weekdays the booking starts on (0 = Sunday). */
+  days?: number[];
+  /** India date range the booking starts in, both ends included (YYYY-MM-DD). */
+  from?: string;
+  until?: string;
+  /** The customer's event types (wedding, birthday …). */
+  eventTypes?: string[];
+  percent?: number;
+  amountPaise?: number;
+}
+
+/**
+ * One way to book a service with its own price (and optionally rules): a car "Local, by the hour" and
+ * "Outstation, per day", a DJ "Per hour" and "Full night". The customer picks one (`planId`).
+ */
+export interface RatePlan {
+  id: string;
+  name: Bilingual;
+  description?: Bilingual;
+  pricing: Pricing;
+  /** Vendor rule keys only; they override the service's rules for this plan. */
+  rules?: RuleSet;
 }
 
 export interface CategoryTemplate {
@@ -119,6 +159,8 @@ export interface EngineRequest {
   payMode?: 'online' | 'cash';
   /** The total the customer saw; a different server total answers PRICE_CHANGED instead of booking. */
   expectedTotalPaise?: number;
+  /** Which of the service's rate plans (required when it has any). */
+  planId?: string;
 }
 
 export interface QuoteLine {

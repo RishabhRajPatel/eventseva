@@ -159,7 +159,7 @@ export const normaliseRegistration = (text: string) => text.toUpperCase().replac
 
 // ---------- pricing ----------
 
-export type PriceKey = Exclude<keyof EnginePricing, 'model' | 'ratePaise' | 'taxPercent'>;
+export type PriceKey = Exclude<keyof EnginePricing, 'model' | 'ratePaise' | 'taxPercent' | 'adjustments'>;
 const MONEY_KEYS: PriceKey[] = ['minChargePaise', 'overtimeHourPaise', 'extraKmPaise', 'driverDayPaise', 'dayRatePaise', 'travelPerKmPaise', 'earlyMorningPaise'];
 export const isMoneyKey = (k: PriceKey) => MONEY_KEYS.includes(k);
 

@@ -15,7 +15,8 @@ import { pointOf } from '../bookings/travel';
 import { HANDLERS, travelLine, type ItemRow, type PlanContext, type ResourceRow, type ServiceRow } from './booking-types';
 import { checkAll, holdAll, Unavailable } from './reservations';
 import { DEFAULT_CANCELLATION, effectiveRules, istDay, parseTime } from './rules';
-import type { BookingTypeKey, CategoryTemplate, EngineRequest, Need, Quote, QuoteLine } from './types';
+import { adjustmentLines, allQuestions, checkEventServed, pickPlan, schemaVersion } from './service-config';
+import type { BookingTypeKey, CategoryTemplate, EngineRequest, FieldDef, Need, Quote, QuoteLine, RatePlan } from './types';
 
 const HOUR = 3600_000;
 /** The vendor answers within 24 h, and at least an hour before the service starts. */
@@ -28,8 +29,10 @@ export const enginePayBy = (starts: Date, now = new Date()) => new Date(Math.min
 interface Loaded {
   ctx: PlanContext;
   vendor: { id: string; user_id: string; business_name: string; status: string };
-  event: { id: string; event_date: string };
+  event: { id: string; event_date: string; event_type: string };
   category: { booking_type: BookingTypeKey; template: CategoryTemplate };
+  /** The rate plan booked, when the service has several. */
+  plan: RatePlan | null;
   addons: { id: string; name: string; price_paise: number; requires_approval: boolean; setup_minutes: number }[];
 }
 
@@ -38,6 +41,8 @@ export interface Agreed {
   pricing: ServiceRow['pricing'];
   rules: ServiceRow['rules'];
   items: Record<string, { rentPaise: number; rentPer: 'booking' | 'day'; depositPaise: number }>;
+  /** The questions the customer answered (older bookings: none saved, today's are used). */
+  questions?: FieldDef[];
 }
 
 export interface Priced {
@@ -61,16 +66,18 @@ export class EngineService {
   private async load(q: Queryable, customerId: string, req: EngineRequest, now: Date, agreed?: Agreed): Promise<Loaded> {
     parseTime(req.startsAt, 'startsAt');
     if (req.endsAt !== undefined) parseTime(req.endsAt, 'endsAt');
-    const event = await this.db.one<{ id: string; event_date: string; venue_lat: string | null; venue_lng: string | null }>(
+    const event = await this.db.one<{ id: string; event_date: string; event_type: string; venue_lat: string | null; venue_lng: string | null }>(
       q,
-      'SELECT id, event_date, venue_lat, venue_lng FROM events WHERE id = $1 AND customer_id = $2',
+      'SELECT id, event_date, event_type, venue_lat, venue_lng FROM events WHERE id = $1 AND customer_id = $2',
       [req.eventId, customerId],
     );
     if (!event) throw new AppError('EVENT_NOT_FOUND', 'Event not found.', HttpStatus.NOT_FOUND);
     const svc = await this.db.one<ServiceRow & { is_active: boolean; vendor_status: string; vendor_user_id: string; business_name: string;
-      vendor_lat: string | null; vendor_lng: string | null; booking_type_cat: BookingTypeKey; template: CategoryTemplate }>(
+      vendor_lat: string | null; vendor_lng: string | null; booking_type_cat: BookingTypeKey; template: CategoryTemplate;
+      questions: FieldDef[]; event_types: string[]; plans: RatePlan[] }>(
       q,
       `SELECT s.id, s.vendor_id, s.title, s.booking_type, s.pricing, s.rules, s.attributes, s.resource_id, s.min_guests, s.max_guests, s.is_active,
+              s.questions, s.event_types, s.plans,
               v.status AS vendor_status, v.user_id AS vendor_user_id, v.business_name, v.lat AS vendor_lat, v.lng AS vendor_lng,
               c.booking_type AS booking_type_cat, c.template
          FROM services s JOIN vendors v ON v.id = s.vendor_id JOIN categories c ON c.id = v.category_id
@@ -78,14 +85,25 @@ export class EngineService {
       [req.serviceId],
     );
     if (!svc || (!svc.is_active && !agreed) || svc.vendor_status !== 'approved') throw new AppError('ITEM_NOT_FOUND', 'This service is not offered any more.', HttpStatus.NOT_FOUND);
+    // The vendor's configuration: a rate plan (its price and rules replace the service's) and the
+    // event types served. A change to an existing booking keeps what was agreed instead.
+    let plan: RatePlan | null = null;
     if (agreed) {
       svc.pricing = agreed.pricing;
       svc.rules = {};
+    } else {
+      checkEventServed(svc.event_types, event.event_type);
+      plan = pickPlan(svc.plans, req.planId);
+      if (plan) {
+        svc.pricing = plan.pricing;
+        svc.rules = { ...(svc.rules ?? {}), ...(plan.rules ?? {}) };
+      }
     }
     if (svc.vendor_user_id === customerId) throw new AppError('OWN_VENDOR', 'You cannot book your own business.');
     if (svc.booking_type === 'slot') throw new AppError('USE_SLOT_BOOKING', 'Book this service by date and slot.', HttpStatus.BAD_REQUEST);
     const type = svc.booking_type as Exclude<BookingTypeKey, 'slot'>;
     const rules = agreed ? agreed.rules : effectiveRules(type, svc.template ?? {}, svc.rules ?? {});
+    const template: CategoryTemplate = { ...(svc.template ?? {}), questions: agreed?.questions ?? allQuestions(svc.template?.questions, svc.questions) };
 
     // A wedding's services can sit a few days around the main date (mehendi before, returns after).
     const startDay = istDay(new Date(req.startsAt));
@@ -132,7 +150,7 @@ export class EngineService {
       ctx: {
         type,
         service: svc,
-        template: svc.template ?? {},
+        template,
         rules,
         req,
         vendorBase: pointOf(svc.vendor_lat, svc.vendor_lng),
@@ -146,6 +164,7 @@ export class EngineService {
       vendor: { id: svc.vendor_id, user_id: svc.vendor_user_id, business_name: svc.business_name, status: svc.vendor_status },
       event,
       category: { booking_type: svc.booking_type_cat, template: svc.template ?? {} },
+      plan,
       addons,
     };
   }
@@ -166,6 +185,8 @@ export class EngineService {
     const plan = HANDLERS[ctx.type as Exclude<BookingTypeKey, 'slot'>](ctx);
     const p = ctx.service.pricing;
     const lines: QuoteLine[] = [...plan.lines];
+    // The vendor's price rules (weekend, peak dates, event type) on the service's own price.
+    if (ctx.type !== 'quote') lines.push(...adjustmentLines(p, plan.lines, plan.starts, loaded.event.event_type));
 
     // Add-ons (decoration packages, album, drone …). Ones needing approval are priced but not promised.
     const addonRows: Priced['addonRows'] = [];
@@ -256,12 +277,30 @@ export class EngineService {
     if (clash) throw new Unavailable('vendor calendar');
   }
 
+  /**
+   * The vendor's limit of bookings of this service starting on one India day. Taken under a lock per
+   * service and day, so two requests at the same moment cannot both take the last place.
+   */
+  private async checkDayLimit(q: Queryable, loaded: Loaded, starts: Date) {
+    const max = loaded.ctx.rules.maxPerDay;
+    if (!max) return;
+    const day = istDay(starts);
+    await q.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`day-limit:${loaded.ctx.service.id}:${day}`]);
+    const n = (await this.db.one<{ n: number }>(
+      q,
+      `SELECT count(*)::int AS n FROM bookings WHERE service_id = $1 AND day = $2 AND status IN ('requested', 'accepted', 'confirmed')`,
+      [loaded.ctx.service.id, day],
+    ))!.n;
+    if (n >= max) throw new AppError('DAY_FULL', 'This vendor is fully booked for this service on that day.', HttpStatus.CONFLICT, { day, maxPerDay: max });
+  }
+
   async quote(customerId: string, req: EngineRequest, discountPercent = 0): Promise<Quote> {
     return this.db.tx(async (client) => {
       const p = await this.price(client, customerId, req, new Date(), undefined, discountPercent);
       await this.checkLicence(client, customerId, p);
       await this.checkVendorCalendar(client, p.loaded.vendor.id, p.plan.needs, p.plan.occupyFrom, p.plan.occupyUntil, p.loaded.ctx.crewId);
       await checkAll(client, p.plan.needs, p.plan.occupyFrom, p.plan.occupyUntil);
+      await this.checkDayLimit(client, p.loaded, p.plan.starts);
       return p.quote;
     });
   }
@@ -299,6 +338,7 @@ export class EngineService {
     const { plan, quote, loaded } = p;
     assertExpectedTotal(req.expectedTotalPaise, quote.totalPaise);
     await this.checkVendorCalendar(client, loaded.vendor.id, plan.needs, plan.occupyFrom, plan.occupyUntil, loaded.ctx.crewId);
+    await this.checkDayLimit(client, loaded, plan.starts);
     const respondBy = engineRespondBy(plan.starts, now);
     if (!respondBy) throw new AppError('TOO_LATE_TO_BOOK', 'This starts too soon to book in the app. Please call or chat with the vendor.', HttpStatus.CONFLICT);
     const payMode = req.payMode ?? 'online';
@@ -325,6 +365,10 @@ export class EngineService {
       // The request as made, so a later change (reschedule, extension) can be priced the same way.
       request: { ...req, note: undefined, expectedTotalPaise: undefined },
       bundle: opts.bundleId ? { id: opts.bundleId, discountPercent: opts.discountPercent ?? 0 } : null,
+      plan: loaded.plan ? { id: loaded.plan.id, name: loaded.plan.name } : null,
+      eventType: loaded.event.event_type,
+      // The questions as they were when the customer answered: later edits by the vendor do not change them.
+      questions: { version: schemaVersion(loaded.ctx.template.questions ?? []), fields: loaded.ctx.template.questions ?? [] },
     };
     const booking = await this.db.one<{ id: string }>(
       client,
@@ -390,7 +434,7 @@ export class EngineService {
    */
   async planChange(q: Queryable, b: { id: string; customer_id: string; snapshot: Record<string, unknown> }, startsAt: Date, endsAt: Date) {
     const snap = b.snapshot as { request?: EngineRequest; service: { pricing: Agreed['pricing'] }; rules: Agreed['rules']; addons?: { id: string; status: string }[];
-      bundle?: { discountPercent: number } | null };
+      bundle?: { discountPercent: number } | null; questions?: { fields: FieldDef[] } };
     if (!snap.request) throw new AppError('CHANGE_NOT_SUPPORTED', 'This booking cannot be changed in the app. Please contact support.', HttpStatus.CONFLICT);
     const lines = await q.query<{ inventory_item_id: string; item_snapshot: { rentPaise: number; rentPer: 'booking' | 'day'; depositPaise: number } }>(
       'SELECT inventory_item_id, item_snapshot FROM booking_lines WHERE booking_id = $1',
@@ -408,7 +452,7 @@ export class EngineService {
     };
     const lead = ((snap.rules?.leadTimeHours ?? 0) + 1) * HOUR;
     const now = new Date(Math.min(Date.now(), startsAt.getTime() - lead));
-    const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0 }, items }, snap.bundle?.discountPercent ?? 0);
+    const p = await this.price(q, b.customer_id, req, now, { pricing: snap.service.pricing, rules: { ...snap.rules, leadTimeHours: 0, maxAdvanceDays: undefined }, items, questions: snap.questions?.fields }, snap.bundle?.discountPercent ?? 0);
     return { plan: p.plan, quote: p.quote, commissionPaise: p.commissionPaise };
   }
 

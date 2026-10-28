@@ -7,7 +7,8 @@ import { Db, Queryable } from '../db/db.service';
 import { notify } from '../notifications/notify';
 import { CloudinaryService } from '../media/cloudinary.service';
 import { checkPricing, checkRules, checkValues, effectiveRules, VENDOR_RULE_KEYS } from './rules';
-import type { BookingTypeKey, CategoryTemplate, FieldDef, Pricing, ResourceKind, RuleSet } from './types';
+import { allQuestions, checkEventTypes, checkPlans, checkVendorQuestions } from './service-config';
+import type { BookingTypeKey, CategoryTemplate, FieldDef, Pricing, RatePlan, ResourceKind, RuleSet } from './types';
 
 export const MAX_ENGINE_SERVICES = 30;
 export const MAX_RESOURCES = 300;
@@ -75,6 +76,12 @@ export interface EngineServiceInput {
   isActive?: boolean;
   /** Customers may choose to pay the whole booking to the vendor in cash. */
   cashAllowed?: boolean;
+  /** The vendor's own questions for the customer (after the category's). */
+  questions?: FieldDef[];
+  /** Event types served; empty: every event. */
+  eventTypes?: string[];
+  /** Ways to book the service, each with its own price; empty: the service price. */
+  plans?: RatePlan[];
 }
 
 export interface ResourceInput {
@@ -107,7 +114,15 @@ interface VendorCategory {
 }
 
 const SERVICE_COLUMNS = `s.id, s.title, s.description, s.booking_type AS "bookingType", s.pricing, s.rules, s.attributes, s.resource_id AS "resourceId",
-  s.min_guests AS "minGuests", s.max_guests AS "maxGuests", s.is_active AS "isActive", s.cash_allowed AS "cashAllowed", s.created_at AS "createdAt"`;
+  s.min_guests AS "minGuests", s.max_guests AS "maxGuests", s.is_active AS "isActive", s.cash_allowed AS "cashAllowed", s.created_at AS "createdAt",
+  s.questions, s.event_types AS "eventTypes", s.plans, s.config_version AS "configVersion"`;
+
+/** JSON with object keys sorted, so a value read back from jsonb compares equal to the one saved. */
+const canonical = (v: unknown): string =>
+  JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
+
+/** Settings whose changes are kept in service_config_history (column → name in the API). */
+const TRACKED = { pricing: 'pricing', rules: 'rules', questions: 'questions', plans: 'plans', event_types: 'eventTypes' } as const;
 const RESOURCE_COLUMNS = `r.id, r.kind, r.name, r.attributes, r.status, r.verification, r.reject_reason AS "rejectReason", r.created_at AS "createdAt",
   COALESCE((SELECT json_agg(json_build_object('id', d.id, 'docType', d.doc_type, 'status', d.status, 'rejectReason', d.reject_reason) ORDER BY d.created_at)
      FROM vendor_documents d WHERE d.resource_id = r.id), '[]') AS documents`;
@@ -169,7 +184,17 @@ export class EngineCatalogService {
       throw new AppError('WRONG_SERVICE_KIND', type === 'rental' ? 'Rental vendors list items in Rental items.' : 'This category is booked by day and slot. Use Services.', HttpStatus.CONFLICT);
     }
     const tpl = v.template ?? {};
-    const out: { pricing?: Pricing; rules?: RuleSet; attributes?: Record<string, unknown> } = {};
+    const out: { pricing?: Pricing; rules?: RuleSet; attributes?: Record<string, unknown>; questions?: FieldDef[]; eventTypes?: string[]; plans?: RatePlan[] } = {};
+    if (body.questions !== undefined) out.questions = checkVendorQuestions(body.questions, tpl.questions ?? []);
+    if (body.eventTypes !== undefined) out.eventTypes = checkEventTypes(body.eventTypes);
+    if (body.plans !== undefined) {
+      out.plans = checkPlans(body.plans, tpl.pricingModels?.length ? tpl.pricingModels : undefined, MAX_PRICE);
+      if (out.plans.some((p) => p.pricing.taxPercent) && !v.gstin) throw new AppError('GSTIN_REQUIRED', 'Add your GST number to your profile before charging GST.', HttpStatus.BAD_REQUEST, { field: 'plans' });
+      const floor = tpl.rules?.leadTimeHours;
+      if (floor !== undefined && out.plans.some((p) => p.rules?.leadTimeHours !== undefined && p.rules.leadTimeHours < floor)) {
+        throw bad(`plans: notice must be at least ${floor} hours for this category.`, 'plans');
+      }
+    }
     if (body.pricing !== undefined) {
       out.pricing = checkPricing(body.pricing, tpl.pricingModels?.length ? tpl.pricingModels : undefined);
       if (out.pricing.ratePaise > MAX_PRICE) throw bad('pricing.ratePaise: at most ₹10 lakh.', 'pricing.ratePaise');
@@ -206,10 +231,12 @@ export class EngineCatalogService {
       const c = await this.checkService(client, v, body);
       const row = await this.db.one<{ id: string }>(
         client,
-        `INSERT INTO services (vendor_id, title, description, price_paise, unit, booking_type, pricing, rules, attributes, resource_id, min_guests, max_guests, cash_allowed)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
+        `INSERT INTO services (vendor_id, title, description, price_paise, unit, booking_type, pricing, rules, attributes, resource_id, min_guests, max_guests, cash_allowed,
+                               questions, event_types, plans)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
         [v.id, body.title.trim(), body.description?.trim() || null, Math.max(100, c.pricing!.ratePaise), v.default_unit, v.booking_type, c.pricing,
-          c.rules ?? {}, c.attributes ?? {}, c.resourceId, body.minGuests ?? null, body.maxGuests ?? null, body.cashAllowed ?? false],
+          c.rules ?? {}, c.attributes ?? {}, c.resourceId, body.minGuests ?? null, body.maxGuests ?? null, body.cashAllowed ?? false,
+          JSON.stringify(c.questions ?? []), c.eventTypes ?? [], JSON.stringify(c.plans ?? [])],
       );
       return this.db.one(client, `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.id = $1`, [row!.id]);
     });
@@ -219,26 +246,60 @@ export class EngineCatalogService {
   async updateService(userId: string, id: string, body: EngineServiceInput) {
     return this.db.tx(async (client) => {
       const v = await this.vendor(client, userId, true);
-      const cur = await this.db.one<{ pricing: Pricing; resource_id: string | null }>(
+      const cur = await this.db.one<{ pricing: Pricing; resource_id: string | null; rules: RuleSet; questions: FieldDef[]; plans: RatePlan[]; event_types: string[]; config_version: number }>(
         client,
-        `SELECT pricing, resource_id FROM services WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type NOT IN ('slot', 'rental') FOR UPDATE`,
+        `SELECT pricing, resource_id, rules, questions, plans, event_types, config_version FROM services
+          WHERE id = $1 AND vendor_id = $2 AND is_active AND booking_type NOT IN ('slot', 'rental') FOR UPDATE`,
         [id, v.id],
       );
       if (!cur) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
       const c = await this.checkService(client, v, body, cur);
+      // Each change to what customers book is kept, with the version it made.
+      const next = { pricing: c.pricing, rules: c.rules, questions: c.questions, plans: c.plans, event_types: c.eventTypes };
+      const changes: Record<string, { before: unknown; after: unknown }> = {};
+      for (const [col, name] of Object.entries(TRACKED) as [keyof typeof TRACKED, string][]) {
+        const after = next[col];
+        if (after !== undefined && canonical(after) !== canonical(cur[col])) changes[name] = { before: cur[col], after };
+      }
+      if (Object.keys(changes).length) {
+        await client.query(`UPDATE services SET config_version = config_version + 1 WHERE id = $1`, [id]);
+        await client.query(`INSERT INTO service_config_history (service_id, version, changed_by, changes) VALUES ($1, $2, $3, $4)`, [
+          id, cur.config_version + 1, userId, changes,
+        ]);
+      }
       await client.query(
         `UPDATE services SET title = COALESCE($3, title), description = CASE WHEN $4 THEN $5 ELSE description END,
                 pricing = COALESCE($6, pricing), price_paise = COALESCE($7, price_paise), rules = COALESCE($8, rules),
                 attributes = COALESCE($9, attributes), resource_id = $10,
                 min_guests = CASE WHEN $11 THEN $12 ELSE min_guests END, max_guests = CASE WHEN $13 THEN $14 ELSE max_guests END,
-                cash_allowed = COALESCE($15, cash_allowed)
+                cash_allowed = COALESCE($15, cash_allowed), questions = COALESCE($16, questions), event_types = COALESCE($17, event_types),
+                plans = COALESCE($18, plans)
           WHERE id = $1 AND vendor_id = $2`,
         [id, v.id, body.title?.trim() ?? null, body.description !== undefined, body.description?.trim() || null, c.pricing ?? null,
           c.pricing ? Math.max(100, c.pricing.ratePaise) : null, c.rules ?? null, c.attributes ?? null, c.resourceId,
-          body.minGuests !== undefined, body.minGuests ?? null, body.maxGuests !== undefined, body.maxGuests ?? null, body.cashAllowed ?? null],
+          body.minGuests !== undefined, body.minGuests ?? null, body.maxGuests !== undefined, body.maxGuests ?? null, body.cashAllowed ?? null,
+          c.questions ? JSON.stringify(c.questions) : null, c.eventTypes ?? null, c.plans ? JSON.stringify(c.plans) : null],
       );
       return this.db.one(client, `SELECT ${SERVICE_COLUMNS} FROM services s WHERE s.id = $1`, [id]);
     });
+  }
+
+  /**
+   * What changed in a service's price, rules, questions, plans or event types, newest first. The
+   * vendor sees their own; an admin passes no vendor (vendorUserId null).
+   */
+  async configHistory(serviceId: string, vendorUserId: string | null) {
+    const owner = await this.db.one(
+      this.db,
+      `SELECT 1 FROM services s JOIN vendors v ON v.id = s.vendor_id WHERE s.id = $1 AND ($2::uuid IS NULL OR v.user_id = $2)`,
+      [serviceId, vendorUserId],
+    );
+    if (!owner) throw new AppError('NOT_FOUND', 'Service not found.', HttpStatus.NOT_FOUND);
+    const { rows } = await this.db.query(
+      `SELECT version, changes, created_at AS "createdAt" FROM service_config_history WHERE service_id = $1 ORDER BY version DESC LIMIT 100`,
+      [serviceId],
+    );
+    return { items: rows };
   }
 
   /** Soft delete: bookings keep pointing at it. Open bookings still go ahead. */
@@ -504,7 +565,7 @@ export class EngineCatalogService {
    * A vendor's bookable engine services with what the booking form needs: questions, the rules the
    * customer must meet, the vehicle's public details, and extras. Never the vendor's internal data.
    */
-  async publicServices(vendorId: string) {
+  async publicServices(vendorId: string, eventType?: string) {
     const v = await this.db.one<{ template: CategoryTemplate }>(
       this.db,
       `SELECT c.template FROM vendors v JOIN categories c ON c.id = v.category_id WHERE v.id = $1 AND v.status = 'approved'`,
@@ -512,21 +573,31 @@ export class EngineCatalogService {
     );
     if (!v) throw new AppError('VENDOR_NOT_FOUND', 'This vendor is not available.', HttpStatus.NOT_FOUND);
     const { rows } = await this.db.query<{ id: string; title: string; description: string | null; booking_type: BookingTypeKey; pricing: Pricing; rules: RuleSet;
-      attributes: Record<string, unknown>; min_guests: number | null; max_guests: number | null; resource: Record<string, unknown> | null; cash_allowed: boolean }>(
+      attributes: Record<string, unknown>; min_guests: number | null; max_guests: number | null; resource: Record<string, unknown> | null; cash_allowed: boolean;
+      questions: FieldDef[]; event_types: string[]; plans: RatePlan[] }>(
       `SELECT s.id, s.title, s.description, s.booking_type, s.pricing, s.rules, s.attributes, s.min_guests, s.max_guests, s.cash_allowed,
+              s.questions, s.event_types, s.plans,
               CASE WHEN r.id IS NULL THEN NULL ELSE json_build_object('id', r.id, 'kind', r.kind, 'name', r.name, 'attributes', r.attributes,
                 'bookable', r.status = 'active' AND r.verification IN ('approved', 'not_required'),
                 'photos', COALESCE((SELECT json_agg(json_build_object('publicId', m.public_id, 'width', m.width, 'height', m.height, 'blurhash', m.blurhash) ORDER BY m.sort_order)
                    FROM media m WHERE m.resource_id = r.id AND m.status = 'approved'), '[]')) END AS resource
          FROM services s LEFT JOIN resources r ON r.id = s.resource_id
-        WHERE s.vendor_id = $1 AND s.is_active AND s.booking_type NOT IN ('slot', 'rental') ORDER BY s.created_at`,
-      [vendorId],
+        WHERE s.vendor_id = $1 AND s.is_active AND s.booking_type NOT IN ('slot', 'rental')
+          AND ($2::text IS NULL OR cardinality(s.event_types) = 0 OR $2 = ANY(s.event_types))
+        ORDER BY s.created_at`,
+      [vendorId, eventType ?? null],
     );
     const addons = (await this.db.query(`SELECT ${ADDON_COLUMNS} FROM service_addons a WHERE a.vendor_id = $1 AND a.is_active ORDER BY a.price_paise`, [vendorId])).rows;
     const tpl = v.template ?? {};
     return {
       items: rows.map((s) => {
         const rules = effectiveRules(s.booking_type, tpl, s.rules ?? {});
+        const ruleView = (r: RuleSet) => ({
+          minDurationMin: r.minDurationMin ?? null, maxDurationMin: r.maxDurationMin ?? null, minQty: r.minQty ?? null, maxQty: r.maxQty ?? null,
+          workingHours: r.workingHours ?? null, leadTimeHours: r.leadTimeHours ?? null, perPersonMin: r.perPersonMin ?? null, minAge: r.minAge ?? null,
+          approval: r.approval ?? 'vendor', cancellation: r.cancellation ?? null, requiredDocuments: r.requiredDocuments ?? [], instructions: r.instructions ?? null,
+          workingDays: r.workingDays ?? null, blockedDates: r.blockedDates ?? [], maxAdvanceDays: r.maxAdvanceDays ?? null, maxPerDay: r.maxPerDay ?? null,
+        });
         // A vehicle's registration is shown masked; the full number is shared after confirmation.
         const resource = s.resource
           ? { ...s.resource, attributes: { ...(s.resource.attributes as object), registration: undefined, registrationMasked: maskRegistration((s.resource.attributes as { registration?: string }).registration) } }
@@ -542,12 +613,15 @@ export class EngineCatalogService {
           maxGuests: s.max_guests,
           /** The vendor accepts cash: the customer may choose to pay the whole booking in person. */
           cashAllowed: s.cash_allowed,
-          rules: {
-            minDurationMin: rules.minDurationMin ?? null, maxDurationMin: rules.maxDurationMin ?? null, minQty: rules.minQty ?? null, maxQty: rules.maxQty ?? null,
-            workingHours: rules.workingHours ?? null, leadTimeHours: rules.leadTimeHours ?? null, perPersonMin: rules.perPersonMin ?? null, minAge: rules.minAge ?? null,
-            approval: rules.approval ?? 'vendor', cancellation: rules.cancellation ?? null, requiredDocuments: rules.requiredDocuments ?? [], instructions: rules.instructions ?? null,
-          },
-          questions: tpl.questions ?? [],
+          rules: ruleView(rules),
+          /** The category's questions, then the vendor's own. */
+          questions: allQuestions(tpl.questions, s.questions),
+          eventTypes: s.event_types,
+          /** Ways to book: the customer picks one (planId); each has its own price and the rules it changes. */
+          plans: (s.plans ?? []).map((pl) => ({
+            id: pl.id, name: pl.name, description: pl.description ?? null, pricing: pl.pricing,
+            rules: ruleView(effectiveRules(s.booking_type, tpl, { ...(s.rules ?? {}), ...(pl.rules ?? {}) })),
+          })),
           resource,
           addons: addons.filter((a) => !a.serviceId || a.serviceId === s.id),
         };

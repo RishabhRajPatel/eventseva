@@ -833,6 +833,29 @@ export interface EnginePricing {
   travelPerKmPaise?: number;
   earlyMorningPaise?: number;
   taxPercent?: 0 | 5 | 12 | 18 | 28;
+  /** Price rules (weekend, peak dates, event types), applied in order to the service's own price. */
+  adjustments?: PriceAdjustment[];
+}
+
+/** A price rule: applies when every condition it sets holds; percent (negative = discount) and / or a flat amount. */
+export interface PriceAdjustment {
+  label: Bilingual;
+  /** India weekdays, 0 = Sunday. */
+  days?: number[];
+  from?: string;
+  until?: string;
+  eventTypes?: EventType[];
+  percent?: number;
+  amountPaise?: number;
+}
+
+/** One way to book a service (per hour, full night, outstation …) with its own price and rule overrides. */
+export interface RatePlan {
+  id: string;
+  name: Bilingual;
+  description?: Bilingual;
+  pricing: EnginePricing;
+  rules?: EngineRules;
 }
 
 /** Rules a vendor may set on a service (the category sets the rest). */
@@ -852,6 +875,12 @@ export interface EngineRules {
   minAge?: number;
   instructions?: string;
   deposit?: { fixedPaise?: number; percent?: number };
+  /** India weekdays the service works (0 = Sunday); unset: every day. */
+  workingDays?: number[];
+  /** Dates not offered (YYYY-MM-DD). */
+  blockedDates?: string[];
+  maxAdvanceDays?: number;
+  maxPerDay?: number;
 }
 
 export type ResourceKind = 'vehicle' | 'driver' | 'staff' | 'artist' | 'venue' | 'equipment';
@@ -883,6 +912,21 @@ export interface EngineService {
   maxGuests: number | null;
   isActive: boolean;
   cashAllowed?: boolean;
+  /** The vendor's own questions, asked after the category's. */
+  questions?: FieldDef[];
+  /** Event types served; empty: every event. */
+  eventTypes?: EventType[];
+  /** Ways to book with their own prices; empty: `pricing`. */
+  plans?: RatePlan[];
+  /** Goes up with each change to price, rules, questions, plans or event types. */
+  configVersion?: number;
+}
+
+/** GET /v1/partner/engine-services/:id/history and /v1/admin/services/:id/history */
+export interface ServiceConfigChange {
+  version: number;
+  changes: Partial<Record<'pricing' | 'rules' | 'questions' | 'plans' | 'eventTypes', { before: unknown; after: unknown }>>;
+  createdAt: string;
 }
 
 export interface VendorResource {
@@ -941,8 +985,17 @@ export interface PublicEngineService {
     approval: 'vendor' | 'auto';
     requiredDocuments: string[];
     instructions: string | null;
+    workingDays?: number[] | null;
+    blockedDates?: string[];
+    maxAdvanceDays?: number | null;
+    maxPerDay?: number | null;
   };
+  /** The category's questions, then the vendor's own. */
   questions: FieldDef[];
+  /** Event types served; empty: every event. */
+  eventTypes?: EventType[];
+  /** When not empty the customer picks one (`planId`); each has its own price and rules. */
+  plans?: { id: string; name: Bilingual; description: Bilingual | null; pricing: EnginePricing; rules: PublicEngineService['rules'] }[];
   resource: { id: string; kind: string; name: string; bookable: boolean; attributes: Record<string, unknown> & { registrationMasked?: string | null }; photos: MediaRef[] } | null;
   addons: ServiceAddon[];
 }
@@ -970,6 +1023,10 @@ export interface EngineBookingRequest {
   note?: string;
   /** cash: pay the whole booking to the vendor in person (only where the vendor accepts cash). */
   payMode?: PayMode;
+  /** One of the service's plans (required when it has any). */
+  planId?: string;
+  /** The total the customer saw; a different server total answers PRICE_CHANGED. */
+  expectedTotalPaise?: number;
 }
 
 export interface TripInspection {

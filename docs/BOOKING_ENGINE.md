@@ -16,6 +16,7 @@ API details are in [API.md](API.md) ("Rentals"). Tables are in [`database/tables
 | `apps/backend/src/engine/rules.ts` | Default rules per type; checks for templates, vendor settings, times and quantities; refund tiers |
 | `apps/backend/src/engine/booking-types.ts` | One pure handler per type. A handler turns a request into a plan: times, price lines, deposit and what must be held |
 | `apps/backend/src/engine/reservations.ts` | Holding what a plan needs, safely when requests run at the same time |
+| `apps/backend/src/engine/service-config.ts` | What a vendor configures on a service: own questions, event types, rate plans, price rules (checks and how they apply) |
 | `apps/backend/src/engine/engine.service.ts` | Quote and request: load, price, check, hold, save the booking with a snapshot |
 | `apps/backend/src/inventory/*` | Rental items, categories, blocks, settings, the customer catalogue, dispatch and return |
 
@@ -31,6 +32,36 @@ API details are in [API.md](API.md) ("Rentals"). Tables are in [`database/tables
 | `appointment` | Makeup, mehendi | The artist, for people × minutes |
 | `transport` | Wedding cars | The vehicle exclusively, plus a driver from the pool |
 | `quote` | Anything priced on request | Nothing until the vendor sends a price |
+
+## What a vendor configures
+
+Booking types are the only code per kind of service. Everything else is configuration, so a new category
+(an admin picks its booking type and template in the admin panel) books with no code change:
+
+| Who | Sets | Where it applies |
+|---|---|---|
+| Admin, per category | Booking type, pricing models allowed, questions, attributes, default rules, minimum notice | Every service in the category |
+| Vendor, per service | Price (model, rate, included hours / km, extras, GST) | Quote lines from the type's handler |
+| | **Rate plans** (`plans`): 2–6 ways to book, each with its own price and rule overrides (DJ "per hour" / "full night"; car "local" / "outstation") | The customer picks one (`planId`); its price and rules replace the service's for that booking |
+| | **Price rules** (`pricing.adjustments`): percent or amount by weekday, date range and event type | Extra lines on the service's own price, in order, never below zero |
+| | **Own questions** (`questions`): text, number, yes/no or choices (choices may add a price) | Asked after the category's; keys may not clash |
+| | **Event types** (`eventTypes`) | Others get `EVENT_TYPE_NOT_SERVED`; `?eventType=` hides the service from the listing |
+| | **Availability** (rules): working hours, `workingDays`, `blockedDates`, `maxAdvanceDays`, `maxPerDay`, notice, durations, quantities, buffers | Checked on every quote and request; `maxPerDay` under a lock per service and day |
+| | Approval (instant or vendor), deposit, cash accepted, extras (add-ons), bundles | As before |
+
+**Snapshots.** A booking keeps what was agreed: the price (the plan's, with its rules), the rules, the
+plan (`snapshot.plan`), the event type, and the questions as answered (`snapshot.questions` with a short
+`version` hash and the fields). A later change by the vendor never changes an existing booking, and a
+reschedule is priced with the snapshot.
+
+**History.** Every change a vendor makes to the price, rules, questions, plans or event types raises
+`services.config_version` and is kept in `service_config_history` (only the settings that changed, before
+and after). The vendor sees it at `GET /v1/partner/engine-services/:id/history`, admins (verifier, support)
+at `GET /v1/admin/services/:id/history` and on the vendor page.
+
+**Adding a setting later.** Add its type to `types.ts`, a check in `service-config.ts` (or `rules.ts` for a
+rule) used when the vendor saves, the step that applies it in `EngineService.load` / `price`, the field in
+the catalog service, and tests. Old services simply do not have it set.
 
 ## Holds
 
@@ -188,10 +219,12 @@ older than 30 days turns cash off for that vendor until it is paid.
 ## Handover code
 
 Car handovers and returns, and rental deliveries and returns, can be confirmed with the customer's
-6-digit code (`GET /v1/bookings/:id/handover-code`, shown on the booking in the customer app). The vendor
-types it in; the record is then agreed by the customer (`confirmedBy: "code"`). The code is an HMAC of the
-booking id, so nothing is stored. Five wrong codes in an hour lock it for that booking. Without a code the
-step is still recorded and the customer agrees or disputes it in the app.
+6-digit code (`GET /v1/bookings/:id/handover-code` → `{code, phase, expiresAt}`, shown on the booking in
+the customer app). Each step (handover, delivery, return) gets its own random code, valid for 30 minutes
+and once only; opening a new code makes the old one stop working. Only a keyed hash is stored
+(`handover_codes`). The vendor types it in; the record is then agreed by the customer (`confirmedBy: "code"`).
+Five wrong tries lock that code. Without a code the step is still recorded and the customer agrees or
+disputes it in the app.
 
 ## Disputes
 

@@ -110,11 +110,13 @@ export type AdminAction =
   | 'booking.refund'
   | 'charge.resolve'
   | 'resource.verify'
-  | 'alert.resolve';
+  | 'alert.resolve'
+  /** Read what a vendor changed on a service (price, rules, questions, plans, event types). */
+  | 'service.history';
 
 const ACTIONS: Record<Exclude<AdminRole, 'super'>, readonly AdminAction[]> = {
-  verifier: ['vendor.decide', 'media.moderate', 'resource.verify'],
-  support: ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve', 'alert.resolve'],
+  verifier: ['vendor.decide', 'media.moderate', 'resource.verify', 'service.history'],
+  support: ['review.hide', 'complaint.manage', 'user.block', 'charge.resolve', 'alert.resolve', 'service.history'],
   finance: ['payout.manage', 'coupon.manage', 'booking.refund', 'charge.resolve'],
 };
 

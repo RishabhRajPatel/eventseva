@@ -10,9 +10,11 @@ import {
   type CancellationPolicy,
   type CategoryTemplate,
   type FieldDef,
+  type PriceAdjustment,
   type Pricing,
   type RuleSet,
 } from './types';
+import { EVENT_TYPES } from '../bookings/booking.rules';
 
 export const DEFAULT_CANCELLATION: CancellationPolicy = {
   customer: [
@@ -39,6 +41,7 @@ export const TYPE_DEFAULTS: Record<BookingTypeKey, RuleSet> = {
 export const VENDOR_RULE_KEYS: (keyof RuleSet)[] = [
   'minDurationMin', 'maxDurationMin', 'minQty', 'maxQty', 'workingHours', 'leadTimeHours', 'setupMin', 'dismantleMin',
   'bufferAfterMin', 'deposit', 'approval', 'capacity', 'perPersonMin', 'minAge', 'instructions',
+  'workingDays', 'blockedDates', 'maxAdvanceDays', 'maxPerDay',
 ];
 
 export function effectiveRules(type: BookingTypeKey, template: CategoryTemplate, serviceRules: RuleSet): RuleSet {
@@ -51,6 +54,9 @@ export function effectiveRules(type: BookingTypeKey, template: CategoryTemplate,
 
 const isInt = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER) => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const isDay = (v: unknown) => typeof v === 'string' && DAY.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
+const isWeekdays = (v: unknown) => Array.isArray(v) && v.length > 0 && v.length <= 7 && v.every((d) => isInt(d, 0, 6)) && new Set(v).size === v.length;
 const bad = (message: string, field?: string) => new AppError('VALIDATION', message, HttpStatus.BAD_REQUEST, field ? { field } : undefined);
 
 function checkBilingual(v: unknown, where: string) {
@@ -91,6 +97,12 @@ export function checkRules(r: unknown, where = 'rules'): RuleSet {
   for (const k of ['minQty', 'maxQty', 'capacity', 'leadTimeHours', 'minAge'] as const) {
     if (rules[k] !== undefined && !isInt(rules[k], 0, 1_000_000)) throw bad(`${where}.${k}: a whole number is expected.`, k);
   }
+  if (rules.workingDays !== undefined && !isWeekdays(rules.workingDays)) throw bad(`${where}.workingDays: days 0 (Sunday) to 6, each once.`, 'workingDays');
+  if (rules.blockedDates !== undefined && (!Array.isArray(rules.blockedDates) || rules.blockedDates.length > 366 || !rules.blockedDates.every(isDay))) {
+    throw bad(`${where}.blockedDates: up to 366 dates as YYYY-MM-DD.`, 'blockedDates');
+  }
+  if (rules.maxAdvanceDays !== undefined && !isInt(rules.maxAdvanceDays, 1, 730)) throw bad(`${where}.maxAdvanceDays: 1–730 days.`, 'maxAdvanceDays');
+  if (rules.maxPerDay !== undefined && !isInt(rules.maxPerDay, 1, 1000)) throw bad(`${where}.maxPerDay: 1–1000.`, 'maxPerDay');
   if (rules.minDurationMin !== undefined && rules.maxDurationMin !== undefined && rules.minDurationMin > rules.maxDurationMin) {
     throw bad(`${where}: the minimum duration is longer than the maximum.`, 'minDurationMin');
   }
@@ -136,7 +148,33 @@ export function checkPricing(p: unknown, allowed: readonly string[] = PRICING_MO
   }
   for (const k of ['includedHours', 'includedKm', 'travelFreeKm'] as const) if (pr[k] !== undefined && !isInt(pr[k], 0, 100_000)) throw bad(`pricing.${k}: a whole number.`, `pricing.${k}`);
   if (pr.taxPercent !== undefined && ![0, 5, 12, 18, 28].includes(pr.taxPercent)) throw bad('pricing.taxPercent: 0, 5, 12, 18 or 28.', 'pricing.taxPercent');
+  if (pr.adjustments !== undefined) checkAdjustments(pr.adjustments);
   return { ...pr, ratePaise: pr.model === 'quote' ? 0 : pr.ratePaise };
+}
+
+/** Price rules a vendor sets: at most 20, each with a label, a change, and known conditions. */
+export function checkAdjustments(list: unknown): PriceAdjustment[] {
+  const where = 'pricing.adjustments';
+  if (!Array.isArray(list) || list.length > 20) throw bad(`${where}: up to 20 price rules.`, where);
+  list.forEach((a: PriceAdjustment, i) => {
+    const at = `${where}.${i}`;
+    if (!a || typeof a !== 'object') throw bad(`${at}: a price rule is expected.`, at);
+    checkBilingual(a.label, at);
+    const known = ['label', 'days', 'from', 'until', 'eventTypes', 'percent', 'amountPaise'];
+    const extra = Object.keys(a).find((k) => !known.includes(k));
+    if (extra) throw bad(`${at}.${extra}: not a price rule setting.`, at);
+    if (a.percent === undefined && a.amountPaise === undefined) throw bad(`${at}: set a percent or an amount.`, at);
+    if (a.percent !== undefined && !isInt(a.percent, -90, 300)) throw bad(`${at}.percent: a whole number from -90 to 300.`, at);
+    if (a.amountPaise !== undefined && !(Number.isInteger(a.amountPaise) && Math.abs(a.amountPaise) <= 100_000_000)) throw bad(`${at}.amountPaise: paise, up to ₹10 lakh either way.`, at);
+    if (a.days !== undefined && !isWeekdays(a.days)) throw bad(`${at}.days: days 0 (Sunday) to 6, each once.`, at);
+    if (a.from !== undefined && !isDay(a.from)) throw bad(`${at}.from: YYYY-MM-DD.`, at);
+    if (a.until !== undefined && !isDay(a.until)) throw bad(`${at}.until: YYYY-MM-DD.`, at);
+    if (a.from && a.until && a.from > a.until) throw bad(`${at}: "from" is after "until".`, at);
+    if (a.eventTypes !== undefined && (!Array.isArray(a.eventTypes) || !a.eventTypes.length || a.eventTypes.some((e) => !(EVENT_TYPES as readonly string[]).includes(e)))) {
+      throw bad(`${at}.eventTypes: known event types only.`, at);
+    }
+  });
+  return list as PriceAdjustment[];
 }
 
 export function checkTemplate(type: BookingTypeKey, t: unknown): CategoryTemplate {
@@ -217,7 +255,15 @@ export function checkTimes(starts: Date, ends: Date, rules: RuleSet, now = new D
   if (starts.getTime() < now.getTime() + lead) {
     throw new AppError('TOO_SOON', `This needs at least ${rules.leadTimeHours ?? 0} hours' notice.`, HttpStatus.BAD_REQUEST, { leadTimeHours: rules.leadTimeHours ?? 0 });
   }
-  if (starts.getTime() > now.getTime() + 730 * 86_400_000) throw new AppError('DATE_TOO_FAR', 'This is too far ahead.', HttpStatus.BAD_REQUEST);
+  const maxDays = Math.min(rules.maxAdvanceDays ?? 730, 730);
+  if (starts.getTime() > now.getTime() + maxDays * 86_400_000) {
+    throw new AppError('DATE_TOO_FAR', `This can be booked up to ${maxDays} days ahead.`, HttpStatus.BAD_REQUEST, { maxAdvanceDays: maxDays });
+  }
+  const day = istDay(starts);
+  if (rules.blockedDates?.includes(day)) throw new AppError('DATE_BLOCKED', 'The vendor does not take bookings on this date.', HttpStatus.BAD_REQUEST, { day });
+  if (rules.workingDays && !rules.workingDays.includes(new Date(`${day}T00:00:00Z`).getUTCDay())) {
+    throw new AppError('CLOSED_THAT_DAY', 'The vendor does not work on this day of the week.', HttpStatus.BAD_REQUEST, { workingDays: rules.workingDays });
+  }
   const minutes = (ends.getTime() - starts.getTime()) / 60_000;
   if (rules.minDurationMin !== undefined && minutes < rules.minDurationMin) {
     throw new AppError('DURATION_TOO_SHORT', `The minimum booking is ${fmtMinutes(rules.minDurationMin)}.`, HttpStatus.BAD_REQUEST, { minMinutes: rules.minDurationMin });

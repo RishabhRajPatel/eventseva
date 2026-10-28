@@ -534,6 +534,12 @@
     "COUPON_ALREADY_USED": "You have already used this coupon. Try another offer.",
     "COUPON_USED_UP": "This coupon has been fully used. Try another offer.",
     "PRICE_CHANGED": "The price changed while you were booking. Check the new total and confirm again.",
+    "RATE_PLAN_REQUIRED": "Choose how you want to book this service.",
+    "RATE_PLAN_NOT_FOUND": "That booking option is not offered any more. Pick another one.",
+    "EVENT_TYPE_NOT_SERVED": "This vendor does not offer this for your kind of event.",
+    "DATE_BLOCKED": "The vendor does not take bookings on this date. Try another day.",
+    "CLOSED_THAT_DAY": "The vendor does not work on this day of the week. Try another day.",
+    "DAY_FULL": "The vendor is fully booked for this on that day. Try another day.",
     "NOTHING_TO_PAY": "Nothing here is waiting for payment right now.",
     "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
     "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}.",
@@ -552,7 +558,7 @@
     "TOO_LATE_TO_BOOK": "This event is too soon to book in the app, because the vendor would not have time to reply. Please call or chat with the vendor.",
     "TOO_MANY_OPEN_REQUESTS": "You already have {{max}} requests waiting for a reply. Wait for some vendors to answer, or cancel a request you no longer need.",
     "QUANTITY_OUT_OF_RANGE": "This vendor takes {{range}} guests. Change the number of guests and try again.",
-    "DATE_TOO_FAR": "Events can be planned up to 2 years ahead. Please choose an earlier date.",
+    "DATE_TOO_FAR": "This is too far ahead to book. Please choose an earlier date.",
     "TOO_MANY_MESSAGES": "You are sending messages too fast. Wait a minute and try again.",
     "RANGE_BETWEEN": "{{min}} to {{max}}",
     "RANGE_AT_LEAST": "at least {{min}}",
@@ -918,8 +924,10 @@
       "count": "Enter the {{what}}.",
       "countRange": "{{what}}: between {{min}} and {{max}}.",
       "route": "Add the pickup and drop places, and find them on the map.",
-      "answers": "Please answer the vendor's questions."
+      "answers": "Please answer the vendor's questions.",
+      "plan": "Choose how you want to book."
     },
+    "plan": "How do you want to book?",
     "useHere": "Use my location"
   },
   "cart": {

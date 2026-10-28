@@ -57,12 +57,24 @@ export interface EngineForm {
   answers: Record<string, unknown>;
   addons: Record<string, { on: boolean; note: string }>;
   note: string;
+  /** The rate plan picked, for a service with several ways to book. */
+  planId?: string;
 }
 
-export type FormProblem = 'count' | 'countRange' | 'route' | 'answers' | null;
+export type FormProblem = 'count' | 'countRange' | 'route' | 'answers' | 'plan' | null;
+
+/**
+ * The service as the chosen plan books it: the plan's price and rules replace the service's, so the
+ * rest of the form (durations, counts, the quote) needs nothing else. No plans: the service as it is.
+ */
+export function withPlan(s: PublicEngineService, planId: string | undefined): PublicEngineService {
+  const plan = s.plans?.find((p) => p.id === planId);
+  return plan ? { ...s, pricing: plan.pricing, rules: plan.rules } : s;
+}
 
 /** What stops the request, checked on the phone before asking the server. */
 export function formProblem(s: PublicEngineService, f: EngineForm): FormProblem {
+  if (s.plans?.length && !s.plans.some((p) => p.id === f.planId)) return 'plan';
   const kind = countKind(s.bookingType);
   if (kind) {
     const n = Number(f.count);
@@ -99,6 +111,7 @@ export function toRequest(s: PublicEngineService, f: EngineForm): EngineBookingR
   const day = addDaysTo(f.eventDay, f.dayOffset);
   const startsAt = istIso(day, f.startTime);
   const req: EngineBookingRequest = { eventId: f.eventId, serviceId: s.id, startsAt };
+  if (s.plans?.length && f.planId) req.planId = f.planId;
   if (asksDuration(s.bookingType)) req.endsAt = new Date(Date.parse(startsAt) + f.hours * 3_600_000).toISOString();
   const n = Number(f.count);
   const kind = countKind(s.bookingType);

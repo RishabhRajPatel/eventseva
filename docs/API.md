@@ -383,7 +383,7 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | Route | What it does |
 |---|---|
 | `GET /v1/partner/service-setup` | The category's form: `bookingType`, `pricingModels`, `attributes`, `questions`, `resourceKind`, `defaultRules`, `vendorRuleKeys`, `resourceFields` |
-| `GET/POST /v1/partner/engine-services` · `PATCH/DELETE …/:id` | `{title, description?, pricing, rules?, attributes?, resourceId?}`. Slot and rental categories: `WRONG_SERVICE_KIND` 409. GST on a service needs the vendor's GST number (`GSTIN_REQUIRED`). Car services need their car (`RESOURCE_REQUIRED`, `RESOURCE_NOT_FOUND`). Up to 30 (`LIMIT_REACHED`) |
+| `GET/POST /v1/partner/engine-services` · `PATCH/DELETE …/:id` | `{title, description?, pricing, rules?, attributes?, resourceId?, plans?, questions?, eventTypes?}` (see "What a vendor configures" below). Slot and rental categories: `WRONG_SERVICE_KIND` 409. GST on a service needs the vendor's GST number (`GSTIN_REQUIRED`). Car services need their car (`RESOURCE_REQUIRED`, `RESOURCE_NOT_FOUND`). Up to 30 (`LIMIT_REACHED`) |
 | `GET/POST /v1/partner/resources` · `PATCH/DELETE …/:id` | Cars, drivers, staff, artists, halls: `{kind, name, attributes}`; `status` `active` / `maintenance`. Same registration twice: `VEHICLE_EXISTS` 409; a driver's licence already expired: `LICENCE_EXPIRED`; removing one with bookings ahead: `RESOURCE_BOOKED` 409 |
 | `POST /v1/partner/resources/:id/documents` | RC, insurance, permit, PUC; licence, police verification. Same signed upload as KYC documents (`UPLOAD_INVALID`) |
 | `GET/POST /v1/partner/addons` · `PATCH/DELETE …/:id` | Extras: `{name, kind?, pricePaise, serviceId?, inclusions?, exclusions?, setupMinutes?, requiresApproval?}` |
@@ -400,9 +400,9 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 
 | Route | What it does |
 |---|---|
-| `GET /v1/vendors/:id/engine-services` · `GET /v1/vendors/:id/bundles` | What can be booked, with questions, extras and the car (registration masked) |
+| `GET /v1/vendors/:id/engine-services?eventType=` · `GET /v1/vendors/:id/bundles` | What can be booked, with questions (the category's, then the vendor's), `plans`, `eventTypes`, rules, extras and the car (registration masked). `eventType` leaves out services not offered for it |
 | `POST /v1/quotes` | Any engine request → `Quote`; nothing is held |
-| `POST /v1/engine-bookings` (`Idempotency-Key`) | `{eventId, serviceId, startsAt, endsAt?, quantity? / guestCount? / people?, answers?, addons?, route?, mode?, note?}` → `{id}`. Errors: `SERVICE_NOT_FOUND`, `USE_SLOT_BOOKING`, `SERVICE_NOT_CONFIGURED`, `ANSWER_REQUIRED`, `ANSWER_INVALID`, `ADDON_NOT_FOUND`, `NOT_AVAILABLE` 409, `DATE_IN_PAST`. Cars: `ROUTE_REQUIRED`, `MODE_NOT_OFFERED`, `VEHICLE_NOT_AVAILABLE`, `NO_DRIVER`; self-drive: `LICENCE_REQUIRED`, `LICENCE_EXPIRED`, `TOO_YOUNG` |
+| `POST /v1/engine-bookings` (`Idempotency-Key`) | `{eventId, serviceId, startsAt, endsAt?, quantity? / guestCount? / people?, answers?, addons?, route?, mode?, note?, planId?, expectedTotalPaise?}` → `{id}`. Vendor settings: `RATE_PLAN_REQUIRED` / `RATE_PLAN_NOT_FOUND` 400 (with `plans`), `EVENT_TYPE_NOT_SERVED` 400, `CLOSED_THAT_DAY` 400, `DATE_BLOCKED` 400, `DATE_TOO_FAR` 400 (`maxAdvanceDays`), `DAY_FULL` 409. Errors: `SERVICE_NOT_FOUND`, `USE_SLOT_BOOKING`, `SERVICE_NOT_CONFIGURED`, `ANSWER_REQUIRED`, `ANSWER_INVALID`, `ADDON_NOT_FOUND`, `NOT_AVAILABLE` 409, `DATE_IN_PAST`. Cars: `ROUTE_REQUIRED`, `MODE_NOT_OFFERED`, `VEHICLE_NOT_AVAILABLE`, `NO_DRIVER`; self-drive: `LICENCE_REQUIRED`, `LICENCE_EXPIRED`, `TOO_YOUNG` |
 | `POST /v1/checkouts/quote` · `POST /v1/checkouts` (`Idempotency-Key`) · `GET /v1/checkouts/:id` | Up to 10 requests for one event, booked all or none; `details.itemIndex` says which line failed. A package: `bundleId` (`BUNDLE_NOT_FOUND`, `BUNDLE_INCOMPLETE`) |
 | `GET /v1/me/licence` · `POST /v1/me/licence/upload` · `PUT /v1/me/licence {number, dateOfBirth, expiresOn, photo?}` | Driving licence for self-drive; EventSeva verifies it. The photo is a private upload signed by `POST …/upload` (into the customer's own folder); send Cloudinary's reply as `photo: {publicId, version, signature, format}` (`UPLOAD_INVALID` otherwise). `hasPhoto` says one is on file |
 | `GET /v1/bookings/:id/trip` · `POST …/inspections/:phase/ack {decision: agreed / disputed, note?}` | The car trip and its handover / return records (`confirmedBy: "code"` when the customer's code was entered) |
@@ -413,6 +413,20 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 **Admin:** `GET /v1/admin/resources/pending`, `GET …/:id/documents`, `POST …/:id/verify {decision, reason?}` (verifier;
 approving needs the RC and insurance, or the licence: `DOCUMENTS_MISSING` 409). `GET /v1/admin/licences/pending`,
 `POST /v1/admin/licences/:userId/verify {decision, reason?}` (pending licences carry `photoUrl`, a 10-minute link). `GET /v1/admin/reports/summary?from&to`. `GET /v1/admin/dashboard` also counts `pendingChecks` and `openDisputes`. `GET /v1/admin/bookings/:id` has `bookingType`, `startsAt`, `endsAt`, `fulfilment`, `taxPaise`, `depositPaise`, `depositSettledAt`, `state` and `history` (every state move: `{from, to, status, fulfilment, actorKind, actorId, reason, at}`). Booking views carry `questions` (labels of the category's questions) next to `answers`.
+
+**What a vendor configures** (docs/BOOKING_ENGINE.md)
+
+| Field | Shape |
+|---|---|
+| `plans` | `[]` or 2–6 `{id, name: {en, hi}, description?, pricing, rules?}`. `id`: lowercase letters, digits, `_`; keep it when editing (bookings refer to it). `pricing` as the service's, with the category's models; `rules`: vendor rule keys only |
+| `pricing.adjustments` | Up to 20 `{label: {en, hi}, days?: [0–6], from?, until? (YYYY-MM-DD), eventTypes?, percent? (-90…300), amountPaise?}`; at least one of percent / amount. Applied in order to the service's own price lines |
+| `questions` | Up to 15 fields in the category's format (`key`, `label`, `type`, `required?`, `options?` with `pricePaise?`); keys may not repeat the category's |
+| `eventTypes` | Event types served; `[]` = every event |
+| `rules.workingDays` · `blockedDates` · `maxAdvanceDays` · `maxPerDay` | India weekdays 0–6 · up to 366 dates · 1–730 · 1–1000 |
+
+The service answer adds `configVersion`. `GET /v1/partner/engine-services/:id/history` (own services) and
+`GET /v1/admin/services/:id/history` (verifier, support) → `{items: [{version, changes: {pricing|rules|questions|plans|eventTypes: {before, after}}, createdAt}]}`.
+A booking's snapshot keeps `plan`, `eventType` and `questions: {version, fields}` as booked.
 
 ## Admin panel (`/v1/admin/*`, admin token)
 

@@ -141,3 +141,44 @@ columns and indexes, and swaps two constraints on `payments` for wider ones. It 
 | Price snapshots and invoices | `rental.spec` "keeps the agreed price", `invoices-reports.spec` |
 
 Needs credentials (not testable here): live Razorpay, SMS OTP, Firebase push.
+
+## 9. Vendor-configurable engine (second brief)
+
+Audited before building. What already existed:
+- 8 booking types, each a pure handler;
+- category templates (questions, attributes, pricing models, default rules), editable by an admin without code;
+- vendor rules (durations, quantities, working hours, notice, buffers, deposit, approval);
+- add-ons, bundles, resources, rental stock;
+- snapshots of the price and rules on each booking;
+- per-category cancellation policy.
+
+What was missing, and was added:
+
+| Brief | Added |
+|---|---|
+| Several booking modes per service | Rate plans (`services.plans`, request `planId`): own price and rule overrides per plan |
+| Dynamic pricing rules | `pricing.adjustments`: percent or amount by weekday, date range and event type |
+| Vendor's own questions, versioned | `services.questions`, asked after the category's; the booking keeps `{version, fields}` |
+| Event types per service | `services.event_types`; `EVENT_TYPE_NOT_SERVED`; listing filter `?eventType=` |
+| Availability | `workingDays`, `blockedDates`, `maxAdvanceDays`, `maxPerDay` (locked per service and day) |
+| Admin review, change audit | `service_config_history` with version, before and after; partner and admin history routes; admin vendor page |
+| New category without code | Covered by `dynamic-engine.spec` (admin creates a category, sets its template; a vendor sets plans and questions; a customer books) |
+
+Rentals keep their per-item price (`inventory_items`). Plans and price rules apply to services booked by
+time or quantity. Migration: `20261105000001_service_config.sql` only adds columns and one table; existing
+services behave as before.
+
+Brief test list:
+
+| Case | Test |
+|---|---|
+| DJ hourly and full night | `dynamic-engine.spec` "DJ: per hour or full night …" |
+| Car hourly and outstation | `dynamic-engine.spec` "car: local by the hour or outstation by the day" |
+| Rental quantity and days | `rental.spec` (unchanged, still passing) |
+| New category with no code | `dynamic-engine.spec` "a category an admin adds today …" |
+| Price edit after booking | `dynamic-engine.spec` "editing the price keeps the booked price …" |
+| Invalid plan, missing answers | `dynamic-engine.spec` plan and question cases |
+| Concurrency (day limit) | `dynamic-engine.spec` "a limit of bookings per day …"; existing `concurrency.spec`, `car.spec`, `rental.spec` |
+| Cart rollback | `dynamic-engine.spec` "a cart line with a wrong plan rolls the whole checkout back" |
+| Duplicate webhooks, cancel, reschedule, refund | Existing `booking-lifecycle.spec`, `checkout-pay.spec`, `bookings.spec`, `engine-types.spec` |
+| Unauthorised access | History routes in `dynamic-engine.spec`; `url-security.spec` |

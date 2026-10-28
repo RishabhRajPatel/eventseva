@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-56 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+57 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,7 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [handover_codes](#handover_codes), [invoice_counters](#invoice_counters), [invoices](#invoices), [payment_orders](#payment_orders), [service_bundles](#service_bundles), [webhook_events](#webhook_events)
+- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [handover_codes](#handover_codes), [invoice_counters](#invoice_counters), [invoices](#invoices), [payment_orders](#payment_orders), [service_bundles](#service_bundles), [service_config_history](#service_config_history), [webhook_events](#webhook_events)
 
 ## Allowed values (enums)
 
@@ -310,10 +310,18 @@ What a vendor sells, priced per unit (per event, per plate, per day …). Soft-d
 | `attributes` | jsonb | yes | `'{}'::jsonb` |  |
 | `resource_id` | uuid |  |  | → [resources](#resources).id; For a service that is one specific resource (a car, a hall): that resource |
 | `cash_allowed` | boolean | yes | `false` | The vendor accepts cash for this service: customers may choose to pay the whole booking to the vendor |
+| `questions` | jsonb | yes | `'[]'::jsonb` | The vendor's own questions for the customer, asked after the category's (same field format) |
+| `event_types` | text[] | yes | `'{}'::text[]` | Event types the service is offered for; empty means every event |
+| `plans` | jsonb | yes | `'[]'::jsonb` | Rate plans: ways to book the service, each with its own pricing (and rule overrides); empty means the service pricing |
+| `config_version` | integer | yes | `1` | Goes up by one with every change to pricing, rules, questions, plans or event types |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK ((config_version >= 1))`
+- Check: `CHECK ((jsonb_typeof(plans) = 'array'::text))`
+- Check: `CHECK ((jsonb_typeof(questions) = 'array'::text))`
 - Check: `CHECK ((price_paise > 0))`
+- Index: `CREATE INDEX ON services USING gin (event_types) WHERE is_active`
 - Index: `CREATE INDEX ON services USING btree (vendor_id)`
 
 </details>
@@ -1523,6 +1531,25 @@ A vendor's package of several services (e.g. car + decoration): mandatory items,
 - Check: `CHECK (((length(name) >= 2) AND (length(name) <= 80)))`
 - Check: `CHECK ((length(description) <= 500))`
 - Index: `CREATE INDEX ON service_bundles USING btree (vendor_id) WHERE is_active`
+
+</details>
+
+### service_config_history
+
+Every change a vendor made to a service's price, rules, questions, plans or event types (bookings keep their own snapshot)
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | bigint | yes | `nextval('service_config_history_id_seq'::regclass)` | primary key |
+| `service_id` | uuid | yes |  | → [services](#services).id |
+| `version` | integer | yes |  |  |
+| `changed_by` | uuid |  |  | → [users](#users).id |
+| `changes` | jsonb | yes |  |  |
+| `created_at` | timestamp with time zone | yes | `now()` |  |
+
+<details><summary>Rules and indexes</summary>
+
+- Unique: `UNIQUE (service_id, version)`
 
 </details>
 

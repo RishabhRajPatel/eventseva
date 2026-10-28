@@ -5,7 +5,7 @@ import CartScreen from '../app/cart';
 import EngineBookScreen from '../app/vendor/[id]/engine';
 import { api } from '../lib/api';
 import { cart, missingBundleServices, restoreCart } from '../lib/cart';
-import { carModes, countKind, durationChoices, extendedEnd, formProblem, licenceProblem, movedTimes, perModel, toRequest, type EngineForm } from '../lib/engine';
+import { carModes, countKind, durationChoices, extendedEnd, formProblem, licenceProblem, movedTimes, perModel, toRequest, withPlan, type EngineForm } from '../lib/engine';
 import { istIso } from '../lib/rental';
 import { booking, event, inDays, vendor } from './fixtures';
 import { renderApp } from './render';
@@ -73,6 +73,22 @@ describe('engine booking rules', () => {
     const req = toRequest(car, form({ dayOffset: -1, startTime: '16:00', hours: 6, mode: 'self_drive', pickup: place, destination: { ...place, address: 'Venue' } }));
     expect(req).toMatchObject({ startsAt: istIso('2026-11-30', '16:00'), mode: 'self_drive', route: { pickup: place, destination: { address: 'Venue' } } });
     expect(req.guestCount).toBeUndefined();
+  });
+
+  it('a service with rate plans: the chosen plan\'s price and rules apply, and it is sent', () => {
+    const plans = [
+      { id: 'per_hour', name: { en: 'Per hour', hi: 'प्रति घंटा' }, description: null, pricing: { model: 'hourly' as const, ratePaise: 300_000 }, rules: { ...catering.rules, minDurationMin: 120 } },
+      { id: 'full_night', name: { en: 'Full night', hi: 'पूरी रात' }, description: null, pricing: { model: 'fixed' as const, ratePaise: 2_000_000 }, rules: { ...catering.rules, minDurationMin: 360, maxDurationMin: 720 } },
+    ];
+    const svc = { ...catering, plans };
+    const ok = { count: '300', answers: { menu: 'veg' } };
+    expect(formProblem(svc, form(ok))).toBe('plan');
+    expect(withPlan(svc, 'full_night').pricing.ratePaise).toBe(2_000_000);
+    expect(durationChoices(withPlan(svc, 'full_night'))).toEqual([6, 8, 10, 12]);
+    expect(withPlan(catering, 'anything')).toBe(catering);
+    expect(formProblem(svc, form({ ...ok, planId: 'full_night' }))).toBeNull();
+    expect(toRequest(svc, form({ ...ok, planId: 'full_night' })).planId).toBe('full_night');
+    expect(toRequest(catering, form({ ...ok, planId: 'full_night' })).planId).toBeUndefined();
   });
 
   it('moves and extends bookings in India time, and checks licences', () => {

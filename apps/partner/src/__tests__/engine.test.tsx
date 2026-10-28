@@ -183,6 +183,9 @@ describe('services and cars', () => {
         attributes: {},
         resourceId: 'r1',
         cashAllowed: false,
+        plans: [],
+        eventTypes: [],
+        questions: [],
       }),
     );
   });

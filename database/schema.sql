@@ -1962,6 +1962,42 @@ CREATE TABLE public.service_bundles (
 COMMENT ON TABLE public.service_bundles IS 'A vendor''s package of several services (e.g. car + decoration): mandatory items, optional discount';
 
 --
+-- Name: service_config_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.service_config_history (
+    id bigint NOT NULL,
+    service_id uuid NOT NULL,
+    version integer NOT NULL,
+    changed_by uuid,
+    changes jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+--
+-- Name: TABLE service_config_history; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.service_config_history IS 'Every change a vendor made to a service''s price, rules, questions, plans or event types (bookings keep their own snapshot)';
+
+--
+-- Name: service_config_history_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.service_config_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+--
+-- Name: service_config_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.service_config_history_id_seq OWNED BY public.service_config_history.id;
+
+--
 -- Name: services; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1982,7 +2018,14 @@ CREATE TABLE public.services (
     attributes jsonb DEFAULT '{}'::jsonb NOT NULL,
     resource_id uuid,
     cash_allowed boolean DEFAULT false NOT NULL,
-    CONSTRAINT services_price_paise_check CHECK ((price_paise > 0))
+    questions jsonb DEFAULT '[]'::jsonb NOT NULL,
+    event_types text[] DEFAULT '{}'::text[] NOT NULL,
+    plans jsonb DEFAULT '[]'::jsonb NOT NULL,
+    config_version integer DEFAULT 1 NOT NULL,
+    CONSTRAINT services_config_version_check CHECK ((config_version >= 1)),
+    CONSTRAINT services_plans_check CHECK ((jsonb_typeof(plans) = 'array'::text)),
+    CONSTRAINT services_price_paise_check CHECK ((price_paise > 0)),
+    CONSTRAINT services_questions_check CHECK ((jsonb_typeof(questions) = 'array'::text))
 );
 
 --
@@ -2020,6 +2063,30 @@ COMMENT ON COLUMN public.services.resource_id IS 'For a service that is one spec
 --
 
 COMMENT ON COLUMN public.services.cash_allowed IS 'The vendor accepts cash for this service: customers may choose to pay the whole booking to the vendor';
+
+--
+-- Name: COLUMN services.questions; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.questions IS 'The vendor''s own questions for the customer, asked after the category''s (same field format)';
+
+--
+-- Name: COLUMN services.event_types; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.event_types IS 'Event types the service is offered for; empty means every event';
+
+--
+-- Name: COLUMN services.plans; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.plans IS 'Rate plans: ways to book the service, each with its own pricing (and rule overrides); empty means the service pricing';
+
+--
+-- Name: COLUMN services.config_version; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.services.config_version IS 'Goes up by one with every change to pricing, rules, questions, plans or event types';
 
 --
 -- Name: sessions; Type: TABLE; Schema: public; Owner: -
@@ -2331,6 +2398,12 @@ ALTER TABLE ONLY public.messages ALTER COLUMN id SET DEFAULT nextval('public.mes
 --
 
 ALTER TABLE ONLY public.notifications ALTER COLUMN id SET DEFAULT nextval('public.notifications_id_seq'::regclass);
+
+--
+-- Name: service_config_history id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_config_history ALTER COLUMN id SET DEFAULT nextval('public.service_config_history_id_seq'::regclass);
 
 --
 -- Name: system_alerts id; Type: DEFAULT; Schema: public; Owner: -
@@ -2833,6 +2906,20 @@ ALTER TABLE ONLY public.service_addons
 
 ALTER TABLE ONLY public.service_bundles
     ADD CONSTRAINT service_bundles_pkey PRIMARY KEY (id);
+
+--
+-- Name: service_config_history service_config_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_config_history
+    ADD CONSTRAINT service_config_history_pkey PRIMARY KEY (id);
+
+--
+-- Name: service_config_history service_config_history_service_id_version_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_config_history
+    ADD CONSTRAINT service_config_history_service_id_version_key UNIQUE (service_id, version);
 
 --
 -- Name: services services_pkey; Type: CONSTRAINT; Schema: public; Owner: -
@@ -3380,6 +3467,12 @@ CREATE INDEX service_addons_vendor_idx ON public.service_addons USING btree (ven
 --
 
 CREATE INDEX service_bundles_vendor_idx ON public.service_bundles USING btree (vendor_id) WHERE is_active;
+
+--
+-- Name: services_event_types_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX services_event_types_idx ON public.services USING gin (event_types) WHERE is_active;
 
 --
 -- Name: services_vendor_id_idx; Type: INDEX; Schema: public; Owner: -
@@ -3977,6 +4070,20 @@ ALTER TABLE ONLY public.service_addons
 
 ALTER TABLE ONLY public.service_bundles
     ADD CONSTRAINT service_bundles_vendor_id_fkey FOREIGN KEY (vendor_id) REFERENCES public.vendors(id);
+
+--
+-- Name: service_config_history service_config_history_changed_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_config_history
+    ADD CONSTRAINT service_config_history_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES public.users(id);
+
+--
+-- Name: service_config_history service_config_history_service_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.service_config_history
+    ADD CONSTRAINT service_config_history_service_id_fkey FOREIGN KEY (service_id) REFERENCES public.services(id);
 
 --
 -- Name: services services_resource_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -

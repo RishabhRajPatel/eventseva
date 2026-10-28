@@ -66,6 +66,8 @@ export class EngineRequestDto implements EngineRequest {
   @IsOptional() @IsString() @MaxLength(500) note?: string;
   @IsOptional() @IsIn(['online', 'cash']) payMode?: 'online' | 'cash';
   @IsOptional() @IsInt() @Min(0) @Max(100_000_000) expectedTotalPaise?: number;
+  /** One of the service's rate plans (required when it has any). */
+  @IsOptional() @IsString() @MaxLength(30) planId?: string;
 }
 
 class LicencePhotoDto {
