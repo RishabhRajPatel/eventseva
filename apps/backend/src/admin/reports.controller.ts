@@ -14,6 +14,12 @@ class RefundsQuery {
   @IsOptional() @IsIn(['pending', 'sending', 'sent', 'processed', 'failed']) status?: string;
 }
 
+/** 'YYYY-MM-DD' of the last day in the month of `day`. */
+export function lastDayOfMonth(day: string): string {
+  const [y, m] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
 /**
  * Admin: money and booking numbers for a period, open disputes (charges and inspections the customer
  * disagrees with), and refunds with their Razorpay result.
@@ -26,12 +32,12 @@ export class AdminReportsController {
     private readonly refunds: RefundsService,
   ) {}
 
-  /** Event days from `from` to `to` (default: this month so far), India time. */
+  /** Event days from `from` to `to` (default: this whole month, so upcoming events count too), India time. */
   @AdminRoles('finance', 'support')
   @Get('reports/summary')
   async summary(@Query() q: RangeQuery) {
     const from = q.from ?? new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 8) + '01';
-    const to = q.to ?? new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10);
+    const to = q.to ?? lastDayOfMonth(from);
     const byStatus = await this.db.query(
       `SELECT status, booking_type AS "bookingType", count(*)::int AS bookings, COALESCE(sum(amount_paise), 0)::bigint::text AS "amountPaise"
          FROM bookings WHERE day BETWEEN $1 AND $2 GROUP BY status, booking_type ORDER BY status, booking_type`,

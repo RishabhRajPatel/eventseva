@@ -104,7 +104,7 @@ export function PlaceField({ label, value, onChange, testID }: { label: string; 
           <Button label={t('venue.find')} icon="pin" variant="outline" size="md" disabled={address.trim().length < 5 || busy === 'here'} loading={busy === 'find'} onPress={() => locate('find')} />
         </View>
         <View style={styles.flex}>
-          <Button label={t('venue.here')} icon="locate" variant="outline" size="md" disabled={busy === 'find'} loading={busy === 'here'} onPress={() => locate('here')} />
+          <Button label={t('engineBook.useHere')} icon="locate" variant="outline" size="md" disabled={busy === 'find'} loading={busy === 'here'} onPress={() => locate('here')} />
         </View>
       </View>
       {value ? (

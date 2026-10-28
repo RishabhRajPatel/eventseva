@@ -30,6 +30,14 @@ export default function PrivacyPage() {
           bank details for payouts (stored encrypted).
         </li>
         <li>
+          <b>Location:</b> only when you tap “I’m at the venue”, “Use my location” or “Use my current location”, to pin a venue, a car pickup or a
+          vendor’s starting point. It is not tracked in the background. Customers see only distances to vendors, never their exact location.
+        </li>
+        <li>
+          <b>Self-drive cars:</b> your driving licence number (stored encrypted), date of birth, expiry date and, if you add one, a photo of
+          the licence. Only EventSeva’s checking team sees the full number and the photo.
+        </li>
+        <li>
           <b>Device:</b> a notification token so we can send booking updates.
         </li>
       </ul>

@@ -330,7 +330,7 @@ How each kind is priced and held is in docs/BOOKING_ENGINE.md. The vendor page s
 | `POST …/trip/handover {odometerKm, fuelEighths, notes?, photos?}` | From 24 hours before the start (`TOO_EARLY`); with a driver assigned (`DRIVER_REQUIRED`); self-drive needs the customer's verified licence (`LICENCE_NOT_VERIFIED`) and the deposit paid (`DEPOSIT_REQUIRED`) |
 | `POST …/trip/return {odometerKm, fuelEighths, fuelPaise?, tollsPaise?, parkingPaise?, damage?: [{description, amountPaise}], notes?, photos?}` | Extra km and late return are charged at the agreed rates; the odometer cannot go back (`ODOMETER_BELOW_START`). The customer accepts or disputes the charges like rental charges |
 | `GET /v1/partner/bookings/:id/changes` · `POST …/:changeId/approve` · `POST …/:changeId/reject {reason}` | Reschedules and extensions asked by the customer |
-| `GET /v1/partner/bookings/:id/invoice` · `…/commission-invoice` | The invoice in the vendor's name, and EventSeva's commission invoice (`INVOICE_NOT_READY` 409 before confirmation) |
+| `GET /v1/partner/bookings/:id/invoice` · `…/commission-invoice` | The invoice in the vendor's name, and EventSeva's commission invoice (`INVOICE_NOT_READY` 409 before confirmation). While the booking can still change it is a `Proforma invoice` with number `PROFORMA` and today's amounts; on completion the final one is numbered once and never changes |
 
 **Customer app**
 

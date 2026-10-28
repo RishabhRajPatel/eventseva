@@ -42,4 +42,6 @@ test('invoice text for the share sheet', () => {
   assert.match(text, /CGST: ₹135/);
   assert.match(text, /Total: ₹5,670/);
   assert.doesNotMatch(text, /Refunded/);
+  const pro = invoiceText({ ...JSON.parse(JSON.stringify({ title: 'Proforma invoice', number: 'PROFORMA', issuedAt: '2026-11-08T06:30:00Z', seller: { name: 'A', address: null, gstin: null }, buyer: { name: 'B', address: null, gstin: null }, booking: { id: 'abcdef12', service: 'S', from: null, until: null, day: '2026-11-07' }, lines: [], taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, totalPaise: 0, note: '' })) });
+  assert.match(pro, /^Proforma invoice\n/);
 });

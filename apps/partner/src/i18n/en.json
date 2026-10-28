@@ -1476,6 +1476,8 @@
     "total": "Total",
     "paid": "Paid through EventSeva",
     "refunded": "Refunded",
-    "share": "Share invoice"
+    "share": "Share invoice",
+    "proforma": "Proforma invoice",
+    "notFinal": "Not final yet: the invoice is issued when the booking is completed."
   }
 }

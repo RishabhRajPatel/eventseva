@@ -46,8 +46,10 @@ export function InvoiceBody({ invoice: inv }: { invoice: Invoice }) {
   return (
     <View style={{ gap: space.lg }} testID="invoice">
       <Card style={{ gap: space.xs }}>
-        <Txt variant="display" size="xl">{inv.title === 'Tax invoice' ? t('invoice.taxInvoice') : t('invoice.billOfSupply')}</Txt>
-        <Txt size="sm" color={c.textMuted}>{t('invoice.number', { number: inv.number, date: formatDateTime(inv.issuedAt, lang) })}</Txt>
+        <Txt variant="display" size="xl">{inv.title === 'Proforma invoice' ? t('invoice.proforma') : inv.title === 'Tax invoice' ? t('invoice.taxInvoice') : t('invoice.billOfSupply')}</Txt>
+        <Txt size="sm" color={c.textMuted}>
+          {inv.number === 'PROFORMA' ? t('invoice.notFinal') : t('invoice.number', { number: inv.number, date: formatDateTime(inv.issuedAt, lang) })}
+        </Txt>
       </Card>
       <Card style={{ gap: space.sm }}>
         <Party label={t('invoice.from')} party={inv.seller} />

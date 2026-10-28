@@ -1,5 +1,6 @@
 // GST invoices, refund results from Razorpay webhooks, admin retry of a failed refund, reports and
 // the disputes list.
+import { lastDayOfMonth } from '../src/admin/reports.controller';
 import { todayIst } from '../src/bookings/booking.rules';
 import { financialYear } from '../src/payments/invoices.service';
 import { FakeGateway, PAYMENT_GATEWAY } from '../src/payments/gateway';
@@ -58,11 +59,20 @@ describe('invoices, refunds and reports', () => {
     expect(financialYear(new Date('2027-03-31T18:31:00Z'))).toBe('2027-28');
   });
 
-  it('issues a tax invoice in the vendor\'s name once confirmed, numbered once, and EventSeva\'s commission invoice', async () => {
+  it('a proforma while the booking can still change; on completion a tax invoice in the vendor\'s name, numbered once, and EventSeva\'s commission invoice', async () => {
     const { vt, ct, id } = await setup();
     expect((await as(ct).get(`/v1/bookings/${id}/invoice`).expect(409)).body.error.code).toBe('INVOICE_NOT_READY');
     await as(vt).post(`/v1/partner/bookings/${id}/accept`).expect(200);
     await as(ct).post(`/v1/bookings/${id}/pay/dev`).expect(200);
+    // Confirmed: current amounts, no number, nothing stored (an extension or a charge may still change it).
+    const pro = (await as(ct).get(`/v1/bookings/${id}/invoice`).expect(200)).body;
+    expect(pro).toMatchObject({ title: 'Proforma invoice', number: 'PROFORMA', totalPaise: 2_360_000 });
+    expect(pro.note).toMatch(/final invoice is issued when the booking is completed/);
+    await t.db.query(`UPDATE bookings SET amount_paise = amount_paise + 118000, tax_paise = tax_paise + 18000 WHERE id = $1`, [id]);
+    expect((await as(ct).get(`/v1/bookings/${id}/invoice`).expect(200)).body.totalPaise).toBe(2_478_000);
+    await t.db.query(`UPDATE bookings SET amount_paise = amount_paise - 118000, tax_paise = tax_paise - 18000 WHERE id = $1`, [id]);
+    expect((await t.db.query('SELECT 1 FROM invoices WHERE booking_id = $1', [id])).rowCount).toBe(0);
+    await t.db.query(`UPDATE bookings SET status = 'completed' WHERE id = $1`, [id]);
     const inv = (await as(ct).get(`/v1/bookings/${id}/invoice`).expect(200)).body;
     expect(inv).toMatchObject({
       title: 'Tax invoice',
@@ -101,6 +111,7 @@ describe('invoices, refunds and reports', () => {
     const { vt, ct, id } = await setup(null);
     await as(vt).post(`/v1/partner/bookings/${id}/accept`).expect(200);
     await as(ct).post(`/v1/bookings/${id}/pay/dev`).expect(200);
+    await t.db.query(`UPDATE bookings SET status = 'completed' WHERE id = $1`, [id]);
     const inv = (await as(ct).get(`/v1/bookings/${id}/invoice`).expect(200)).body;
     expect(inv).toMatchObject({ title: 'Bill of supply', cgstPaise: 0, totalPaise: 2_000_000 });
   });
@@ -141,6 +152,11 @@ describe('invoices, refunds and reports', () => {
     expect(rep.byCategory[0]).toMatchObject({ slug: 'dj', bookings: 1 });
     const verifier = await t.adminLogin('verifier');
     await as(verifier).get('/v1/admin/reports/summary').expect(403);
+    // Default period: the whole current month (India), so upcoming events count.
+    const def = (await as(finance).get('/v1/admin/reports/summary').expect(200)).body;
+    expect(def.from.endsWith('-01')).toBe(true);
+    expect(def.to).toBe(lastDayOfMonth(def.from));
+    expect(lastDayOfMonth('2028-02-10')).toBe('2028-02-29');
     expect((await as(finance).get('/v1/admin/disputes').expect(200)).body).toEqual({ charges: [], inspections: [] });
   });
 });

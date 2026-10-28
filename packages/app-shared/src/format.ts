@@ -60,7 +60,7 @@ export function timeLeft(iso: string, now = Date.now()): string | null {
 
 /** An invoice as plain text, for the share sheet (WhatsApp, email) in both apps. */
 export function invoiceText(inv: Invoice): string {
-  const out = [`${inv.title} ${inv.number}`, `Date: ${formatDateTime(inv.issuedAt, 'en')}`, ''];
+  const out = [inv.number === 'PROFORMA' ? inv.title : `${inv.title} ${inv.number}`, `Date: ${formatDateTime(inv.issuedAt, 'en')}`, ''];
   out.push(`From: ${inv.seller.name}${inv.seller.gstin ? ` (GSTIN ${inv.seller.gstin})` : ''}`);
   if (inv.seller.address) out.push(inv.seller.address);
   out.push(`To: ${inv.buyer.name}${inv.buyer.gstin ? ` (GSTIN ${inv.buyer.gstin})` : ''}`);

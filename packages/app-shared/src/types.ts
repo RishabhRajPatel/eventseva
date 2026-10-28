@@ -981,7 +981,8 @@ export interface CheckoutResult {
 
 /** GET /v1/bookings/:id/invoice (customer), /v1/partner/bookings/:id/invoice and …/commission-invoice. */
 export interface Invoice {
-  title: 'Tax invoice' | 'Bill of supply';
+  /** "Proforma invoice" (number "PROFORMA") until the booking is completed; then the final, numbered one. */
+  title: 'Tax invoice' | 'Bill of supply' | 'Proforma invoice';
   number: string;
   issuedAt: string;
   seller: { name: string; address: string | null; gstin: string | null };

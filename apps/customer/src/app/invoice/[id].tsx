@@ -2,6 +2,7 @@
 import { Share, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime, invoiceText, rupees, type Invoice } from '@eventseva/app-shared';
 import { api } from '../../lib/api';
@@ -37,10 +38,15 @@ export default function InvoiceScreen() {
   const inv = invoice.data;
   return (
     <Screen scroll footer={<Button label={t('invoice.share')} icon="send" onPress={() => void Share.share({ message: invoiceText(inv) })} />}>
-      <ScreenHeader title={inv.title === 'Tax invoice' ? t('invoice.taxInvoice') : t('invoice.billOfSupply')} subtitle={inv.number} />
+      <ScreenHeader title={invoiceTitle(t, inv)} subtitle={inv.number === 'PROFORMA' ? t('invoice.notFinal') : inv.number} />
       <InvoiceBody invoice={inv} />
     </Screen>
   );
+}
+
+/** Proforma until the booking is completed; then a tax invoice or a bill of supply. */
+export function invoiceTitle(t: TFunction, inv: Pick<Invoice, 'title'>) {
+  return inv.title === 'Proforma invoice' ? t('invoice.proforma') : inv.title === 'Tax invoice' ? t('invoice.taxInvoice') : t('invoice.billOfSupply');
 }
 
 function InvoiceBody({ invoice: inv }: { invoice: Invoice }) {

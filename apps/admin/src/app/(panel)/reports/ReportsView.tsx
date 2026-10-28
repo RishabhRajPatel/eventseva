@@ -18,11 +18,13 @@ export function ReportsView() {
   const to = params.get('to') ?? '';
   const rangeError = validRange(from, to);
   const state = useApiQuery<ReportSummary>(rangeError ? null : '/v1/admin/reports/summary', { from: from || undefined, to: to || undefined });
-  const [draft, setDraft] = useState({ from, to });
+  // Untouched boxes show the period the server used (this month by default).
+  const [draft, setDraft] = useState<{ from?: string; to?: string }>({ from: from || undefined, to: to || undefined });
+  const shown = { from: draft.from ?? state.data?.from ?? '', to: draft.to ?? state.data?.to ?? '' };
 
   return (
     <div className="page">
-      <PageHead title="Reports" subtitle="Bookings by their event day; payments and refunds by the day they happened.">
+      <PageHead title="Reports" subtitle="Bookings by their event day (this month by default); payments and refunds by the day they happened.">
         <RefreshingHint show={state.refreshing} />
       </PageHead>
 
@@ -30,16 +32,16 @@ export function ReportsView() {
         className="box filters"
         onSubmit={(e) => {
           e.preventDefault();
-          set({ from: draft.from || null, to: draft.to || null });
+          set({ from: shown.from || null, to: shown.to || null });
         }}
       >
         <div className="field">
           <label htmlFor="report-from">From</label>
-          <input id="report-from" className="input" type="date" value={draft.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
+          <input id="report-from" className="input" type="date" value={shown.from} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
         </div>
         <div className="field">
           <label htmlFor="report-to">To</label>
-          <input id="report-to" className="input" type="date" value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
+          <input id="report-to" className="input" type="date" value={shown.to} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
         </div>
         <button type="submit" className="btn btn-primary">
           Show
@@ -83,7 +85,8 @@ export function ReportsView() {
 
               <section className="box stack" aria-labelledby="by-status">
                 <h2 id="by-status">Bookings by status</h2>
-                <div className="table-wrap">
+                {r.byStatus.length === 0 ? <p className="muted">No bookings with an event day in this period.</p> : null}
+                <div className="table-wrap" hidden={r.byStatus.length === 0}>
                   <table className="tbl">
                     <thead>
                       <tr>

@@ -1,7 +1,9 @@
 // GST invoices for confirmed bookings. The customer's invoice is issued in the vendor's name (EventSeva
 // is the marketplace): a tax invoice when the vendor has a GSTIN and charged GST, else a bill of supply.
 // EventSeva's own invoice to the vendor covers the commission (18% GST when PLATFORM_GSTIN is set).
-// Each is numbered once, from a gap-free series per seller and financial year, and stored as issued.
+// Until the booking is completed (changes, extra hours and charges can still move the amount) the apps get
+// a proforma: same lines, current amounts, no number. On completion each invoice is numbered once, from a
+// gap-free series per seller and financial year, and stored as issued.
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
 import { AppError } from '../common/errors';
@@ -9,6 +11,8 @@ import { Db, Queryable } from '../db/db.service';
 
 export const COMMISSION_GST_PERCENT = 18;
 const INVOICEABLE = ['confirmed', 'completed'];
+/** The "number" of an invoice that is not final yet. */
+export const PROFORMA = 'PROFORMA';
 
 interface InvoiceLine {
   description: string;
@@ -17,7 +21,7 @@ interface InvoiceLine {
 }
 
 export interface InvoiceData {
-  title: 'Tax invoice' | 'Bill of supply';
+  title: 'Tax invoice' | 'Bill of supply' | 'Proforma invoice';
   number: string;
   issuedAt: string;
   seller: { name: string; address: string | null; gstin: string | null };
@@ -88,6 +92,9 @@ export class InvoicesService {
 
       const now = new Date();
       const fy = financialYear(now);
+      // Not final yet: nothing is numbered or stored.
+      const final = b.status === 'completed';
+      const numbered = (series: string, prefix: string) => (final ? this.nextNumber(client, series, prefix) : Promise.resolve(PROFORMA));
       const booking = { id: b.id, service: b.title ?? 'Service', from: b.starts_at?.toISOString() ?? null, until: b.ends_at?.toISOString() ?? null, day: b.day };
       let data: InvoiceData;
       if (kind === 'customer') {
@@ -101,8 +108,8 @@ export class InvoicesService {
         if (listed !== taxable) lines.push({ description: 'Changes agreed after booking', qty: 1, amountPaise: taxable - listed });
         const paid = (await this.db.one<{ s: number }>(client, `SELECT COALESCE(sum(amount_paise), 0)::int AS s FROM payments WHERE booking_id = $1 AND type IN ('advance', 'final') AND status IN ('paid', 'refunded')`, [b.id]))!.s;
         data = {
-          title: taxInvoice ? 'Tax invoice' : 'Bill of supply',
-          number: await this.nextNumber(client, `vendor:${b.vendor_id}:${fy}`, `V${b.vendor_id.slice(0, 6).toUpperCase()}/${fy}`),
+          title: !final ? 'Proforma invoice' : taxInvoice ? 'Tax invoice' : 'Bill of supply',
+          number: await numbered(`vendor:${b.vendor_id}:${fy}`, `V${b.vendor_id.slice(0, 6).toUpperCase()}/${fy}`),
           issuedAt: now.toISOString(),
           seller: { name: b.business_name, address: b.vendor_address, gstin: b.gstin },
           buyer: { name: b.customer_name ?? 'Customer', address: b.venue_address, gstin: null },
@@ -120,8 +127,8 @@ export class InvoicesService {
         const gstin = this.config.platform.gstin;
         const tax = gstin ? Math.round((b.commission_paise * COMMISSION_GST_PERCENT) / 100) : 0;
         data = {
-          title: gstin ? 'Tax invoice' : 'Bill of supply',
-          number: await this.nextNumber(client, `platform:${fy}`, `ES/${fy}`),
+          title: !final ? 'Proforma invoice' : gstin ? 'Tax invoice' : 'Bill of supply',
+          number: await numbered(`platform:${fy}`, `ES/${fy}`),
           issuedAt: now.toISOString(),
           seller: { name: this.config.platform.name, address: this.config.platform.address, gstin },
           buyer: { name: b.business_name, address: b.vendor_address, gstin: b.gstin },
@@ -134,6 +141,7 @@ export class InvoicesService {
           note: 'Deducted from your payout for this booking.',
         };
       }
+      if (!final) return { ...data, note: `${data.note} Proforma: the final invoice is issued when the booking is completed.` };
       await client.query('INSERT INTO invoices (booking_id, kind, number, issued_at, data) VALUES ($1, $2, $3, $4, $5)', [b.id, kind, data.number, data.issuedAt, data]);
       return data;
     });

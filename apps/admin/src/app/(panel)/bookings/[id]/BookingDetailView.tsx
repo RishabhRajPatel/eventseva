@@ -48,7 +48,10 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
             <RefreshingHint show={refreshing} />
           </div>
           <p className="muted">
-            {b.event.title} · {formatDay(b.day, 'en', true)} · {SLOT_LABELS[b.slot] ?? b.slot}
+            {b.event.title} ·{' '}
+            {b.bookingType !== 'slot' && b.startsAt && b.endsAt
+              ? `${formatDateTime(b.startsAt)} → ${formatDateTime(b.endsAt)}`
+              : `${formatDay(b.day, 'en', true)} · ${SLOT_LABELS[b.slot] ?? b.slot}`}
           </p>
           <p className="mono muted">{b.id}</p>
         </div>
@@ -151,7 +154,7 @@ function BookingDetail({ booking: b, refreshing, reload }: { booking: AdminBooki
               <Fact label="Bank reference (UTR)">{b.payout.reference ?? '—'}</Fact>
             </dl>
           ) : (
-            <p className="muted">No payout yet. It is created when the advance is paid.</p>
+            <p className="muted">No payout yet. It is created when the booking is completed (after the event), or when it is cancelled with money kept for the vendor.</p>
           )}
         </section>
       </div>

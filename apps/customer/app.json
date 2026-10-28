@@ -22,8 +22,8 @@
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CONTACTS",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ]
     },
     "web": {
@@ -41,6 +41,22 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 240,
           "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "EventSeva uses your location only when you tap “I'm at the venue” or “Use my location”, to pin the place on the map.",
+          "isAndroidBackgroundLocationEnabled": false,
+          "isIosBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "EventSeva needs your photos so you can add a picture of your driving licence for self-drive cars.",
+          "cameraPermission": false,
+          "microphonePermission": false
         }
       ]
     ],

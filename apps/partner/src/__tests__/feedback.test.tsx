@@ -141,8 +141,8 @@ describe('error messages', () => {
     'TOO_SOON', 'DURATION_TOO_SHORT', 'DURATION_TOO_LONG', 'OUTSIDE_WORKING_HOURS', 'OUTSIDE_EVENT_DATES', 'CHARGE_ALREADY_ANSWERED', 'NOTHING_TO_PAY',
     'USE_SLOT_BOOKING', 'SERVICE_NOT_CONFIGURED', 'ADDON_NOT_FOUND', 'ROUTE_REQUIRED', 'MODE_NOT_OFFERED', 'VEHICLE_NOT_AVAILABLE', 'NO_DRIVER',
     'LICENCE_REQUIRED', 'TOO_YOUNG', 'BUNDLE_NOT_FOUND', 'BUNDLE_INCOMPLETE', 'CHANGE_PENDING', 'CHANGE_NOT_SUPPORTED', 'DOCUMENTS_MISSING',
-    // Server settings, not error codes.
-    'BANK_DETAILS_KEY']);
+    // Server settings and values, not error codes.
+    'BANK_DETAILS_KEY', 'PROFORMA']);
   // Read the API docs straight from the repo (no Node types in this app, hence the typed require).
   const { readFileSync } = jest.requireActual<{ readFileSync: (path: string, enc: string) => string }>('fs');
   const doc = readFileSync(`${__dirname}/../../../../docs/API.md`, 'utf8');

@@ -169,7 +169,7 @@ function Invoices({ bookingId }: { bookingId: string }) {
                         {label as string}
                         <span className="cell-sub">{i.title}</span>
                       </td>
-                      <td className="mono">{i.number}</td>
+                      <td className="mono">{i.number === 'PROFORMA' ? 'Not final until the booking completes' : i.number}</td>
                       <td>
                         {i.seller.name} → {i.buyer.name}
                       </td>

@@ -912,7 +912,8 @@
       "countRange": "{{what}}: between {{min}} and {{max}}.",
       "route": "Add the pickup and drop places, and find them on the map.",
       "answers": "Please answer the vendor's questions."
-    }
+    },
+    "useHere": "Use my location"
   },
   "cart": {
     "title": "Cart",
@@ -1030,7 +1031,9 @@
     "booking": "Booking {{ref}}: {{service}}",
     "taxable": "Taxable value",
     "paid": "Paid through EventSeva",
-    "share": "Share invoice"
+    "share": "Share invoice",
+    "proforma": "Proforma invoice",
+    "notFinal": "Not final yet: the invoice is issued when the booking is completed."
   },
   "photos": {
     "evidence": "{{label}} photo {{n}} of {{total}}"
