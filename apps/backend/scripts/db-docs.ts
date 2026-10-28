@@ -74,7 +74,7 @@ async function tablesMarkdown(client: Client): Promise<string> {
       `SELECT c.relname AS table_name, con.contype AS type, pg_get_constraintdef(con.oid) AS def,
               ARRAY(SELECT a.attname::text FROM unnest(con.conkey) k JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k) AS columns
          FROM pg_constraint con JOIN pg_class c ON c.oid = con.conrelid JOIN pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname = 'public' ORDER BY c.relname, con.contype, pg_get_constraintdef(con.oid)`,
+        WHERE n.nspname = 'public' ORDER BY c.relname, con.contype, pg_get_constraintdef(con.oid) COLLATE "C"`,
     )
   ).rows;
   const indexes = (
