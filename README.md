@@ -27,7 +27,9 @@ pnpm install
 
 # API (http://localhost:3000)
 cd apps/backend
-cp .env.example .env          # set DATABASE_URL; CLOUDINARY_URL for photo uploads
+cp .env.example .env          # set DATABASE_URL; leave CLOUDINARY_URL empty unless you have real keys
+                              # (the placeholder in .env.example stops the API from starting)
+set -a && . ./.env && set +a  # nothing here loads .env by itself: in production Docker passes it in
 pnpm migrate                  # applies database/migrations
 ADMIN_PASSWORD='a-long-password' pnpm create-admin you@example.com super   # prints the 2FA secret
 pnpm build && pnpm start      # OTP codes are printed in this log while OTP_PROVIDER=console
@@ -36,9 +38,13 @@ pnpm build && pnpm start      # OTP codes are printed in this log while OTP_PROV
 cd apps/admin && cp .env.example .env.local && pnpm dev
 
 # Apps (Expo). EXPO_PUBLIC_PAYMENTS=dev shows a "Test payment" button instead of Razorpay.
+# The Partner .env.example points at the live API: set EXPO_PUBLIC_API_URL to your machine for a local run.
 cd apps/customer && cp .env.example .env && npx expo start
 cd apps/partner  && cp .env.example .env && npx expo start
 ```
+
+On a real phone, point both apps at your computer's LAN address (`EXPO_PUBLIC_API_URL=http://192.168.1.20:3000`)
+and start the API with `BIND=0.0.0.0` so the phone can reach it.
 
 Razorpay checkout needs a development build (`npx expo run:android` or `eas build --profile development`); Expo Go
 works for everything else.
