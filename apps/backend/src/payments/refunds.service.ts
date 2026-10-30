@@ -29,6 +29,8 @@ interface Due {
 export class RefundsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Refunds');
   private timer?: NodeJS.Timeout;
+  /** The flush in flight, so shutdown can wait for it and ticks never overlap. */
+  private running?: Promise<unknown>;
 
   constructor(
     private readonly db: Db,
@@ -38,12 +40,20 @@ export class RefundsService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     if (this.config.bookingSweepSec > 0) {
-      this.timer = setInterval(() => void this.flush(), 60_000);
+      this.timer = setInterval(() => {
+        // Sending a backlog to the gateway can outlast the interval; never stack two flushes.
+        if (this.running) return;
+        this.running = this.flush().finally(() => {
+          this.running = undefined;
+        });
+      }, 60_000);
     }
   }
 
-  onModuleDestroy() {
+  /** Lets a flush that is already running finish, so a deploy never cuts one in half. */
+  async onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    await this.running;
   }
 
   /** Records a refund inside the caller's transaction; nothing is sent until it commits. */

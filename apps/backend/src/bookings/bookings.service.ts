@@ -108,6 +108,9 @@ const daysLeft = (b: BookingRow) => (isEngine(b) ? daysBefore(b.starts_at) : day
 /** Started (engine) or the day is over (slot): too late to cancel. */
 const started = (b: BookingRow) => (isEngine(b) ? b.starts_at.getTime() <= Date.now() : daysUntil(b.day) < 0);
 
+/** How many bookings one sweep transaction claims at a time, so a backlog never holds locks for long. */
+const SWEEP_BATCH = 200;
+
 const rupees = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN')}`;
 /** "21 Nov" / "21 नव॰" for notifications; days are plain dates, so no time-zone shift. */
 const niceDay = (day: string, lang: 'en' | 'hi') =>
@@ -141,6 +144,8 @@ const ACTIVE: BookingStatus[] = ['requested', 'accepted', 'confirmed'];
 export class BookingsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('Bookings');
   private timer?: NodeJS.Timeout;
+  /** The sweep in flight, so shutdown can wait for it and ticks never overlap. */
+  private running?: Promise<unknown>;
 
   constructor(
     private readonly db: Db,
@@ -156,13 +161,21 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     if (this.config.bookingSweepSec > 0) {
       this.timer = setInterval(() => {
-        this.sweep().catch((err) => this.logger.error(`sweep failed: ${err.stack ?? err}`));
+        // A sweep that outlives its interval must not have a second one pile up behind it.
+        if (this.running) return;
+        this.running = this.sweep()
+          .catch((err) => this.logger.error(`sweep failed: ${err.stack ?? err}`))
+          .finally(() => {
+            this.running = undefined;
+          });
       }, this.config.bookingSweepSec * 1000);
     }
   }
 
-  onModuleDestroy() {
+  /** Lets a sweep that is already running finish, so a deploy never cuts one in half. */
+  async onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    await this.running;
   }
 
   // ---------- customer ----------
@@ -920,45 +933,82 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   // ---------- background job ----------
 
   /**
+   * Claims a batch of rows and runs their side effects in the same transaction, over and over
+   * until nothing is left. Rows are taken with SKIP LOCKED, so a second server (or a second sweep)
+   * steps over what this one is holding instead of waiting behind it.
+   */
+  private async drain<T>(
+    claim: (q: Queryable, limit: number) => Promise<{ rows: T[] }>,
+    handle: (q: Queryable, row: T) => Promise<void>,
+  ): Promise<number> {
+    let total = 0;
+    for (;;) {
+      const n = await this.db.tx(async (client) => {
+        const { rows } = await claim(client, SWEEP_BATCH);
+        for (const row of rows) await handle(client, row);
+        return rows.length;
+      });
+      total += n;
+      if (n < SWEEP_BATCH) return total;
+    }
+  }
+
+  /**
    * Runs every minute: expires unanswered requests and unpaid acceptances, and completes
    * bookings whose event day is over (which schedules the vendor payout).
+   *
+   * Each claim shares a transaction with its side effects — freeing held capacity, the chat line,
+   * the pushes — so a crash or a dropped connection rolls the claim back and the next run picks the
+   * row up again. Done separately, a booking could end up expired with its capacity still held and
+   * nobody told, and nothing would ever retry it: the claim no longer matches.
    */
   async sweep(now = new Date()): Promise<{ expired: number; completed: number; reminded: number }> {
-    let expired = 0;
-    const noReply = await this.db.query<{ id: string; customer_id: string; vendor_id: string; day: string }>(
-      `UPDATE bookings SET status = 'expired', updated_at = now()
-        WHERE status = 'requested' AND respond_by < now() RETURNING id, customer_id, vendor_id, day`,
+    // Requests the vendor never answered.
+    let expired = await this.drain<{ id: string; customer_id: string; vendor_id: string; day: string }>(
+      (client, limit) =>
+        client.query(
+          `UPDATE bookings SET status = 'expired', updated_at = now()
+            WHERE id IN (SELECT id FROM bookings WHERE status = 'requested' AND respond_by < now()
+                          ORDER BY respond_by LIMIT $1 FOR UPDATE SKIP LOCKED)
+            RETURNING id, customer_id, vendor_id, day`,
+          [limit],
+        ),
+      async (client, b) => {
+        await releaseAll(client, b.id);
+        await postBookingEvent(client, b, 'expired', null, { why: 'no_reply' });
+        await notify(client, b.customer_id, 'booking_expired', {
+          en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
+          hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
+        }, { bookingId: b.id }, 'customer');
+      },
     );
-    for (const b of noReply.rows) {
-      expired++;
-      await releaseAll(this.db, b.id);
-      await postBookingEvent(this.db, b, 'expired', null, { why: 'no_reply' });
-      await notify(this.db, b.customer_id, 'booking_expired', {
-        en: { title: 'No reply from vendor', body: `The vendor did not reply in time. Please choose another vendor for ${niceDay(b.day, 'en')}.` },
-        hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
-      }, { bookingId: b.id }, 'customer');
-    }
 
-    const unpaid = await this.db.query<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; day: string }>(
-      `WITH e AS (
-         UPDATE bookings SET status = 'expired', updated_at = now()
-          WHERE status = 'accepted' AND pay_by < now() RETURNING id, customer_id, vendor_id, day
-       ), freed AS (DELETE FROM availability WHERE booking_id IN (SELECT id FROM e))
-       SELECT e.id, e.customer_id, e.vendor_id, v.user_id AS vendor_user_id, e.day FROM e JOIN vendors v ON v.id = e.vendor_id`,
+    // Accepted, but the advance never arrived: the date goes back on the vendor's calendar.
+    expired += await this.drain<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; day: string }>(
+      (client, limit) =>
+        client.query(
+          `WITH e AS (
+             UPDATE bookings SET status = 'expired', updated_at = now()
+              WHERE id IN (SELECT id FROM bookings WHERE status = 'accepted' AND pay_by < now()
+                            ORDER BY pay_by LIMIT $1 FOR UPDATE SKIP LOCKED)
+              RETURNING id, customer_id, vendor_id, day
+           ), freed AS (DELETE FROM availability WHERE booking_id IN (SELECT id FROM e))
+           SELECT e.id, e.customer_id, e.vendor_id, v.user_id AS vendor_user_id, e.day FROM e JOIN vendors v ON v.id = e.vendor_id`,
+          [limit],
+        ),
+      async (client, b) => {
+        await releaseAll(client, b.id);
+        await postBookingEvent(client, b, 'expired', null, { why: 'not_paid' });
+        await notify(client, b.customer_id, 'booking_expired', {
+          en: { title: 'Booking expired', body: `The advance for ${niceDay(b.day, 'en')} was not paid in time.` },
+          hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${niceDay(b.day, 'hi')} का एडवांस समय पर नहीं दिया गया।` },
+        }, { bookingId: b.id }, 'customer');
+        await notify(client, b.vendor_user_id, 'booking_expired', {
+          en: { title: 'Date free again', body: `The customer did not pay for ${niceDay(b.day, 'en')}, so the date is free again.` },
+          hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
+        }, { bookingId: b.id }, 'partner');
+      },
     );
-    for (const b of unpaid.rows) {
-      expired++;
-      await releaseAll(this.db, b.id);
-      await postBookingEvent(this.db, b, 'expired', null, { why: 'not_paid' });
-      await notify(this.db, b.customer_id, 'booking_expired', {
-        en: { title: 'Booking expired', body: `The advance for ${niceDay(b.day, 'en')} was not paid in time.` },
-        hi: { title: 'बुकिंग की समय-सीमा ख़त्म', body: `${niceDay(b.day, 'hi')} का एडवांस समय पर नहीं दिया गया।` },
-      }, { bookingId: b.id }, 'customer');
-      await notify(this.db, b.vendor_user_id, 'booking_expired', {
-        en: { title: 'Date free again', body: `The customer did not pay for ${niceDay(b.day, 'en')}, so the date is free again.` },
-        hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
-      }, { bookingId: b.id }, 'partner');
-    }
 
     // Rentals: once the event is over, the vendor collects the items (return pending).
     await this.db.query(
@@ -969,45 +1019,52 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     await this.fulfilment.settle();
     // Payout = advance − commission. Newer vendors are paid 3 days after the event (time for
     // complaints), regular vendors the next day, at 10 am India time.
-    const done = await this.db.query<{ id: string; vendor_user_id: string; payout_paise: number; release_after: Date }>(
-      `WITH c AS (
-         UPDATE bookings SET status = 'completed', updated_at = now()
-          WHERE status = 'confirmed' AND (
-                  (booking_type = 'slot' AND day < (now() AT TIME ZONE 'Asia/Kolkata')::date)
-                  -- Rentals and vehicles end when the return is checked, not by the clock.
-               OR (booking_type NOT IN ('slot', 'rental', 'transport') AND ends_at < now())
-               OR (booking_type IN ('rental', 'transport') AND fulfilment = 'closed' AND deposit_settled_at IS NOT NULL))
-          RETURNING id, vendor_id, day, pay_mode, commission_paise,
-                    -- Cash bookings: the vendor already has the money; EventSeva's commission becomes a due.
-                    CASE WHEN pay_mode = 'cash' THEN 0 ELSE
-                    advance_paise + charges_paise - commission_paise - payout_deduction_paise
-                      + COALESCE((SELECT sum(p.amount_paise) FROM payments p WHERE p.booking_id = bookings.id AND p.type = 'final' AND p.status = 'paid'), 0)::int
-                    END AS payout_paise
-       ), d AS (
-         INSERT INTO commission_dues (booking_id, vendor_id, amount_paise, remaining_paise)
-         SELECT id, vendor_id, commission_paise, commission_paise FROM c WHERE pay_mode = 'cash' AND commission_paise > 0
-         ON CONFLICT (booking_id) DO NOTHING
-       ), p AS (
-         INSERT INTO payouts (booking_id, vendor_id, amount_paise, release_after)
-         SELECT c.id, c.vendor_id, c.payout_paise,
-                ((c.day + CASE WHEN (SELECT count(*) FROM bookings x WHERE x.vendor_id = c.vendor_id AND x.status = 'completed'
-                                       AND x.id NOT IN (SELECT id FROM c)) < $1 THEN 3 ELSE 1 END)
-                  + time '10:00') AT TIME ZONE 'Asia/Kolkata'
-           FROM c WHERE c.payout_paise > 0  -- fully refunded from the vendor's share: nothing to pay
-         ON CONFLICT (booking_id) DO NOTHING
-         RETURNING booking_id, release_after
-       )
-       SELECT c.id, v.user_id AS vendor_user_id, c.payout_paise, p.release_after
-         FROM c JOIN vendors v ON v.id = c.vendor_id JOIN p ON p.booking_id = c.id`,
-      [NEW_VENDOR_BOOKINGS],
-    );
-    for (const b of done.rows) {
-      const when = new Date(b.release_after).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
-      await notify(this.db, b.vendor_user_id, 'payout_scheduled', {
-        en: { title: 'Payout scheduled', body: `${rupees(b.payout_paise)} will reach your bank on ${when}.` },
-        hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
-      }, { bookingId: b.id }, 'partner');
-    }
+    //
+    // One transaction, and deliberately not batched like the two above: the 3-days-or-1-day choice
+    // counts the vendor's completed bookings *other than the ones completing right here*, so
+    // splitting a run into batches would let an earlier batch change a later batch's answer.
+    const completed = await this.db.tx(async (client) => {
+      const done = await client.query<{ id: string; vendor_user_id: string; payout_paise: number; release_after: Date }>(
+        `WITH c AS (
+           UPDATE bookings SET status = 'completed', updated_at = now()
+            WHERE status = 'confirmed' AND (
+                    (booking_type = 'slot' AND day < (now() AT TIME ZONE 'Asia/Kolkata')::date)
+                    -- Rentals and vehicles end when the return is checked, not by the clock.
+                 OR (booking_type NOT IN ('slot', 'rental', 'transport') AND ends_at < now())
+                 OR (booking_type IN ('rental', 'transport') AND fulfilment = 'closed' AND deposit_settled_at IS NOT NULL))
+            RETURNING id, vendor_id, day, pay_mode, commission_paise,
+                      -- Cash bookings: the vendor already has the money; EventSeva's commission becomes a due.
+                      CASE WHEN pay_mode = 'cash' THEN 0 ELSE
+                      advance_paise + charges_paise - commission_paise - payout_deduction_paise
+                        + COALESCE((SELECT sum(p.amount_paise) FROM payments p WHERE p.booking_id = bookings.id AND p.type = 'final' AND p.status = 'paid'), 0)::int
+                      END AS payout_paise
+         ), d AS (
+           INSERT INTO commission_dues (booking_id, vendor_id, amount_paise, remaining_paise)
+           SELECT id, vendor_id, commission_paise, commission_paise FROM c WHERE pay_mode = 'cash' AND commission_paise > 0
+           ON CONFLICT (booking_id) DO NOTHING
+         ), p AS (
+           INSERT INTO payouts (booking_id, vendor_id, amount_paise, release_after)
+           SELECT c.id, c.vendor_id, c.payout_paise,
+                  ((c.day + CASE WHEN (SELECT count(*) FROM bookings x WHERE x.vendor_id = c.vendor_id AND x.status = 'completed'
+                                         AND x.id NOT IN (SELECT id FROM c)) < $1 THEN 3 ELSE 1 END)
+                    + time '10:00') AT TIME ZONE 'Asia/Kolkata'
+             FROM c WHERE c.payout_paise > 0  -- fully refunded from the vendor's share: nothing to pay
+           ON CONFLICT (booking_id) DO NOTHING
+           RETURNING booking_id, release_after
+         )
+         SELECT c.id, v.user_id AS vendor_user_id, c.payout_paise, p.release_after
+           FROM c JOIN vendors v ON v.id = c.vendor_id JOIN p ON p.booking_id = c.id`,
+        [NEW_VENDOR_BOOKINGS],
+      );
+      for (const b of done.rows) {
+        const when = new Date(b.release_after).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short' });
+        await notify(client, b.vendor_user_id, 'payout_scheduled', {
+          en: { title: 'Payout scheduled', body: `${rupees(b.payout_paise)} will reach your bank on ${when}.` },
+          hi: { title: 'पेमेंट तय', body: `${rupees(b.payout_paise)} ${when} को आपके बैंक में आएगा।` },
+        }, { bookingId: b.id }, 'partner');
+      }
+      return done.rows.length;
+    });
     // Commission owed on cash bookings comes off the vendor's payouts that are not sent yet.
     await this.cash.applyDuesToPayouts();
     // Coupons held by bookings that ended unpaid (expired above) can be used again.
@@ -1021,7 +1078,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     );
     await this.trips.remindUnassigned();
     const reminded = await this.sendReminders(now);
-    return { expired, completed: done.rows.length, reminded };
+    return { expired, completed, reminded };
   }
 
   /** The customer changed the venue: vendors with an open booking for this event hear about it. */

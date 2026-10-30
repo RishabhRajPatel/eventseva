@@ -245,6 +245,39 @@ describe('checkout payment and price protection', () => {
       expect((await t.db.query(`SELECT 1 FROM capacity_holds h JOIN bookings b ON b.id = h.booking_id WHERE b.customer_id = (SELECT customer_id FROM events WHERE id = $1) AND h.expires_at > now()`, [c.eventId])).rowCount).toBe(0);
     });
 
+    it('a sweep that dies halfway leaves nothing half-expired, and the next one finishes the job', async () => {
+      const { djBooking } = await cart();
+      await t.db.query(`UPDATE bookings SET respond_by = now() - interval '1 second' WHERE id = $1`, [djBooking]);
+      const closedOnce = async (table: 'booking_state_history' | 'messages') =>
+        (await t.db.query(
+          table === 'booking_state_history'
+            ? `SELECT 1 FROM booking_state_history WHERE booking_id = $1 AND to_state = 'expired'`
+            : `SELECT 1 FROM messages WHERE kind = 'booking' AND data->>'bookingId' = $1 AND data->>'event' = 'expired'`,
+          [djBooking],
+        )).rowCount;
+
+      // The customer's push is the last side effect of expiring a booking. Break it, and everything
+      // the sweep did must come back with it — the status flip and the chat line included. Letting
+      // the flip stand would strand the booking: nothing retries a claim that no longer matches.
+      try {
+        await t.db.query(`CREATE OR REPLACE FUNCTION sweep_halfway_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'notify is down'; END $$`);
+        await t.db.query(`CREATE TRIGGER sweep_halfway BEFORE INSERT ON notifications FOR EACH ROW EXECUTE FUNCTION sweep_halfway_fail()`);
+        await expect(bookings.sweep()).rejects.toThrow(/notify is down/);
+        expect(await statusOf(djBooking)).toBe('requested');
+        expect(await closedOnce('booking_state_history')).toBe(0);
+        expect(await closedOnce('messages')).toBe(0);
+      } finally {
+        await t.db.query('DROP TRIGGER IF EXISTS sweep_halfway ON notifications');
+        await t.db.query('DROP FUNCTION IF EXISTS sweep_halfway_fail()');
+      }
+
+      // Nothing was lost: the booking is still claimable, and this run closes it exactly once.
+      expect(await bookings.sweep()).toMatchObject({ expired: 1 });
+      expect(await statusOf(djBooking)).toBe('expired');
+      expect(await closedOnce('booking_state_history')).toBe(1);
+      expect(await closedOnce('messages')).toBe(1);
+    });
+
     it('two customers taking the last use of a coupon at the same moment: one gets it', async () => {
       const finance = await t.adminLogin('finance');
       await as(finance).post('/v1/admin/coupons', {

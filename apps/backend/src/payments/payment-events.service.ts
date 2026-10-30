@@ -45,6 +45,8 @@ const RECONCILE_BATCH = 50;
 export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('PaymentEvents');
   private timer?: NodeJS.Timeout;
+  /** The reconcile in flight, so shutdown can wait for it and ticks never overlap. */
+  private running?: Promise<unknown>;
 
   constructor(
     private readonly db: Db,
@@ -58,13 +60,21 @@ export class PaymentEventsService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     if (this.config.bookingSweepSec > 0) {
       this.timer = setInterval(() => {
-        this.reconcile().catch((err) => this.logger.error(`reconcile failed: ${err.stack ?? err}`));
+        // Asking the provider about every open order can outlast the interval; never stack two.
+        if (this.running) return;
+        this.running = this.reconcile()
+          .catch((err) => this.logger.error(`reconcile failed: ${err.stack ?? err}`))
+          .finally(() => {
+            this.running = undefined;
+          });
       }, this.config.bookingSweepSec * 5 * 1000);
     }
   }
 
-  onModuleDestroy() {
+  /** Lets a reconcile that is already running finish, so a deploy never cuts one in half. */
+  async onModuleDestroy() {
     if (this.timer) clearInterval(this.timer);
+    await this.running;
   }
 
   /**
