@@ -110,8 +110,12 @@ export class ChatController {
     const conv = await this.member(this.db, auth, id);
     const share = await this.hasBooking(conv);
     const { rows } = await this.db.query(
-      `SELECT id::int, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"
-         FROM messages WHERE conversation_id = $1 AND ($2::bigint IS NULL OR id < $2) ORDER BY id DESC LIMIT $3`,
+      // Keep `id` uncast and the ORDER BY qualified. A bare ORDER BY binds to an output column of
+      // the same name first, so selecting `id::int` (as this once did) sorted by that expression
+      // instead of the column: messages_conversation_id_id_idx lost its ordering and a long chat
+      // read every message it ever had on each page.
+      `SELECT id, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"
+         FROM messages WHERE conversation_id = $1 AND ($2::bigint IS NULL OR id < $2) ORDER BY messages.id DESC LIMIT $3`,
       [id, query.beforeId ?? null, PAGE + 1],
     );
     await this.db.query(
@@ -145,7 +149,7 @@ export class ChatController {
       const msg = await this.db.one(
         client,
         `INSERT INTO messages (conversation_id, sender_id, body) VALUES ($1, $2, $3)
-         RETURNING id::int, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"`,
+         RETURNING id, sender_id AS "senderId", body, kind, data, read_at AS "readAt", created_at AS "createdAt"`,
         [id, auth.userId, text],
       );
       await client.query('UPDATE conversations SET last_message_at = now() WHERE id = $1', [id]);

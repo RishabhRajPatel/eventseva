@@ -97,9 +97,12 @@ export class PushService implements OnModuleInit, OnModuleDestroy {
     for (;;) {
       const batch = await this.db.tx(async (client) => {
         const { rows } = await client.query<Pending>(
+          // notifications.id, not id: `id::text` is an output column also called "id", and a bare
+          // ORDER BY binds to that — sorting the backlog as text ('10' before '9') and throwing away
+          // the index order, so every batch read and sorted every unpushed row to take the first 100.
           `SELECT id::text, user_id, app, kind, title, body, data FROM notifications
             WHERE pushed_at IS NULL AND created_at > now() - interval '${MAX_AGE}'
-            ORDER BY id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED`,
+            ORDER BY notifications.id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED`,
         );
         if (rows.length) await client.query('UPDATE notifications SET pushed_at = now() WHERE id = ANY($1::bigint[])', [rows.map((r) => r.id)]);
         return rows;

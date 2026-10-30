@@ -86,7 +86,7 @@ export class AdminController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() body: AdminLoginDto) {
     const admin = await this.db.one<{
-      id: string; email: string; role: string; password_hash: string; totp_secret: string; totp_last_step: string | null; locked: boolean;
+      id: string; email: string; role: string; password_hash: string; totp_secret: string; totp_last_step: number | null; locked: boolean;
       recovery_codes: string[];
     }>(
       this.db,
@@ -103,7 +103,7 @@ export class AdminController {
     // A code works once: a step at or before the last accepted one is refused (replayed or shoulder-surfed).
     const key = this.config.bankDetailsKey;
     const step = admin && body.totp ? totpStep(openSecret(admin.totp_secret, key), body.totp) : null;
-    const freshStep = step !== null && (admin!.totp_last_step === null || step > Number(admin!.totp_last_step));
+    const freshStep = step !== null && (admin!.totp_last_step === null || step > admin!.totp_last_step);
     const recoveryIndex = admin && body.recoveryCode && passwordOk ? findRecoveryCode(body.recoveryCode, admin.recovery_codes, key) : -1;
     if (!admin || !passwordOk || (!freshStep && recoveryIndex < 0)) {
       if (admin) {

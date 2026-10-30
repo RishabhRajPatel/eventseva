@@ -203,8 +203,12 @@ export class SocialController {
   @Get('notifications')
   async notifications(@Auth() auth: AuthContext, @Query() query: NotificationQuery) {
     const { rows } = await this.db.query(
-      `SELECT id::int, kind, title, body, data, read_at AS "readAt", created_at AS "createdAt"
-         FROM notifications WHERE user_id = $1 AND ($2::bigint IS NULL OR id < $2) ORDER BY id DESC LIMIT 31`,
+      // Keep `id` uncast and the ORDER BY qualified. A bare ORDER BY binds to an output column of
+      // the same name first, so selecting `id::int` (as this once did) sorted by that expression
+      // instead of the column: notifications_user_id_id_idx lost its ordering and this read the
+      // user's whole history on each page.
+      `SELECT id, kind, title, body, data, read_at AS "readAt", created_at AS "createdAt"
+         FROM notifications WHERE user_id = $1 AND ($2::bigint IS NULL OR id < $2) ORDER BY notifications.id DESC LIMIT 31`,
       [auth.userId, query.beforeId ?? null],
     );
     const unread = await this.db.one<{ n: number }>(

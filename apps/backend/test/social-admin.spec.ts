@@ -165,6 +165,42 @@ describe('reviews, chat, notifications, partner home and admin operations', () =
       expect((await as(customer).get('/v1/notifications')).body.unreadCount).toBe(0);
     });
 
+    it('message and notification ids past the 32-bit limit still list, paginate and mark read', async () => {
+      // These ids are bigint. They used to be handed to the apps as `id::int`, which Postgres
+      // refuses above 2,147,483,647 — every chat and notification call would have started failing
+      // with "integer out of range" once the sequence got there.
+      const INT4_MAX = 2_147_483_647;
+      const TABLES = ['messages', 'notifications'];
+      // reset() truncates but leaves sequences where they are, so put them back: a later test that
+      // expects small ids should not quietly inherit these.
+      const restore = () =>
+        Promise.all(TABLES.map((t2) => t.db.query(`SELECT setval(pg_get_serial_sequence($1, 'id'), 1, false)`, [t2])));
+      for (const table of TABLES) {
+        await t.db.query(`SELECT setval(pg_get_serial_sequence($1, 'id'), $2)`, [table, INT4_MAX]);
+      }
+      try {
+        const conv = (await as(customer).post('/v1/conversations', { vendorId }).expect(201)).body;
+        const sent = (await as(customer).post(`/v1/conversations/${conv.id}/messages`, { body: 'Hello' }).expect(201)).body;
+        expect(sent.id).toBeGreaterThan(INT4_MAX);
+        expect(Number.isSafeInteger(sent.id)).toBe(true);
+
+        const page = (await as(customer).get(`/v1/conversations/${conv.id}/messages`).expect(200)).body;
+        expect(page.items.map((m: { id: number }) => m.id)).toEqual([sent.id]);
+        // beforeId pagination carries one of these ids back and must still be understood.
+        const older = (await as(customer).get(`/v1/conversations/${conv.id}/messages?beforeId=${sent.id}`).expect(200)).body;
+        expect(older.items).toEqual([]);
+
+        await booking(); // makes notifications for both sides
+        const list = (await as(customer).get('/v1/notifications').expect(200)).body;
+        expect(list.items[0].id).toBeGreaterThan(INT4_MAX);
+        expect(list.unreadCount).toBe(2);
+        await as(customer).post('/v1/notifications/read', { ids: [list.items[0].id] }).expect(204);
+        expect((await as(customer).get('/v1/notifications')).body.unreadCount).toBe(1);
+      } finally {
+        await restore();
+      }
+    });
+
     it('a push token belongs to the last user who logged in on that phone', async () => {
       const token = 'fcm-token-abcdefghijk';
       await as(customer).post('/v1/devices', { fcmToken: token, platform: 'android' }).expect(204);

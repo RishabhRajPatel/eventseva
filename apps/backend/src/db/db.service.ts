@@ -7,6 +7,13 @@ import { currentActor, currentRequestId } from './actor';
 // by the server's time zone, and an event day must never move.
 types.setTypeParser(types.builtins.DATE, (v) => v);
 
+// `bigint` comes back as a JS number instead of a string, so message and notification ids stay the
+// numbers the apps expect. pg hands int8 over as a string because it can out-range a double; these
+// are sequence ids, exact well past 2^53 (nine quadrillion) — the ids that were cast to int4 to get
+// a number would have failed with "integer out of range" at 2,147,483,647, which is reachable.
+// Every sum() and count() in this codebase is already cast, so nothing else changes shape.
+types.setTypeParser(types.builtins.INT8, (v) => Number(v));
+
 /** Anything that can run a query: the pool, or a client inside a transaction. */
 export interface Queryable {
   query<T extends QueryResultRow = any>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }>;

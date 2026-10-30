@@ -132,7 +132,7 @@ export class AdminExtrasController {
   async audit(@Query() q: AuditQuery) {
     const page = q.page ?? 1;
     const { rows } = await this.db.query(
-      `SELECT l.id::int, l.action, l.target_type AS "targetType", l.target_id AS "targetId", l.before, l.after, l.created_at AS "createdAt",
+      `SELECT l.id, l.action, l.target_type AS "targetType", l.target_id AS "targetId", l.before, l.after, l.created_at AS "createdAt",
               a.id AS "adminId", a.email AS "adminEmail", a.role AS "adminRole"
          FROM admin_audit_log l JOIN admin_users a ON a.id = l.admin_id
         WHERE ($1::text IS NULL OR l.target_type = $1) AND ($2::text IS NULL OR l.target_id = $2)

@@ -149,7 +149,7 @@ export class AdminOpsController {
   @Get('alerts')
   async alerts() {
     const { rows } = await this.db.query(
-      `SELECT al.id::int, al.kind, al.message, al.data, al.created_at AS "createdAt", al.resolved_at AS "resolvedAt", a.email AS "resolvedBy"
+      `SELECT al.id, al.kind, al.message, al.data, al.created_at AS "createdAt", al.resolved_at AS "resolvedAt", a.email AS "resolvedBy"
          FROM system_alerts al LEFT JOIN admin_users a ON a.id = al.resolved_by
         ORDER BY (al.resolved_at IS NULL) DESC, al.id DESC LIMIT 50`,
     );
@@ -162,7 +162,7 @@ export class AdminOpsController {
   async resolveAlert(@Admin() admin: AdminContext, @Param('id', ParseIntPipe) id: number) {
     const row = await this.db.one(
       this.db,
-      `UPDATE system_alerts SET resolved_at = now(), resolved_by = $2 WHERE id = $1 AND resolved_at IS NULL RETURNING id::int`,
+      `UPDATE system_alerts SET resolved_at = now(), resolved_by = $2 WHERE id = $1 AND resolved_at IS NULL RETURNING id`,
       [id, admin.adminId],
     );
     if (!row) throw new AppError('NOT_FOUND', 'Alert not found or already resolved.', HttpStatus.NOT_FOUND);
