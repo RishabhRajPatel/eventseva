@@ -84,6 +84,7 @@ The source of truth is the controllers in `apps/backend/src/**/*.controller.ts`,
 | `DELETE /v1/me` | `{confirm: 'DELETE'}` → 204. Deletes the account (Google Play requirement). `ACCOUNT_HAS_ACTIVE_BOOKINGS` 409 (with `bookings` count), `ACCOUNT_HAS_PENDING_PAYOUT` 409 |
 | `GET /v1/cities` | `{items: City[]}` (only Prayagraj for now) |
 | `GET /v1/categories` | `{items: Category[], language}`, active categories in admin order. Today: DJ & Sound, Lighting & Decoration, Cook & Catering, Bartan & Kitchen Equipment, Tent & Furniture, Wedding & Event Planners, Photography & Entertainment. Draw `icon` (one of `CATEGORY_ICONS` in `@eventseva/core`, unknown → `other`); never hard-code slugs, because admins add categories |
+| `GET /v1/packages?eventType=` | No login. `{items: Package[], language}`: EventSeva's own packages, which may span several vendors. Each has its `services` (title, vendor, price, `mandatory`), a `discountPercent` and `available`. **`available: false` means one part is no longer bookable — grey the package out rather than letting the checkout fail.** Book it by sending every service as a checkout line with `bundleId` |
 
 ## Customer app
 
@@ -497,11 +498,17 @@ A booking's snapshot keeps `plan`, `eventType` and `questions: {version, fields}
 | `POST /v1/admin/bookings/:id/refund` | finance | `{amountPaise, reason, fromVendorPayout?}`: partial refund of any amount up to what is left (`REFUND_TOO_HIGH` with `maxPaise`). With `fromVendorPayout`, the vendor's payout is cut by the same amount (`PAYOUT_ALREADY_PAID` if already sent, `NO_VENDOR_PAYOUT` if the booking is not confirmed or completed). A payout cut to ₹0 is not created |
 | `GET /v1/admin/cities` · `POST` · `PATCH /:id` | super | `{name, nameHi, state}`; new cities start hidden; `{isActive}` shows or hides; `LAST_CITY` |
 | `GET /v1/admin/audit?action=&targetType=&targetId=&adminId=&page=` | super | 50 per page, newest first, plus `admins` for the filter |
+| `GET /v1/admin/settings` | super | the money settings and who last changed them: `{settings: {advancePercent, commissionPercent, cashDuesLimitPaise, cancellation, platform}, updatedAt, updatedBy}` |
+| `PATCH /v1/admin/settings` | super + **step-up** | any of `{advancePercent, commissionPercent, cashDuesLimitPaise, cancellation, platformName, platformAddress, platformGstin}`. Bookings already made keep their own snapshot, so nothing moves retroactively. `COMMISSION_OVER_ADVANCE` 400 (the commission comes out of the advance); a bad `cancellation` is refused by the same rules as a vendor's. Written to the audit log with before and after |
+| `GET /v1/admin/overdue-returns` | all view | rentals and vehicles past `return_due_at` that are still open, oldest first: `{items: [{id, bookingType, fulfilment, returnDueAt, daysLate, depositPaise, remindedAt, vendorName, customerName, customerPhone}], heldPaise}`. Both sides are reminded once a day until the vendor closes the booking |
 | `GET /v1/admin/export/:kind?from=&to=` | by kind | CSV download. `kind`: bookings, payouts (finance), users (support), vendors (verifier, support), coupons, featured (finance). Dates are inclusive India days |
 | `GET /v1/admin/categories` | super | all categories (hidden too) with vendor counts, plus allowed `icons` and `units` |
 | `POST /v1/admin/categories` | super | `{nameEn, nameHi, icon, defaultUnit, slug?}`; added at the end. `CATEGORY_EXISTS` 409 |
 | `PATCH /v1/admin/categories/:id` | super | `{nameEn?, nameHi?, icon?, defaultUnit?, isActive?}`; hide instead of delete |
 | `PUT /v1/admin/categories/order` | super | `{ids}`: the order shown in the apps |
+| `GET /v1/admin/packages` | super | every EventSeva package, hidden ones too, each with its services and whether each is still live |
+| `POST /v1/admin/packages` | super | `{name, nameHi, eventType, description?, descriptionHi?, discountPercent?, sortOrder?, items: [{serviceId, mandatory}]}`. 2–10 services, at least one `mandatory`. `PACKAGE_UNAVAILABLE` 409 when a service is not live or its vendor is not approved |
+| `PATCH /v1/admin/packages/:id` · `DELETE /v1/admin/packages/:id` | super | same fields, all optional; DELETE hides it (bookings made from it stay) |
 
 ## Running locally
 

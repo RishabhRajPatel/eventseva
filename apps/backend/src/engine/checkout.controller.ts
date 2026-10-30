@@ -1,13 +1,78 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { Auth, AuthGuard } from '../auth/auth.guard';
 import type { AuthContext } from '../auth/token.service';
 import { AppError } from '../common/errors';
+import { PublicCache } from '../common/cache';
+import { pickLanguage } from '../catalog/catalog.controller';
+import { EVENT_TYPES } from '../bookings/booking.rules';
 import { PartnerAppGuard } from '../partner/partner.controller';
 import { BookingsService } from '../bookings/bookings.service';
+import { Admin, AdminContext, AdminGuard, AdminRoles } from '../admin/admin-auth';
 import { CheckoutService, MAX_CHECKOUT_ITEMS } from './checkout.service';
 import { EngineRequestDto } from './engine.controller';
+
+class PackageQuery {
+  @IsOptional() @IsIn(EVENT_TYPES) eventType?: string;
+}
+
+class PackageDto {
+  @IsString() @Length(2, 80) name: string;
+  @IsString() @Length(2, 80) nameHi: string;
+  @IsIn(EVENT_TYPES) eventType: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) description?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) descriptionHi?: string | null;
+  @IsOptional() @IsInt() @Min(0) @Max(50) discountPercent?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1000) sortOrder?: number;
+  @IsArray() @ArrayMinSize(2) @ArrayMaxSize(MAX_CHECKOUT_ITEMS) @ValidateNested({ each: true }) @Type(() => BundleItemDto) items: BundleItemDto[];
+}
+
+class UpdatePackageDto {
+  @IsOptional() @IsString() @Length(2, 80) name?: string;
+  @IsOptional() @IsString() @Length(2, 80) nameHi?: string;
+  @IsOptional() @IsIn(EVENT_TYPES) eventType?: string;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) description?: string | null;
+  @IsOptional() @ValidateIf((_o, v) => v !== null) @IsString() @MaxLength(500) descriptionHi?: string | null;
+  @IsOptional() @IsInt() @Min(0) @Max(50) discountPercent?: number;
+  @IsOptional() @IsInt() @Min(0) @Max(1000) sortOrder?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @IsArray() @ArrayMinSize(2) @ArrayMaxSize(MAX_CHECKOUT_ITEMS) @ValidateNested({ each: true }) @Type(() => BundleItemDto) items?: BundleItemDto[];
+}
+
+/**
+ * EventSeva's curated packages: a set of services from several vendors, booked together. They use
+ * the same rows and the same checkout as a vendor's own bundle — what makes one ours is that it has
+ * no vendor of its own.
+ */
+@UseGuards(AdminGuard)
+@AdminRoles('super')
+@Controller('v1/admin/packages')
+export class AdminPackagesController {
+  constructor(private readonly checkout: CheckoutService) {}
+
+  @Get()
+  list() {
+    return this.checkout.adminPackages();
+  }
+
+  @Post()
+  create(@Admin() admin: AdminContext, @Body() body: PackageDto) {
+    return this.checkout.createPackage(admin.adminId, body);
+  }
+
+  @Patch(':id')
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdatePackageDto) {
+    return this.checkout.updatePackage(id, body);
+  }
+
+  /** Hidden rather than deleted: bookings made from it point at it. */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id', ParseUUIDPipe) id: string) {
+    await this.checkout.updatePackage(id, { isActive: false });
+  }
+}
 
 class BundleItemDto {
   @IsUUID() serviceId: string;
@@ -79,6 +144,17 @@ export class CheckoutController {
   @Get('vendors/:id/bundles')
   async bundles(@Param('id', ParseUUIDPipe) id: string) {
     return { items: await this.checkout.publicBundles(id) };
+  }
+
+  /**
+   * EventSeva's own packages, which may span several vendors. No login: this is part of the
+   * catalogue. `available: false` means one of the parts is not bookable, so the app should grey
+   * the package out instead of letting the checkout fail.
+   */
+  @PublicCache(60)
+  @Get('packages')
+  packages(@Query() query: PackageQuery, @Headers('accept-language') acceptLanguage?: string) {
+    return this.checkout.publicPackages(query.eventType, pickLanguage(acceptLanguage));
   }
 
   @UseGuards(AuthGuard)

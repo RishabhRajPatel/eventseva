@@ -3,6 +3,7 @@
 // lifecycle (accept → pay → confirm → complete, cancel, expire, refunds, payouts) carries on, with the
 // engine's holds renewed, activated and released at each step.
 import { CashService } from '../bookings/cash.service';
+import { SettingsService } from '../admin/settings.service';
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppConfig, CONFIG } from '../config';
 import { CloudinaryService } from '../media/cloudinary.service';
@@ -60,6 +61,7 @@ export class EngineService {
     @Inject(CONFIG) private readonly config: AppConfig,
     private readonly cloudinary: CloudinaryService,
     private readonly cash: CashService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** Everything needed to price and hold one request. Throws clear errors for anything not bookable. */
@@ -213,7 +215,8 @@ export class EngineService {
     if (taxPaise) lines.push({ code: 'tax', label: `GST ${p.taxPercent}%`, qty: 1, unitPaise: taxPaise, amountPaise: taxPaise, kind: 'tax' });
     const total = subtotal + taxPaise;
     const r = ctx.rules;
-    const advance = total === 0 ? 0 : r.advance?.fixedPaise ? Math.min(r.advance.fixedPaise, total) : Math.round((total * (r.advance?.percent ?? this.config.advancePercent)) / 100);
+    const s = await this.settings.get();
+    const advance = total === 0 ? 0 : r.advance?.fixedPaise ? Math.min(r.advance.fixedPaise, total) : Math.round((total * (r.advance?.percent ?? s.advancePercent)) / 100);
     const deposit = plan.depositPaise + (r.deposit?.fixedPaise && ctx.type !== 'transport' ? r.deposit.fixedPaise : 0) + (r.deposit?.percent ? Math.round((subtotal * r.deposit.percent) / 100) : 0);
     if (deposit) lines.push({ code: 'deposit', label: 'Refundable security deposit', qty: 1, unitPaise: deposit, amountPaise: deposit, kind: 'deposit' });
 
@@ -236,7 +239,7 @@ export class EngineService {
       approval: priceKind === 'indicative' ? 'vendor' : (r.approval ?? 'vendor'),
       notes: [...plan.notes, ...(r.instructions ? [r.instructions] : [])],
     };
-    return { quote, plan, loaded, commissionPaise: Math.round((subtotal * this.config.commissionPercent) / 100), addonRows };
+    return { quote, plan, loaded, commissionPaise: Math.round((subtotal * s.commissionPercent) / 100), addonRows };
   }
 
   /** Customers and vendors may hold a self-drive car only with a valid licence and the minimum age. */

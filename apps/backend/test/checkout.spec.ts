@@ -23,6 +23,7 @@ describe('checkout and bundles', () => {
   const as = (token: string) => ({
     get: (url: string) => t.http().get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string, body: object = {}) => t.http().post(url).set('Authorization', `Bearer ${token}`).send(body),
+    delete: (url: string) => t.http().delete(url).set('Authorization', `Bearer ${token}`),
   });
   const vendor = async (phone: string, slug: string) => {
     const token = (await t.login(phone, 'partner')).body.accessToken;
@@ -69,6 +70,114 @@ describe('checkout and bundles', () => {
     expect(r1.body.bookings.map((b: { status: string }) => b.status)).toEqual(['requested', 'requested']);
     expect((await t.db.query('SELECT 1 FROM bookings WHERE group_id = $1', [r1.body.id])).rowCount).toBe(2);
     await as(other.token).get(`/v1/checkouts/${r1.body.id}`).expect(404);
+  });
+
+  describe('EventSeva packages (several vendors, curated by an admin)', () => {
+    /** A decorator and a DJ, each with one service — the two halves of a wedding package. */
+    const parts = async () => {
+      const decor = await vendor('9811111111', 'decor');
+      const dj = await vendor('9822222222', 'dj');
+      return { decor, dj, decorSvc: await service(decor.token, 'Mandap', 3_000_000), djSvc: await service(dj.token, 'DJ night', 2_000_000) };
+    };
+    const pkgBody = (decorSvc: string, djSvc: string, extra: object = {}) => ({
+      name: 'Full wedding', nameHi: 'पूरी शादी', eventType: 'wedding', discountPercent: 10,
+      items: [{ serviceId: decorSvc, mandatory: true }, { serviceId: djSvc, mandatory: true }], ...extra,
+    });
+
+    it('an admin curates one across vendors; customers see it with its parts and price', async () => {
+      const { decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      const pkg = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201)).body;
+      expect(pkg).toMatchObject({ name: 'Full wedding', nameHi: 'पूरी शादी', eventType: 'wedding', discountPercent: 10 });
+
+      // No login needed: packages are catalogue.
+      const list = (await t.http().get('/v1/packages').expect(200)).body;
+      expect(list.items).toHaveLength(1);
+      expect(list.items[0]).toMatchObject({ name: 'Full wedding', available: true, discountPercent: 10 });
+      expect(list.items[0].services.map((s: { vendorName: string }) => s.vendorName).sort()).toEqual(['decor 111', 'dj 222']);
+
+      // Hindi gets the Hindi name, and the occasion filter works.
+      expect((await t.http().get('/v1/packages').set('Accept-Language', 'hi').expect(200)).body.items[0].name).toBe('पूरी शादी');
+      expect((await t.http().get('/v1/packages?eventType=birthday').expect(200)).body.items).toEqual([]);
+    });
+
+    it('books every vendor in one go, with the package discount, or none of them', async () => {
+      const { decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      const pkg = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201)).body;
+      const c = await customer('9833333333');
+      const items = [line(c.eventId, decorSvc, '10:00', '23:00'), line(c.eventId, djSvc, '18:00', '23:00', { occasion: 'sangeet' })];
+
+      // 10 % off ₹50,000.
+      const q = (await as(c.token).post('/v1/checkouts/quote', { bundleId: pkg.id, items }).expect(200)).body;
+      expect(q.totalPaise).toBe(4_500_000);
+
+      // Leaving out a required part is refused before anything is booked.
+      const err = (await as(c.token).post('/v1/checkouts', { bundleId: pkg.id, items: [items[0]] }).expect(400)).body.error;
+      expect(err).toMatchObject({ code: 'BUNDLE_INCOMPLETE', missing: [djSvc] });
+      expect((await t.db.query('SELECT 1 FROM bookings')).rowCount).toBe(0);
+
+      const made = (await as(c.token).post('/v1/checkouts', { bundleId: pkg.id, items }).expect(201)).body;
+      expect(made.bookings).toHaveLength(2);
+      // Two different vendors, one checkout.
+      expect(new Set(made.bookings.map((b: { vendorId: string }) => b.vendorId)).size).toBe(2);
+      expect(made.bookings.reduce((s: number, b: { amountPaise: number }) => s + b.amountPaise, 0)).toBe(4_500_000);
+    });
+
+    it('a package whose vendor is no longer live cannot be booked, and says so before checkout', async () => {
+      const { dj, decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      const pkg = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201)).body;
+
+      // The DJ is put on hold by an admin.
+      await t.db.query(`UPDATE vendors SET status = 'on_hold' WHERE id = $1`, [dj.id]);
+      expect((await t.http().get('/v1/packages').expect(200)).body.items[0].available).toBe(false);
+
+      const c = await customer('9833333333');
+      const items = [line(c.eventId, decorSvc, '10:00', '23:00'), line(c.eventId, djSvc, '18:00', '23:00', { occasion: 'sangeet' })];
+      const err = (await as(c.token).post('/v1/checkouts', { bundleId: pkg.id, items }).expect(409)).body.error;
+      expect(err).toMatchObject({ code: 'PACKAGE_UNAVAILABLE', unavailable: [djSvc] });
+      expect((await t.db.query('SELECT 1 FROM bookings')).rowCount).toBe(0);
+    });
+
+    it('only a super admin curates them, and every part must be live when it is made', async () => {
+      const { dj, decorSvc, djSvc } = await parts();
+      const support = await t.adminLogin('support', 'support@eventseva.test');
+      await as(support).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(403);
+      await t.http().get('/v1/admin/packages').expect(401);
+
+      const admin = await t.adminLogin('super');
+      // A package of one service is not a package; and something has to be required.
+      await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc, { items: [{ serviceId: decorSvc, mandatory: true }] })).expect(400);
+      await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc, {
+        items: [{ serviceId: decorSvc, mandatory: false }, { serviceId: djSvc, mandatory: false }],
+      })).expect(400);
+
+      // A service from a vendor who is not approved cannot go in.
+      await t.db.query(`UPDATE vendors SET status = 'pending' WHERE id = $1`, [dj.id]);
+      const err = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(409)).body.error;
+      expect(err).toMatchObject({ code: 'PACKAGE_UNAVAILABLE', unavailable: [djSvc] });
+    });
+
+    it('hiding one takes it off the app but leaves the bookings made from it', async () => {
+      const { decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      const pkg = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201)).body;
+      const c = await customer('9833333333');
+      const items = [line(c.eventId, decorSvc, '10:00', '23:00'), line(c.eventId, djSvc, '18:00', '23:00', { occasion: 'sangeet' })];
+      const made = (await as(c.token).post('/v1/checkouts', { bundleId: pkg.id, items }).expect(201)).body;
+
+      await as(admin).delete(`/v1/admin/packages/${pkg.id}`).expect(204);
+      expect((await t.http().get('/v1/packages').expect(200)).body.items).toEqual([]);
+      // The admin list still shows it, and the bookings are untouched.
+      expect((await as(admin).get('/v1/admin/packages').expect(200)).body.items[0]).toMatchObject({ id: pkg.id, isActive: false });
+      expect((await as(c.token).get(`/v1/checkouts/${made.id}`).expect(200)).body.bookings).toHaveLength(2);
+      // It cannot be booked again.
+      const c2 = await customer('9844444444');
+      await as(c2.token).post('/v1/checkouts', {
+        bundleId: pkg.id, items: [line(c2.eventId, decorSvc, '10:00', '23:00'), line(c2.eventId, djSvc, '18:00', '23:00', { occasion: 'sangeet' })],
+      }).expect(404);
+    });
   });
 
   it('one checkout is for one event, and up to 10 lines', async () => {

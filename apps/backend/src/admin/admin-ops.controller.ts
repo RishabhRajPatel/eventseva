@@ -145,6 +145,26 @@ export class AdminOpsController {
     };
   }
 
+  /**
+   * Rentals and vehicles that should already be back, latest first. Until one is closed its stock
+   * cannot be re-let and the customer's deposit stays held, so support chases these by hand.
+   */
+  @Get('overdue-returns')
+  async overdueReturns() {
+    const { rows } = await this.db.query(
+      `SELECT b.id, b.booking_type AS "bookingType", b.fulfilment, b.return_due_at AS "returnDueAt",
+              b.deposit_paise AS "depositPaise", b.overdue_reminded_at AS "remindedAt",
+              (EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int AS "daysLate",
+              v.id AS "vendorId", v.business_name AS "vendorName",
+              cu.name AS "customerName", cu.phone AS "customerPhone"
+         FROM bookings b JOIN vendors v ON v.id = b.vendor_id JOIN users cu ON cu.id = b.customer_id
+        WHERE b.booking_type IN ('rental', 'transport') AND b.status = 'confirmed'
+          AND b.fulfilment <> 'closed' AND b.return_due_at < now()
+        ORDER BY b.return_due_at LIMIT 200`,
+    );
+    return { items: rows, heldPaise: rows.reduce((s: number, r: { depositPaise: number }) => s + r.depositPaise, 0) };
+  }
+
   /** Problems the system raised (SMS budget …), newest first; open ones first. */
   @Get('alerts')
   async alerts() {

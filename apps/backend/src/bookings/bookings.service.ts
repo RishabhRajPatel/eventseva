@@ -16,6 +16,7 @@ import type { PricingUnit } from '../vendors/vendor.queries';
 import { enginePayBy } from '../engine/engine.service';
 import { releaseAll, renewAll, Unavailable } from '../engine/reservations';
 import { CashService } from './cash.service';
+import { SettingsService } from '../admin/settings.service';
 import { daysBefore, refundPercentFrom } from '../engine/rules';
 import type { BookingTypeKey, CancellationPolicy, Need } from '../engine/types';
 import {
@@ -156,6 +157,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     private readonly fulfilment: FulfilmentService,
     private readonly trips: TripService,
     private readonly cash: CashService,
+    private readonly settings: SettingsService,
   ) {}
 
   onModuleInit() {
@@ -246,7 +248,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           });
         }
       }
-      const money = priceBooking(item.price_paise, quantity, this.config.advancePercent, this.config.commissionPercent);
+      const s = await this.settings.get();
+      const money = priceBooking(item.price_paise, quantity, s.advancePercent, s.commissionPercent);
       if (money.amountPaise > MAX_BOOKING_PAISE) throw new AppError('AMOUNT_TOO_HIGH', 'Please split this into smaller bookings.');
       assertExpectedTotal(body.expectedTotalPaise, money.amountPaise);
 
@@ -834,8 +837,9 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const tax = snap.tax ? Math.round((subtotal * snap.tax) / 100) : 0;
     const total = subtotal + tax;
     if (total > MAX_BOOKING_PAISE) throw new AppError('AMOUNT_TOO_HIGH', 'Please split this into smaller bookings.');
-    const advance = total === 0 ? 0 : snap.advance?.fixedPaise ? Math.min(snap.advance.fixedPaise, total) : Math.round((total * (snap.advance?.percent ?? this.config.advancePercent)) / 100);
-    const commission = Math.round((subtotal * this.config.commissionPercent) / 100);
+    const s = await this.settings.get();
+    const advance = total === 0 ? 0 : snap.advance?.fixedPaise ? Math.min(snap.advance.fixedPaise, total) : Math.round((total * (snap.advance?.percent ?? s.advancePercent)) / 100);
+    const commission = Math.round((subtotal * s.commissionPercent) / 100);
     await q.query(
       `UPDATE bookings SET amount_paise = $2, advance_paise = $3, commission_paise = $4, tax_paise = $5,
               snapshot = jsonb_set(snapshot, '{accepted}', $6::jsonb) WHERE id = $1`,
@@ -962,7 +966,7 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    * row up again. Done separately, a booking could end up expired with its capacity still held and
    * nobody told, and nothing would ever retry it: the claim no longer matches.
    */
-  async sweep(now = new Date()): Promise<{ expired: number; completed: number; reminded: number }> {
+  async sweep(now = new Date()): Promise<{ expired: number; completed: number; reminded: number; overdue: number }> {
     // Requests the vendor never answered.
     let expired = await this.drain<{ id: string; customer_id: string; vendor_id: string; day: string }>(
       (client, limit) =>
@@ -1078,7 +1082,43 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     );
     await this.trips.remindUnassigned();
     const reminded = await this.sendReminders(now);
-    return { expired, completed, reminded };
+    const overdue = await this.remindOverdueReturns();
+    return { expired, completed, reminded, overdue };
+  }
+
+  /**
+   * Rentals and vehicles that should already be back. Both sides hear once a day until the vendor
+   * closes the booking, because until then the stock cannot be re-let and the deposit stays held.
+   */
+  async remindOverdueReturns(): Promise<number> {
+    return this.drain<{ id: string; customer_id: string; vendor_user_id: string; business_name: string; return_due_at: Date; days: number }>(
+      (client, limit) =>
+        client.query(
+          `UPDATE bookings b SET overdue_reminded_at = now()
+             FROM vendors v
+            WHERE v.id = b.vendor_id AND b.id IN (
+                    SELECT id FROM bookings
+                     WHERE booking_type IN ('rental', 'transport') AND status = 'confirmed' AND fulfilment <> 'closed'
+                       AND return_due_at < now()
+                       AND (overdue_reminded_at IS NULL OR overdue_reminded_at < now() - interval '24 hours')
+                     ORDER BY return_due_at LIMIT $1 FOR UPDATE SKIP LOCKED)
+            RETURNING b.id, b.customer_id, v.user_id AS vendor_user_id, v.business_name, b.return_due_at,
+                      GREATEST(1, (EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int) AS days`,
+          [limit],
+        ),
+      async (client, b) => {
+        const late = b.days === 1 ? '1 day' : `${b.days} days`;
+        const lateHi = b.days === 1 ? '1 दिन' : `${b.days} दिन`;
+        await notify(client, b.customer_id, 'return_overdue', {
+          en: { title: 'Return is late', body: `Your booking with ${b.business_name} was due back ${late} ago. Please return it to get your deposit back.` },
+          hi: { title: 'वापसी में देरी', body: `${b.business_name} की बुकिंग ${lateHi} पहले वापस होनी थी। डिपॉज़िट वापस पाने के लिए इसे लौटा दें।` },
+        }, { bookingId: b.id }, 'customer');
+        await notify(client, b.vendor_user_id, 'return_overdue', {
+          en: { title: 'Item still out', body: `This booking was due back ${late} ago. Collect it and close the booking so the stock is free again.` },
+          hi: { title: 'सामान अभी बाहर है', body: `यह बुकिंग ${lateHi} पहले वापस होनी थी। इसे लेकर बुकिंग बंद करें, ताकि स्टॉक फिर उपलब्ध हो।` },
+        }, { bookingId: b.id }, 'partner');
+      },
+    );
   }
 
   /** The customer changed the venue: vendors with an open booking for this event hear about it. */
@@ -1153,46 +1193,53 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
     const istHour = Number(new Date(now.getTime() + 5.5 * 3600_000).toISOString().slice(11, 13));
     if (istHour < REMINDER_HOUR_IST) return 0;
     const tomorrow = new Date(Date.parse(`${todayIst(now)}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
-    const { rows } = await this.db.query<{
+    // Claimed and sent in one transaction, like the rest of the sweep: marking a booking reminded
+    // and then failing to send would lose that reminder for good.
+    return this.drain<{
       id: string; customer_id: string; vendor_user_id: string; slot: Slot; details: { arriveBy?: string | null };
       business_name: string; event_title: string; venue_address: string | null; venue_lat: string | null; venue_lng: string | null;
       lat: string | null; lng: string | null;
     }>(
-      `UPDATE bookings b SET reminder_sent_at = now()
-         FROM events e, vendors v
-        WHERE e.id = b.event_id AND v.id = b.vendor_id AND b.status = 'confirmed' AND b.reminder_sent_at IS NULL AND b.day = $1
-        RETURNING b.id, b.customer_id, v.user_id AS vendor_user_id, b.slot, b.details, v.business_name, e.title AS event_title,
-                  e.venue_address, e.venue_lat, e.venue_lng, v.lat, v.lng`,
-      [tomorrow],
+      (client, limit) =>
+        client.query(
+          `UPDATE bookings b SET reminder_sent_at = now()
+             FROM events e, vendors v
+            WHERE e.id = b.event_id AND v.id = b.vendor_id AND b.id IN (
+                    SELECT id FROM bookings
+                     WHERE status = 'confirmed' AND reminder_sent_at IS NULL AND day = $1
+                     ORDER BY id LIMIT $2 FOR UPDATE SKIP LOCKED)
+            RETURNING b.id, b.customer_id, v.user_id AS vendor_user_id, b.slot, b.details, v.business_name, e.title AS event_title,
+                      e.venue_address, e.venue_lat, e.venue_lng, v.lat, v.lng`,
+          [tomorrow, limit],
+        ),
+      async (client, r) => {
+        const trip = travelBetween(pointOf(r.lat, r.lng), pointOf(r.venue_lat, r.venue_lng));
+        const arrive = r.details?.arriveBy ? timeLabel(r.details.arriveBy) : null;
+        const noPin = !r.venue_lat;
+        await notify(client, r.customer_id, 'booking_reminder', {
+          en: {
+            title: `Tomorrow: ${r.business_name}`,
+            body: `${SLOT_TEXT.en[r.slot]} booking tomorrow.` + (noPin ? ' Add your venue location so the vendor can find you easily.' : ' The vendor has your venue details.'),
+          },
+          hi: {
+            title: `कल: ${r.business_name}`,
+            body: `कल ${SLOT_TEXT.hi[r.slot]} की बुकिंग है।` + (noPin ? ' वेन्यू की लोकेशन जोड़ें, ताकि वेंडर आसानी से पहुँच सकें।' : ' वेंडर के पास आपके वेन्यू की जानकारी है।'),
+          },
+        }, { bookingId: r.id }, 'customer');
+        await notify(client, r.vendor_user_id, 'booking_reminder', {
+          en: {
+            title: `Tomorrow: ${r.event_title}`,
+            body: [r.venue_address ? `At ${r.venue_address}.` : 'Ask the customer for the venue address.',
+              trip ? `About ${trip.roadKm} km, ${trip.minutes} min.` : '', arrive ? `Reach by ${arrive}.` : ''].filter(Boolean).join(' '),
+          },
+          hi: {
+            title: `कल: ${r.event_title}`,
+            body: [r.venue_address ? `पता: ${r.venue_address}।` : 'ग्राहक से वेन्यू का पता पूछ लें।',
+              trip ? `लगभग ${trip.roadKm} किमी, ${trip.minutes} मिनट।` : '', arrive ? `${arrive} तक पहुँचें।` : ''].filter(Boolean).join(' '),
+          },
+        }, { bookingId: r.id }, 'partner');
+      },
     );
-    for (const r of rows) {
-      const trip = travelBetween(pointOf(r.lat, r.lng), pointOf(r.venue_lat, r.venue_lng));
-      const arrive = r.details?.arriveBy ? timeLabel(r.details.arriveBy) : null;
-      const noPin = !r.venue_lat;
-      await notify(this.db, r.customer_id, 'booking_reminder', {
-        en: {
-          title: `Tomorrow: ${r.business_name}`,
-          body: `${SLOT_TEXT.en[r.slot]} booking tomorrow.` + (noPin ? ' Add your venue location so the vendor can find you easily.' : ' The vendor has your venue details.'),
-        },
-        hi: {
-          title: `कल: ${r.business_name}`,
-          body: `कल ${SLOT_TEXT.hi[r.slot]} की बुकिंग है।` + (noPin ? ' वेन्यू की लोकेशन जोड़ें, ताकि वेंडर आसानी से पहुँच सकें।' : ' वेंडर के पास आपके वेन्यू की जानकारी है।'),
-        },
-      }, { bookingId: r.id }, 'customer');
-      await notify(this.db, r.vendor_user_id, 'booking_reminder', {
-        en: {
-          title: `Tomorrow: ${r.event_title}`,
-          body: [r.venue_address ? `At ${r.venue_address}.` : 'Ask the customer for the venue address.',
-            trip ? `About ${trip.roadKm} km, ${trip.minutes} min.` : '', arrive ? `Reach by ${arrive}.` : ''].filter(Boolean).join(' '),
-        },
-        hi: {
-          title: `कल: ${r.event_title}`,
-          body: [r.venue_address ? `पता: ${r.venue_address}।` : 'ग्राहक से वेन्यू का पता पूछ लें।',
-            trip ? `लगभग ${trip.roadKm} किमी, ${trip.minutes} मिनट।` : '', arrive ? `${arrive} तक पहुँचें।` : ''].filter(Boolean).join(' '),
-        },
-      }, { bookingId: r.id }, 'partner');
-    }
-    return rows.length;
   }
 
   // ---------- helpers ----------

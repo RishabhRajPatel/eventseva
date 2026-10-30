@@ -18,11 +18,24 @@ export interface BundleInput {
 }
 
 interface BundleRow {
+  /** null for an EventSeva package, which is not owned by any one vendor. */
+  vendor_id: string | null;
   id: string;
-  vendor_id: string;
   discount_percent: number;
   items: { serviceId: string; mandatory: boolean }[];
 }
+
+/** What an admin sends when curating an EventSeva package. */
+export interface AdminPackageInput extends BundleInput {
+  nameHi?: string;
+  descriptionHi?: string | null;
+  eventType?: string;
+  sortOrder?: number;
+}
+
+const PACKAGE_COLUMNS = `b.id, b.name, b.name_hi AS "nameHi", b.description, b.description_hi AS "descriptionHi",
+  b.event_type AS "eventType", b.discount_percent AS "discountPercent", b.items, b.sort_order AS "sortOrder",
+  b.is_active AS "isActive", b.created_at AS "createdAt"`;
 
 const BUNDLE_COLUMNS = `b.id, b.name, b.description, b.discount_percent AS "discountPercent", b.items, b.is_active AS "isActive", b.created_at AS "createdAt"`;
 
@@ -99,6 +112,103 @@ export class CheckoutService {
     return rows;
   }
 
+  // ---------- EventSeva packages (admin-curated, across vendors) ----------
+
+  /** Every service in an EventSeva package must be live and belong to an approved vendor. */
+  private async assertVendorsLive(q: Queryable, serviceIds: string[]) {
+    const { rows } = await this.db.query<{ id: string }>(
+      `SELECT s.id FROM services s JOIN vendors v ON v.id = s.vendor_id
+        WHERE s.id = ANY($1::uuid[]) AND s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved'`,
+      [serviceIds],
+    );
+    const live = new Set(rows.map((r) => r.id));
+    const gone = serviceIds.filter((id) => !live.has(id));
+    if (gone.length) {
+      throw new AppError('PACKAGE_UNAVAILABLE', 'Part of this package is not available right now. Please pick the services yourself.',
+        HttpStatus.CONFLICT, { unavailable: gone });
+    }
+  }
+
+  private async checkPackageItems(items: { serviceId: string; mandatory: boolean }[]) {
+    if (items.length < 2 || items.length > MAX_CHECKOUT_ITEMS) throw new AppError('VALIDATION', `A package has 2 to ${MAX_CHECKOUT_ITEMS} services.`, HttpStatus.BAD_REQUEST, { field: 'items' });
+    if (new Set(items.map((i) => i.serviceId)).size !== items.length) throw new AppError('VALIDATION', 'Each service once, please.', HttpStatus.BAD_REQUEST, { field: 'items' });
+    if (!items.some((i) => i.mandatory)) throw new AppError('VALIDATION', 'Mark at least one service as part of every booking.', HttpStatus.BAD_REQUEST, { field: 'items' });
+    await this.assertVendorsLive(this.db, items.map((i) => i.serviceId));
+  }
+
+  /** Admin: every package, live or not. */
+  async adminPackages() {
+    const { rows } = await this.db.query(
+      `SELECT ${PACKAGE_COLUMNS},
+              (SELECT json_agg(json_build_object('serviceId', s.id, 'title', s.title, 'vendorId', v.id, 'vendorName', v.business_name,
+                                                 'pricePaise', s.price_paise, 'live', s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved'))
+                 FROM services s JOIN vendors v ON v.id = s.vendor_id
+                WHERE s.id = ANY(ARRAY(SELECT jsonb_array_elements(b.items)->>'serviceId')::uuid[])) AS services
+         FROM service_bundles b WHERE b.vendor_id IS NULL ORDER BY b.is_active DESC, b.sort_order, b.created_at`,
+    );
+    return { items: rows };
+  }
+
+  async createPackage(adminId: string, body: AdminPackageInput & { name: string; nameHi: string; eventType: string; items: { serviceId: string; mandatory: boolean }[] }) {
+    await this.checkPackageItems(body.items);
+    return this.db.one(
+      this.db,
+      `INSERT INTO service_bundles (vendor_id, name, name_hi, description, description_hi, event_type, discount_percent, items, sort_order, created_by)
+       VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
+      [body.name.trim(), body.nameHi.trim(), body.description?.trim() || null, body.descriptionHi?.trim() || null,
+        body.eventType, body.discountPercent ?? 0, JSON.stringify(body.items), body.sortOrder ?? 0, adminId],
+    );
+  }
+
+  async updatePackage(id: string, body: AdminPackageInput) {
+    if (body.items) await this.checkPackageItems(body.items);
+    const row = await this.db.one(
+      this.db,
+      `UPDATE service_bundles SET name = COALESCE($2, name), name_hi = COALESCE($3, name_hi),
+              description = CASE WHEN $4 THEN $5 ELSE description END,
+              description_hi = CASE WHEN $6 THEN $7 ELSE description_hi END,
+              event_type = COALESCE($8, event_type), discount_percent = COALESCE($9, discount_percent),
+              items = COALESCE($10, items), sort_order = COALESCE($11, sort_order), is_active = COALESCE($12, is_active)
+        WHERE id = $1 AND vendor_id IS NULL
+        RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
+      [id, body.name?.trim() ?? null, body.nameHi?.trim() ?? null,
+        body.description !== undefined, body.description?.trim() || null,
+        body.descriptionHi !== undefined, body.descriptionHi?.trim() || null,
+        body.eventType ?? null, body.discountPercent ?? null,
+        body.items ? JSON.stringify(body.items) : null, body.sortOrder ?? null, body.isActive ?? null],
+    );
+    if (!row) throw new AppError('NOT_FOUND', 'Package not found.', HttpStatus.NOT_FOUND);
+    return row;
+  }
+
+  /**
+   * Customers browsing packages. Each one carries what it is made of and whether every part is
+   * bookable right now, so the app can grey out a package instead of failing at checkout.
+   */
+  async publicPackages(eventType: string | undefined, lang: 'en' | 'hi') {
+    const { rows } = await this.db.query(
+      `SELECT b.id, ${lang === 'hi' ? 'b.name_hi' : 'b.name'} AS name, ${lang === 'hi' ? 'b.description_hi' : 'b.description'} AS description,
+              b.event_type AS "eventType", b.discount_percent AS "discountPercent",
+              (SELECT json_agg(json_build_object('serviceId', s.id, 'title', s.title, 'vendorName', v.business_name,
+                                                 'pricePaise', s.price_paise, 'unit', s.unit,
+                                                 'mandatory', (i->>'mandatory')::boolean) ORDER BY s.title)
+                 FROM jsonb_array_elements(b.items) i
+                 JOIN services s ON s.id = (i->>'serviceId')::uuid
+                 JOIN vendors v ON v.id = s.vendor_id) AS services,
+              -- Every part has to be live, or the package cannot be booked as one.
+              NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements(b.items) i
+                 WHERE NOT EXISTS (
+                   SELECT 1 FROM services s JOIN vendors v ON v.id = s.vendor_id
+                    WHERE s.id = (i->>'serviceId')::uuid AND s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved')) AS available
+         FROM service_bundles b
+        WHERE b.vendor_id IS NULL AND b.is_active AND ($1::text IS NULL OR b.event_type = $1)
+        ORDER BY b.sort_order, b.created_at`,
+      [eventType ?? null],
+    );
+    return { items: rows, language: lang };
+  }
+
   // ---------- checkout ----------
 
   /** Which items get the bundle discount; refuses a bundle with a mandatory service missing. */
@@ -106,14 +216,18 @@ export class CheckoutService {
     if (!bundleId) return null;
     const b = await this.db.one<BundleRow>(
       q,
-      `SELECT b.id, b.vendor_id, b.discount_percent, b.items FROM service_bundles b JOIN vendors v ON v.id = b.vendor_id
-        WHERE b.id = $1 AND b.is_active AND v.status = 'approved'`,
+      // LEFT JOIN: an EventSeva package has no vendor of its own, so there is nothing to approve.
+      `SELECT b.id, b.vendor_id, b.discount_percent, b.items FROM service_bundles b LEFT JOIN vendors v ON v.id = b.vendor_id
+        WHERE b.id = $1 AND b.is_active AND (b.vendor_id IS NULL OR v.status = 'approved')`,
       [bundleId],
     );
     if (!b) throw new AppError('BUNDLE_NOT_FOUND', 'This package is not offered any more.', HttpStatus.NOT_FOUND);
     const chosen = new Set(items.map((i) => i.serviceId));
     const missing = b.items.filter((i) => i.mandatory && !chosen.has(i.serviceId)).map((i) => i.serviceId);
     if (missing.length) throw new AppError('BUNDLE_INCOMPLETE', 'This package needs all its included services booked together.', HttpStatus.BAD_REQUEST, { missing });
+    // An EventSeva package spans vendors, so "the vendor is approved" has to be asked of each one.
+    // A vendor bundle was already checked through its own vendor in the query above.
+    if (b.vendor_id === null) await this.assertVendorsLive(q, b.items.map((i) => i.serviceId));
     return { id: b.id, percent: b.discount_percent, services: new Set(b.items.map((i) => i.serviceId)) };
   }
 

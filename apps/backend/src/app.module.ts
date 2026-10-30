@@ -11,6 +11,7 @@ import { Db } from './db/db.service';
 import { AuthController } from './auth/auth.controller';
 import { AuthGuard } from './auth/auth.guard';
 import { ConsoleOtpSender, OTP_SENDER } from './auth/otp-sender';
+import { Msg91OtpSender } from './auth/msg91-sender';
 import { OtpService } from './auth/otp.service';
 import { TokenService } from './auth/token.service';
 import { MeController } from './me/me.controller';
@@ -47,7 +48,7 @@ import { HandoverCodes } from './engine/handover-code';
 import { TripService } from './engine/trip.service';
 import { ChangesService } from './engine/changes.service';
 import { CheckoutService } from './engine/checkout.service';
-import { CheckoutController, PartnerBundlesController } from './engine/checkout.controller';
+import { AdminPackagesController, CheckoutController, PartnerBundlesController } from './engine/checkout.controller';
 import { ChangesController, PartnerChangesController } from './engine/changes.controller';
 import { AdminLicencesController, PartnerTripController, TripController } from './engine/trip.controller';
 import { AdminResourcesController, AdminServiceConfigController, PartnerEngineCatalogController, PublicEngineServicesController } from './engine/catalog.controller';
@@ -59,6 +60,8 @@ import { createGateway, PAYMENT_GATEWAY } from './payments/gateway';
 import { InvoicesService } from './payments/invoices.service';
 import { AdminInvoicesController, InvoicesController, PartnerInvoicesController } from './payments/invoices.controller';
 import { AdminReportsController } from './admin/reports.controller';
+import { AdminSettingsController } from './admin/settings.controller';
+import { SettingsService } from './admin/settings.service';
 
 @Controller()
 class HealthController {
@@ -123,10 +126,12 @@ class ConfigModule {}
     PartnerChangesController,
     PartnerBundlesController,
     CheckoutController,
+    AdminPackagesController,
     InvoicesController,
     PartnerInvoicesController,
     AdminInvoicesController,
     AdminReportsController,
+    AdminSettingsController,
     PartnerInventoryController,
     PartnerRentalController,
     RentalsController,
@@ -136,10 +141,15 @@ class ConfigModule {}
     AdminCashController,
   ],
   providers: [
-    { provide: OTP_SENDER, useClass: ConsoleOtpSender },
+    {
+      provide: OTP_SENDER,
+      inject: [CONFIG],
+      useFactory: (config: AppConfig) => (config.msg91 ? new Msg91OtpSender(config.msg91) : new ConsoleOtpSender()),
+    },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: ActorInterceptor },
     Db,
+    SettingsService,
     OtpService,
     TokenService,
     AuthGuard,

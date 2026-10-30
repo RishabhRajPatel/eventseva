@@ -447,6 +447,45 @@ describe('rentals and inventory', () => {
       expect((await t.db.one(t.db, 'SELECT charges_paise FROM bookings WHERE id = $1', [id])).charges_paise).toBe(10_000);
     });
 
+    it('a late return chases both sides once a day, and shows up for support until it is closed', async () => {
+      const { c, id } = await setup();
+      const notices = async (phone: string) =>
+        (await t.db.query(
+          `SELECT n.kind FROM notifications n JOIN users u ON u.id = n.user_id WHERE u.phone = $1 AND n.kind = 'return_overdue'`,
+          [phone],
+        )).rowCount;
+
+      // Nothing is late yet.
+      expect(await bookings.remindOverdueReturns()).toBe(0);
+
+      // The return time passes with the booking still open.
+      await t.db.query(`UPDATE bookings SET return_due_at = now() - interval '2 days' WHERE id = $1`, [id]);
+      expect(await bookings.remindOverdueReturns()).toBe(1);
+      expect(await notices('+919833333333')).toBe(1);
+      expect(await notices('+919811111111')).toBe(1);
+
+      // Not again the same day — a late return must not become a stream of pushes.
+      expect(await bookings.remindOverdueReturns()).toBe(0);
+      expect(await notices('+919833333333')).toBe(1);
+
+      // A day later it chases again, because the item is still out.
+      await t.db.query(`UPDATE bookings SET overdue_reminded_at = now() - interval '25 hours' WHERE id = $1`, [id]);
+      expect(await bookings.remindOverdueReturns()).toBe(1);
+      expect(await notices('+919833333333')).toBe(2);
+
+      // Support can see it, with how late it is and what deposit is still held.
+      const admin = await t.adminLogin('support');
+      const list = (await as(admin).get('/v1/admin/overdue-returns').expect(200)).body;
+      expect(list.items).toHaveLength(1);
+      expect(list.items[0]).toMatchObject({ id, bookingType: 'rental', daysLate: 2, vendorName: 'Shree Tent House' });
+      expect(list.heldPaise).toBe(25_000);
+
+      // Once the vendor closes it, it stops being chased and leaves the list.
+      await t.db.query(`UPDATE bookings SET fulfilment = 'closed' WHERE id = $1`, [id]);
+      expect(await bookings.remindOverdueReturns()).toBe(0);
+      expect((await as(admin).get('/v1/admin/overdue-returns').expect(200)).body.items).toEqual([]);
+    });
+
     it('only the booking\'s own vendor can move it, and only in order', async () => {
       const { c, id, chairLine } = await setup();
       const other = await makeVendor('9822222222', 'Other Tent');

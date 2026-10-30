@@ -5,6 +5,7 @@ import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AppError } from '../common/errors';
 import { AppConfig, CONFIG } from '../config';
 import { Db, Queryable } from '../db/db.service';
+import { SettingsService } from '../admin/settings.service';
 import { notify } from '../notifications/notify';
 
 export type CashKind = 'advance' | 'balance' | 'deposit' | 'deposit_return' | 'refund';
@@ -43,6 +44,7 @@ export class CashService {
   constructor(
     private readonly db: Db,
     @Inject(CONFIG) private readonly config: AppConfig,
+    private readonly settings: SettingsService,
   ) {}
 
   /** A vendor with too much (or too old) unpaid commission cannot take new cash bookings. */
@@ -53,7 +55,7 @@ export class CashService {
       [vendorId],
     );
     const tooOld = d!.oldest && Date.now() - new Date(d!.oldest).getTime() > DUES_MAX_AGE_DAYS * 86_400_000;
-    if (d!.open > this.config.cashDuesLimitPaise || tooOld) {
+    if (d!.open > (await this.settings.get()).cashDuesLimitPaise || tooOld) {
       throw new AppError('CASH_NOT_AVAILABLE', 'This vendor cannot take cash bookings right now. Please pay online.', HttpStatus.CONFLICT);
     }
   }
@@ -185,6 +187,6 @@ export class CashService {
       [vendorUserId],
     );
     const openPaise = rows.filter((r) => r.status === 'open').reduce((a, r) => a + Number(r.remainingPaise), 0);
-    return { openPaise, limitPaise: this.config.cashDuesLimitPaise, items: rows };
+    return { openPaise, limitPaise: (await this.settings.get()).cashDuesLimitPaise, items: rows };
   }
 }

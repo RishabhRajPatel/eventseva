@@ -2,7 +2,7 @@
 
 # EventSeva database tables
 
-57 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
+58 tables in PostgreSQL. Money is always in paise (₹1 = 100); `day` columns are India dates.
 Table descriptions come from `COMMENT ON TABLE` in the migrations.
 
 ## Contents
@@ -15,7 +15,7 @@ Table descriptions come from `COMMENT ON TABLE` in the migrations.
 - **Rental stock:** [item_categories](#item_categories), [inventory_items](#inventory_items), [booking_lines](#booking_lines), [inventory_movements](#inventory_movements)
 - **Money:** [payments](#payments), [refunds](#refunds), [payouts](#payouts), [coupons](#coupons), [coupon_redemptions](#coupon_redemptions), [featured_plans](#featured_plans), [featured_purchases](#featured_purchases)
 - **Messages, notifications and support:** [conversations](#conversations), [messages](#messages), [notifications](#notifications), [complaints](#complaints), [admin_audit_log](#admin_audit_log), [system_alerts](#system_alerts)
-- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [handover_codes](#handover_codes), [invoice_counters](#invoice_counters), [invoices](#invoices), [payment_orders](#payment_orders), [service_bundles](#service_bundles), [service_config_history](#service_config_history), [webhook_events](#webhook_events)
+- **Other:** [booking_state_history](#booking_state_history), [booking_state_moves](#booking_state_moves), [cash_receipts](#cash_receipts), [checkouts](#checkouts), [commission_dues](#commission_dues), [handover_codes](#handover_codes), [invoice_counters](#invoice_counters), [invoices](#invoices), [payment_orders](#payment_orders), [platform_settings](#platform_settings), [service_bundles](#service_bundles), [service_config_history](#service_config_history), [webhook_events](#webhook_events)
 
 ## Allowed values (enums)
 
@@ -487,6 +487,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 | `group_id` | uuid |  |  | → [checkouts](#checkouts).id; The checkout this booking was made in, with the others booked at the same time |
 | `state` | booking_state | yes |  | Lifecycle state, set by the database from status, fulfilment and disputed charges; see booking_state_moves |
 | `pay_mode` | text | yes | `'online'::text` | online: advance, balance and deposit through Razorpay. cash: everything is paid to the vendor in person; confirmed when the vendor accepts |
+| `overdue_reminded_at` | timestamp with time zone |  |  | Last time both sides were reminded that the return is late; null until the first reminder |
 
 <details><summary>Rules and indexes</summary>
 
@@ -507,6 +508,7 @@ One vendor booked for one event and slot. requested → accepted → confirmed (
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (customer_id, idempotency_key) WHERE (idempotency_key IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (vendor_id, occupy_from, occupy_until) WHERE (status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status]))`
 - Index: `CREATE UNIQUE INDEX ON bookings USING btree (event_id, vendor_id) WHERE ((status = ANY (ARRAY['requested'::booking_status, 'accepted'::booking_status, 'confirmed'::booking_status])) AND (booking_type = 'slot'::text))`
+- Index: `CREATE INDEX ON bookings USING btree (return_due_at) WHERE ((booking_type = ANY (ARRAY['rental'::text, 'transport'::text])) AND (status = 'confirmed'::booking_status) AND (fulfilment <> 'closed'::text))`
 - Index: `CREATE INDEX ON bookings USING btree (package_id) WHERE (package_id IS NOT NULL)`
 - Index: `CREATE INDEX ON bookings USING btree (day) WHERE ((status = 'confirmed'::booking_status) AND (reminder_sent_at IS NULL))`
 - Index: `CREATE INDEX ON bookings USING btree (service_id) WHERE (service_id IS NOT NULL)`
@@ -1513,6 +1515,36 @@ A Razorpay order paying several bookings of one checkout at once; payments rows 
 
 </details>
 
+### platform_settings
+
+One row (id = 1): the money and invoice settings super admins can change without a deploy
+
+| Column | Type | Required | Default | Notes |
+|---|---|---|---|---|
+| `id` | smallint | yes | `1` | primary key |
+| `advance_percent` | integer | yes |  |  |
+| `commission_percent` | integer | yes |  |  |
+| `cash_dues_limit_paise` | integer | yes |  |  |
+| `cancellation` | jsonb | yes |  | Default cancellation policy for categories that do not set their own; bookings keep their own snapshot |
+| `platform_name` | text | yes |  |  |
+| `platform_address` | text |  |  |  |
+| `platform_gstin` | text |  |  |  |
+| `updated_at` | timestamp with time zone | yes | `now()` |  |
+| `updated_by` | uuid |  |  | The admin who last saved; every change is also in admin_audit_log |
+
+<details><summary>Rules and indexes</summary>
+
+- Check: `CHECK (((advance_percent > 0) AND (advance_percent <= 100)))`
+- Check: `CHECK (((commission_percent >= 0) AND (commission_percent <= 100)))`
+- Check: `CHECK (((length(platform_name) >= 2) AND (length(platform_name) <= 120)))`
+- Check: `CHECK (((platform_address IS NULL) OR (length(platform_address) <= 300)))`
+- Check: `CHECK (((platform_gstin IS NULL) OR (platform_gstin ~ '^[0-9A-Z]{15}$'::text)))`
+- Check: `CHECK ((cash_dues_limit_paise >= 0))`
+- Check: `CHECK ((commission_percent <= advance_percent))`
+- Check: `CHECK ((id = 1))`
+
+</details>
+
 ### service_bundles
 
 A vendor's package of several services (e.g. car + decoration): mandatory items, optional discount
@@ -1520,19 +1552,28 @@ A vendor's package of several services (e.g. car + decoration): mandatory items,
 | Column | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `id` | uuid | yes | `gen_random_uuid()` | primary key |
-| `vendor_id` | uuid | yes |  | → [vendors](#vendors).id |
+| `vendor_id` | uuid |  |  | → [vendors](#vendors).id; The vendor who owns this bundle; NULL for an EventSeva package, which may span vendors |
 | `name` | text | yes |  |  |
 | `description` | text |  |  |  |
 | `discount_percent` | integer | yes | `0` |  |
 | `items` | jsonb | yes |  |  |
 | `is_active` | boolean | yes | `true` |  |
 | `created_at` | timestamp with time zone | yes | `now()` |  |
+| `name_hi` | text |  |  |  |
+| `description_hi` | text |  |  |  |
+| `event_type` | text |  |  | Occasion an EventSeva package is sold for (wedding, birthday …); NULL for vendor bundles |
+| `sort_order` | integer | yes | `0` |  |
+| `created_by` | uuid |  |  | Admin who created an EventSeva package; vendor bundles leave it NULL |
 
 <details><summary>Rules and indexes</summary>
 
+- Check: `CHECK (((description_hi IS NULL) OR (length(description_hi) <= 500)))`
 - Check: `CHECK (((discount_percent >= 0) AND (discount_percent <= 50)))`
 - Check: `CHECK (((length(name) >= 2) AND (length(name) <= 80)))`
+- Check: `CHECK (((name_hi IS NULL) OR ((length(name_hi) >= 2) AND (length(name_hi) <= 80))))`
+- Check: `CHECK (((vendor_id IS NOT NULL) OR ((name_hi IS NOT NULL) AND (event_type IS NOT NULL))))`
 - Check: `CHECK ((length(description) <= 500))`
+- Index: `CREATE INDEX ON service_bundles USING btree (event_type, sort_order) WHERE ((vendor_id IS NULL) AND is_active)`
 - Index: `CREATE INDEX ON service_bundles USING btree (vendor_id) WHERE is_active`
 
 </details>

@@ -693,6 +693,7 @@ CREATE TABLE public.bookings (
     group_id uuid,
     state public.booking_state NOT NULL,
     pay_mode text DEFAULT 'online'::text NOT NULL,
+    overdue_reminded_at timestamp with time zone,
     CONSTRAINT bookings_check CHECK (((service_id IS NOT NULL) OR (package_id IS NOT NULL))),
     CONSTRAINT bookings_deposit_paise_check CHECK ((deposit_paise >= 0)),
     CONSTRAINT bookings_discount_paise_check CHECK ((discount_paise >= 0)),
@@ -789,6 +790,12 @@ COMMENT ON COLUMN public.bookings.state IS 'Lifecycle state, set by the database
 --
 
 COMMENT ON COLUMN public.bookings.pay_mode IS 'online: advance, balance and deposit through Razorpay. cash: everything is paid to the vendor in person; confirmed when the vendor accepts';
+
+--
+-- Name: COLUMN bookings.overdue_reminded_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.bookings.overdue_reminded_at IS 'Last time both sides were reminded that the return is late; null until the first reminder';
 
 --
 -- Name: capacity_holds; Type: TABLE; Schema: public; Owner: -
@@ -1793,6 +1800,49 @@ COMMENT ON TABLE public.payouts IS 'What EventSeva owes a vendor for a completed
 COMMENT ON COLUMN public.payouts.dues_deducted_paise IS 'Commission owed on cash bookings taken off this payout';
 
 --
+-- Name: platform_settings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.platform_settings (
+    id smallint DEFAULT 1 NOT NULL,
+    advance_percent integer NOT NULL,
+    commission_percent integer NOT NULL,
+    cash_dues_limit_paise integer NOT NULL,
+    cancellation jsonb NOT NULL,
+    platform_name text NOT NULL,
+    platform_address text,
+    platform_gstin text,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by uuid,
+    CONSTRAINT commission_within_advance CHECK ((commission_percent <= advance_percent)),
+    CONSTRAINT platform_settings_advance_percent_check CHECK (((advance_percent > 0) AND (advance_percent <= 100))),
+    CONSTRAINT platform_settings_cash_dues_limit_paise_check CHECK ((cash_dues_limit_paise >= 0)),
+    CONSTRAINT platform_settings_commission_percent_check CHECK (((commission_percent >= 0) AND (commission_percent <= 100))),
+    CONSTRAINT platform_settings_id_check CHECK ((id = 1)),
+    CONSTRAINT platform_settings_platform_address_check CHECK (((platform_address IS NULL) OR (length(platform_address) <= 300))),
+    CONSTRAINT platform_settings_platform_gstin_check CHECK (((platform_gstin IS NULL) OR (platform_gstin ~ '^[0-9A-Z]{15}$'::text))),
+    CONSTRAINT platform_settings_platform_name_check CHECK (((length(platform_name) >= 2) AND (length(platform_name) <= 120)))
+);
+
+--
+-- Name: TABLE platform_settings; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON TABLE public.platform_settings IS 'One row (id = 1): the money and invoice settings super admins can change without a deploy';
+
+--
+-- Name: COLUMN platform_settings.cancellation; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.platform_settings.cancellation IS 'Default cancellation policy for categories that do not set their own; bookings keep their own snapshot';
+
+--
+-- Name: COLUMN platform_settings.updated_by; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.platform_settings.updated_by IS 'The admin who last saved; every change is also in admin_audit_log';
+
+--
 -- Name: refunds; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1943,16 +1993,24 @@ COMMENT ON TABLE public.service_addons IS 'Optional extras a vendor offers (car 
 
 CREATE TABLE public.service_bundles (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
-    vendor_id uuid NOT NULL,
+    vendor_id uuid,
     name text NOT NULL,
     description text,
     discount_percent integer DEFAULT 0 NOT NULL,
     items jsonb NOT NULL,
     is_active boolean DEFAULT true NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
+    name_hi text,
+    description_hi text,
+    event_type text,
+    sort_order integer DEFAULT 0 NOT NULL,
+    created_by uuid,
+    CONSTRAINT admin_package_is_bilingual CHECK (((vendor_id IS NOT NULL) OR ((name_hi IS NOT NULL) AND (event_type IS NOT NULL)))),
     CONSTRAINT service_bundles_description_check CHECK ((length(description) <= 500)),
+    CONSTRAINT service_bundles_description_hi_check CHECK (((description_hi IS NULL) OR (length(description_hi) <= 500))),
     CONSTRAINT service_bundles_discount_percent_check CHECK (((discount_percent >= 0) AND (discount_percent <= 50))),
-    CONSTRAINT service_bundles_name_check CHECK (((length(name) >= 2) AND (length(name) <= 80)))
+    CONSTRAINT service_bundles_name_check CHECK (((length(name) >= 2) AND (length(name) <= 80))),
+    CONSTRAINT service_bundles_name_hi_check CHECK (((name_hi IS NULL) OR ((length(name_hi) >= 2) AND (length(name_hi) <= 80))))
 );
 
 --
@@ -1960,6 +2018,24 @@ CREATE TABLE public.service_bundles (
 --
 
 COMMENT ON TABLE public.service_bundles IS 'A vendor''s package of several services (e.g. car + decoration): mandatory items, optional discount';
+
+--
+-- Name: COLUMN service_bundles.vendor_id; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.service_bundles.vendor_id IS 'The vendor who owns this bundle; NULL for an EventSeva package, which may span vendors';
+
+--
+-- Name: COLUMN service_bundles.event_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.service_bundles.event_type IS 'Occasion an EventSeva package is sold for (wedding, birthday …); NULL for vendor bundles';
+
+--
+-- Name: COLUMN service_bundles.created_by; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.service_bundles.created_by IS 'Admin who created an EventSeva package; vendor bundles leave it NULL';
 
 --
 -- Name: service_config_history; Type: TABLE; Schema: public; Owner: -
@@ -2854,6 +2930,13 @@ ALTER TABLE ONLY public.payouts
     ADD CONSTRAINT payouts_razorpay_transfer_id_key UNIQUE (razorpay_transfer_id);
 
 --
+-- Name: platform_settings platform_settings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.platform_settings
+    ADD CONSTRAINT platform_settings_pkey PRIMARY KEY (id);
+
+--
 -- Name: refunds refunds_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -3098,6 +3181,12 @@ CREATE INDEX bookings_occupy_idx ON public.bookings USING btree (vendor_id, occu
 --
 
 CREATE UNIQUE INDEX bookings_one_open_per_event_vendor ON public.bookings USING btree (event_id, vendor_id) WHERE ((status = ANY (ARRAY['requested'::public.booking_status, 'accepted'::public.booking_status, 'confirmed'::public.booking_status])) AND (booking_type = 'slot'::text));
+
+--
+-- Name: bookings_overdue_return_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX bookings_overdue_return_idx ON public.bookings USING btree (return_due_at) WHERE ((booking_type = ANY (ARRAY['rental'::text, 'transport'::text])) AND (status = 'confirmed'::public.booking_status) AND (fulfilment <> 'closed'::text));
 
 --
 -- Name: bookings_package_id_idx; Type: INDEX; Schema: public; Owner: -
@@ -3470,6 +3559,12 @@ CREATE INDEX reviews_vendor_id_created_at_idx ON public.reviews USING btree (ven
 --
 
 CREATE INDEX service_addons_vendor_idx ON public.service_addons USING btree (vendor_id);
+
+--
+-- Name: service_bundles_admin_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX service_bundles_admin_idx ON public.service_bundles USING btree (event_type, sort_order) WHERE ((vendor_id IS NULL) AND is_active);
 
 --
 -- Name: service_bundles_vendor_idx; Type: INDEX; Schema: public; Owner: -

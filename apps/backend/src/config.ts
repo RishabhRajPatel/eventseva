@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { parseServiceAccount, type ServiceAccount } from './push/push-sender';
+import { parseMsg91, type Msg91Config } from './auth/msg91-sender';
 
 export const CONFIG = Symbol('CONFIG');
 
@@ -9,6 +10,8 @@ export interface AppConfig {
   jwtSecret: string;
   otpPepper: string;
   otpProvider: string;
+  /** Set when OTP_PROVIDER=msg91; the credentials that class needs. */
+  msg91?: Msg91Config;
   reviewPhone?: string;
   reviewOtp?: string;
   rateLimitPerMin: number;
@@ -95,6 +98,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (isProduction && otpProvider === 'console') {
     throw new Error('OTP_PROVIDER=console is for development only');
   }
+  if (!['console', 'msg91'].includes(otpProvider)) {
+    throw new Error(`OTP_PROVIDER must be console or msg91 (got "${otpProvider}")`);
+  }
+  // Read at boot, so a missing key stops the server rather than the first login of the day.
+  const msg91 = otpProvider === 'msg91' ? parseMsg91(env) : undefined;
 
   const advancePercent = Number(env.ADVANCE_PERCENT || 25);
   const commissionPercent = Number(env.COMMISSION_PERCENT || 10);
@@ -118,6 +126,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     jwtSecret,
     otpPepper,
     otpProvider,
+    msg91,
     reviewPhone: env.REVIEW_PHONE || undefined,
     reviewOtp: env.REVIEW_OTP || undefined,
     rateLimitPerMin: Number(env.RATE_LIMIT_PER_MIN || 100),
