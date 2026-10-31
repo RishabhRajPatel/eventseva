@@ -1103,7 +1103,8 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
                        AND (overdue_reminded_at IS NULL OR overdue_reminded_at < now() - interval '24 hours')
                      ORDER BY return_due_at LIMIT $1 FOR UPDATE SKIP LOCKED)
             RETURNING b.id, b.customer_id, v.user_id AS vendor_user_id, v.business_name, b.return_due_at,
-                      GREATEST(1, (EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int) AS days`,
+                      -- Whole days late, floored: 1.6 days is "1 day", not "2". Never 0.
+                      GREATEST(1, floor(EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int) AS days`,
           [limit],
         ),
       async (client, b) => {

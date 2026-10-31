@@ -132,7 +132,7 @@ describe('engine booking rules', () => {
     const item = { vendorId: 'v1', vendorName: 'Shree Ram', serviceTitle: 'Thali', request: { eventId: 'e1', serviceId: 's1', startsAt: '' } };
     expect(cart.add(item)).toBe('added');
     expect(cart.add({ ...item, request: { ...item.request, eventId: 'e2' } })).toBe('otherEvent');
-    cart.setBundle({ id: 'bd1', vendorId: 'v1', name: 'Wedding', discountPercent: 10 });
+    cart.setBundle({ id: 'bd1', vendorId: 'v1', name: 'Wedding', discountPercent: 10, serviceIds: [] });
     cart.remove(cart.get().items[0].key);
     expect(cart.get()).toEqual({ items: [], bundle: null });
   });

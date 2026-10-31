@@ -52,6 +52,11 @@ export class PartnerHomeController {
       `SELECT v.status, v.rating_avg::float AS "ratingAvg", v.rating_count AS "ratingCount",
               (SELECT count(*)::int FROM bookings WHERE vendor_id = v.id AND status = 'requested' AND respond_by > now()) AS "newRequests",
               (SELECT count(*)::int FROM bookings WHERE vendor_id = v.id AND status = 'accepted') AS "awaitingPayment",
+              -- Rentals and vehicles this vendor should already have back; until one is closed its
+              -- stock cannot be re-let and the customer's deposit stays held.
+              (SELECT count(*)::int FROM bookings
+                WHERE vendor_id = v.id AND booking_type IN ('rental', 'transport') AND status = 'confirmed'
+                  AND fulfilment <> 'closed' AND return_due_at < now()) AS "overdueReturns",
               (SELECT count(*)::int FROM bookings WHERE vendor_id = v.id AND status IN ('confirmed', 'completed')
                   AND to_char(day, 'YYYY-MM') = $2) AS "monthBookings",
               (SELECT COALESCE(sum(advance_paise - commission_paise), 0)::int FROM bookings WHERE vendor_id = v.id

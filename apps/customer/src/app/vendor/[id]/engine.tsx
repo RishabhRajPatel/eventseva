@@ -231,7 +231,7 @@ function BookForm({ vendorId, vendorName, services, events, initialService, bund
       const b = cart.get().bundle;
       if (!b) void api.bundles(vendorId).then((r) => {
         const found = r.items.find((x) => x.id === bundleId);
-        if (found) cart.setBundle({ id: found.id, vendorId, name: found.name, discountPercent: found.discountPercent });
+        if (found) cart.setBundle({ id: found.id, vendorId, name: found.name, discountPercent: found.discountPercent, serviceIds: found.items.map((i) => i.serviceId) });
       });
     }
     toast.success(t('cart.added', { name: s.title }));

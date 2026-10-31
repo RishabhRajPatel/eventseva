@@ -27,6 +27,7 @@ const dashboard: PartnerDashboard = {
   ratingCount: 12,
   newRequests: 2,
   awaitingPayment: 1,
+  overdueReturns: 0,
   monthBookings: 7,
   monthEarningsPaise: 4_500_000,
   pendingPayoutPaise: 320_000,

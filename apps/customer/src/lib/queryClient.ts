@@ -20,6 +20,7 @@ export const keys = {
   notifications: ['notifications'] as const,
   complaints: ['complaints'] as const,
   offers: ['offers'] as const,
+  packages: ['packages'] as const,
 };
 
 export function makeQueryClient() {

@@ -10,6 +10,8 @@ export const isVendorMissing = (e: unknown) => e instanceof ApiError && (e.statu
 /** Error codes we explain in the app's own words (and language). */
 const KNOWN: Record<string, string> = {
   NETWORK: 'errors.network',
+  PACKAGE_UNAVAILABLE: 'errors.packageUnavailable',
+  COMMISSION_OVER_ADVANCE: 'errors.commissionOverAdvance',
   SLOT_TAKEN: 'errors.slotTaken',
   DATE_TOO_FAR: 'errors.dateTooFar',
   PROGRESS_NOT_ALLOWED: 'errors.progressNotAllowed',

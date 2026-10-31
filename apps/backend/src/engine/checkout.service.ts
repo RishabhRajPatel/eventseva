@@ -149,36 +149,71 @@ export class CheckoutService {
     return { items: rows };
   }
 
-  async createPackage(adminId: string, body: AdminPackageInput & { name: string; nameHi: string; eventType: string; items: { serviceId: string; mandatory: boolean }[] }) {
-    await this.checkPackageItems(body.items);
-    return this.db.one(
-      this.db,
-      `INSERT INTO service_bundles (vendor_id, name, name_hi, description, description_hi, event_type, discount_percent, items, sort_order, created_by)
-       VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
-      [body.name.trim(), body.nameHi.trim(), body.description?.trim() || null, body.descriptionHi?.trim() || null,
-        body.eventType, body.discountPercent ?? 0, JSON.stringify(body.items), body.sortOrder ?? 0, adminId],
+  /** Services an admin can put in a package: live ones, from approved vendors, searchable by name. */
+  async packageableServices(q: string | undefined) {
+    const { rows } = await this.db.query(
+      `SELECT s.id, s.title, s.price_paise AS "pricePaise", s.booking_type AS "bookingType",
+              v.id AS "vendorId", v.business_name AS "vendorName", c.name_en AS "category"
+         FROM services s JOIN vendors v ON v.id = s.vendor_id JOIN categories c ON c.id = v.category_id
+        WHERE s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved'
+          AND ($1::text IS NULL OR s.title ILIKE '%' || $1 || '%' OR v.business_name ILIKE '%' || $1 || '%')
+        ORDER BY v.business_name, s.title LIMIT 50`,
+      [q?.trim().replace(/[%_\\]/g, '\\$&') || null],
+    );
+    return { items: rows };
+  }
+
+  /**
+   * A package decides what customers are offered and at what discount, so — like categories,
+   * coupons and the platform settings — every change is written to the audit log with its before
+   * and after, inside the same transaction as the change itself.
+   */
+  private async auditPackage(q: Queryable, adminId: string, action: string, id: string, before: object | null, after: object | null) {
+    await q.query(
+      `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, before, after) VALUES ($1, $2, 'package', $3, $4, $5)`,
+      [adminId, action, id, before, after],
     );
   }
 
-  async updatePackage(id: string, body: AdminPackageInput) {
+  async createPackage(adminId: string, body: AdminPackageInput & { name: string; nameHi: string; eventType: string; items: { serviceId: string; mandatory: boolean }[] }) {
+    await this.checkPackageItems(body.items);
+    return this.db.tx(async (client) => {
+      const row = await this.db.one<{ id: string } & Record<string, unknown>>(
+        client,
+        `INSERT INTO service_bundles (vendor_id, name, name_hi, description, description_hi, event_type, discount_percent, items, sort_order, created_by)
+         VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
+        [body.name.trim(), body.nameHi.trim(), body.description?.trim() || null, body.descriptionHi?.trim() || null,
+          body.eventType, body.discountPercent ?? 0, JSON.stringify(body.items), body.sortOrder ?? 0, adminId],
+      );
+      await this.auditPackage(client, adminId, 'package.create', row!.id, null, row!);
+      return row;
+    });
+  }
+
+  async updatePackage(adminId: string, id: string, body: AdminPackageInput) {
     if (body.items) await this.checkPackageItems(body.items);
-    const row = await this.db.one(
-      this.db,
-      `UPDATE service_bundles SET name = COALESCE($2, name), name_hi = COALESCE($3, name_hi),
-              description = CASE WHEN $4 THEN $5 ELSE description END,
-              description_hi = CASE WHEN $6 THEN $7 ELSE description_hi END,
-              event_type = COALESCE($8, event_type), discount_percent = COALESCE($9, discount_percent),
-              items = COALESCE($10, items), sort_order = COALESCE($11, sort_order), is_active = COALESCE($12, is_active)
-        WHERE id = $1 AND vendor_id IS NULL
-        RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
-      [id, body.name?.trim() ?? null, body.nameHi?.trim() ?? null,
-        body.description !== undefined, body.description?.trim() || null,
-        body.descriptionHi !== undefined, body.descriptionHi?.trim() || null,
-        body.eventType ?? null, body.discountPercent ?? null,
-        body.items ? JSON.stringify(body.items) : null, body.sortOrder ?? null, body.isActive ?? null],
-    );
-    if (!row) throw new AppError('NOT_FOUND', 'Package not found.', HttpStatus.NOT_FOUND);
-    return row;
+    return this.db.tx(async (client) => {
+      // Locked, so two admins editing the same package cannot both read the same "before".
+      const before = await this.db.one(client, `SELECT ${PACKAGE_COLUMNS} FROM service_bundles b WHERE b.id = $1 AND b.vendor_id IS NULL FOR UPDATE`, [id]);
+      if (!before) throw new AppError('NOT_FOUND', 'Package not found.', HttpStatus.NOT_FOUND);
+      const row = await this.db.one(
+        client,
+        `UPDATE service_bundles SET name = COALESCE($2, name), name_hi = COALESCE($3, name_hi),
+                description = CASE WHEN $4 THEN $5 ELSE description END,
+                description_hi = CASE WHEN $6 THEN $7 ELSE description_hi END,
+                event_type = COALESCE($8, event_type), discount_percent = COALESCE($9, discount_percent),
+                items = COALESCE($10, items), sort_order = COALESCE($11, sort_order), is_active = COALESCE($12, is_active)
+          WHERE id = $1 AND vendor_id IS NULL
+          RETURNING ${PACKAGE_COLUMNS.replace(/\bb\./g, '')}`,
+        [id, body.name?.trim() ?? null, body.nameHi?.trim() ?? null,
+          body.description !== undefined, body.description?.trim() || null,
+          body.descriptionHi !== undefined, body.descriptionHi?.trim() || null,
+          body.eventType ?? null, body.discountPercent ?? null,
+          body.items ? JSON.stringify(body.items) : null, body.sortOrder ?? null, body.isActive ?? null],
+      );
+      await this.auditPackage(client, adminId, 'package.update', id, before, row!);
+      return row;
+    });
   }
 
   /**
@@ -187,21 +222,30 @@ export class CheckoutService {
    */
   async publicPackages(eventType: string | undefined, lang: 'en' | 'hi') {
     const { rows } = await this.db.query(
+      // One pass over each package's services: the list the app shows and whether all of it is
+      // bookable come from the same join. Checking availability separately read every service and
+      // vendor a second time.
       `SELECT b.id, ${lang === 'hi' ? 'b.name_hi' : 'b.name'} AS name, ${lang === 'hi' ? 'b.description_hi' : 'b.description'} AS description,
               b.event_type AS "eventType", b.discount_percent AS "discountPercent",
-              (SELECT json_agg(json_build_object('serviceId', s.id, 'title', s.title, 'vendorName', v.business_name,
-                                                 'pricePaise', s.price_paise, 'unit', s.unit,
-                                                 'mandatory', (i->>'mandatory')::boolean) ORDER BY s.title)
-                 FROM jsonb_array_elements(b.items) i
-                 JOIN services s ON s.id = (i->>'serviceId')::uuid
-                 JOIN vendors v ON v.id = s.vendor_id) AS services,
-              -- Every part has to be live, or the package cannot be booked as one.
-              NOT EXISTS (
-                SELECT 1 FROM jsonb_array_elements(b.items) i
-                 WHERE NOT EXISTS (
-                   SELECT 1 FROM services s JOIN vendors v ON v.id = s.vendor_id
-                    WHERE s.id = (i->>'serviceId')::uuid AND s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved')) AS available
+              -- Always a list, never null: a package pointing at a service row that no longer
+              -- exists aggregates to null, and the apps would crash reading it before they ever
+              -- saw that it is unavailable.
+              COALESCE(p.services, '[]'::json) AS services,
+              -- Bookable only when every part is live AND none has gone missing from the catalogue
+              -- (the join would quietly drop a deleted service, so the count is checked too).
+              COALESCE(p.all_live AND p.found = jsonb_array_length(b.items), false) AS available
          FROM service_bundles b
+         LEFT JOIN LATERAL (
+           SELECT json_agg(json_build_object('serviceId', s.id, 'title', s.title,
+                                             'vendorId', v.id, 'vendorName', v.business_name,
+                                             'pricePaise', s.price_paise, 'unit', s.unit,
+                                             'mandatory', (i->>'mandatory')::boolean) ORDER BY s.title) AS services,
+                  bool_and(s.is_active AND s.admin_disabled_at IS NULL AND v.status = 'approved') AS all_live,
+                  count(*) AS found
+             FROM jsonb_array_elements(b.items) i
+             JOIN services s ON s.id = (i->>'serviceId')::uuid
+             JOIN vendors v ON v.id = s.vendor_id
+         ) p ON true
         WHERE b.vendor_id IS NULL AND b.is_active AND ($1::text IS NULL OR b.event_type = $1)
         ORDER BY b.sort_order, b.created_at`,
       [eventType ?? null],

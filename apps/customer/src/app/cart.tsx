@@ -21,7 +21,7 @@ import { EmptyState } from '../components/States';
 import { useToast } from '../components/Toast';
 
 export default function CartScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { lang } = useLanguage();
   const qc = useQueryClient();
   const toast = useToast();
@@ -34,12 +34,34 @@ export default function CartScreen() {
     enabled: items.length > 0,
     retry: false,
   });
-  // A package needs its "always included" services in the same checkout.
-  const bundleInfo = useQuery({ queryKey: ['bundles', bundle?.vendorId], queryFn: () => api.bundles(bundle!.vendorId), enabled: !!bundle });
-  const bundleServices = useQuery({ queryKey: ['engineServices', bundle?.vendorId], queryFn: () => api.engineServices(bundle!.vendorId), enabled: !!bundle });
-  const bundleItems = bundleInfo.data?.items.find((b) => b.id === bundle?.id)?.items ?? [];
+  // A package needs its "always included" services in the same checkout. A vendor's bundle is read
+  // from that vendor; an EventSeva package spans vendors, so it comes from the packages catalogue
+  // and each missing service carries the vendor whose screen opens it.
+  const isCurated = bundle?.vendorId === null;
+  const vendorBundle = useQuery({
+    queryKey: ['bundles', bundle?.vendorId],
+    queryFn: () => api.bundles(bundle!.vendorId!),
+    enabled: !!bundle && !isCurated,
+  });
+  const vendorServices = useQuery({
+    queryKey: ['engineServices', bundle?.vendorId],
+    queryFn: () => api.engineServices(bundle!.vendorId!),
+    enabled: !!bundle && !isCurated,
+  });
+  const curated = useQuery({ queryKey: [...keys.packages, 'all', i18n.language], queryFn: () => api.packages(), enabled: isCurated });
+  const curatedServices = curated.data?.items.find((p) => p.id === bundle?.id)?.services ?? [];
+
+  const bundleItems = isCurated
+    ? curatedServices.map((x) => ({ serviceId: x.serviceId, mandatory: x.mandatory }))
+    : (vendorBundle.data?.items.find((b) => b.id === bundle?.id)?.items ?? []);
   const missing = bundle ? missingBundleServices(bundleItems, items) : [];
-  const titleOf = (serviceId: string) => bundleServices.data?.items.find((x) => x.id === serviceId)?.title ?? t('engineBook.service');
+  const titleOf = (serviceId: string) =>
+    (isCurated
+      ? curatedServices.find((x) => x.serviceId === serviceId)?.title
+      : vendorServices.data?.items.find((x) => x.id === serviceId)?.title) ?? t('engineBook.service');
+  /** Whose booking screen to open for a service the package still needs. */
+  const vendorFor = (serviceId: string) =>
+    (isCurated ? curatedServices.find((x) => x.serviceId === serviceId)?.vendorId : bundle?.vendorId) ?? null;
   // Which line the server refused (it says itemIndex).
   const badIndex = quote.error instanceof ApiError && typeof quote.error.details.itemIndex === 'number' ? quote.error.details.itemIndex : null;
 
@@ -116,13 +138,7 @@ export default function CartScreen() {
         <Card style={styles.card}>
           <AppText variant="bold" size="sm">{t('cart.bundleMissing')}</AppText>
           {missing.map((serviceId) => (
-            <Button
-              key={serviceId}
-              label={t('cart.addService', { name: titleOf(serviceId) })}
-              variant="outline"
-              size="md"
-              onPress={() => router.push({ pathname: '/vendor/[id]/engine', params: { id: bundle.vendorId, service: serviceId, bundle: bundle.id } })}
-            />
+            <AddMissing key={serviceId} serviceId={serviceId} vendorId={vendorFor(serviceId)} bundleId={bundle.id} label={titleOf(serviceId)} />
           ))}
         </Card>
       ) : null}
@@ -159,6 +175,24 @@ export default function CartScreen() {
       ) : null}
       <Button label={t('cart.clear')} variant="dangerOutline" size="md" onPress={() => cart.clear()} />
     </Screen>
+  );
+}
+
+/**
+ * "Add <service>" for a package that is still missing one. A package service always knows its
+ * vendor; if the catalogue changed under us and it does not, nothing is offered rather than a
+ * button that opens a screen for no one.
+ */
+function AddMissing({ serviceId, vendorId, bundleId, label }: { serviceId: string; vendorId: string | null; bundleId: string; label: string }) {
+  const { t } = useTranslation();
+  if (!vendorId) return null;
+  return (
+    <Button
+      label={t('cart.addService', { name: label })}
+      variant="outline"
+      size="md"
+      onPress={() => router.push({ pathname: '/vendor/[id]/engine', params: { id: vendorId, service: serviceId, bundle: bundleId } })}
+    />
   );
 }
 

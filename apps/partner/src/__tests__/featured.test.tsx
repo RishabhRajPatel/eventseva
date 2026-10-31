@@ -160,6 +160,7 @@ describe('Featured entry points', () => {
     ratingCount: 0,
     newRequests: 0,
     awaitingPayment: 0,
+    overdueReturns: 0,
     monthBookings: 0,
     monthEarningsPaise: 0,
     pendingPayoutPaise: 0,

@@ -23,6 +23,7 @@ describe('checkout and bundles', () => {
   const as = (token: string) => ({
     get: (url: string) => t.http().get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string, body: object = {}) => t.http().post(url).set('Authorization', `Bearer ${token}`).send(body),
+    patch: (url: string, body: object = {}) => t.http().patch(url).set('Authorization', `Bearer ${token}`).send(body),
     delete: (url: string) => t.http().delete(url).set('Authorization', `Bearer ${token}`),
   });
   const vendor = async (phone: string, slug: string) => {
@@ -157,6 +158,36 @@ describe('checkout and bundles', () => {
       await t.db.query(`UPDATE vendors SET status = 'pending' WHERE id = $1`, [dj.id]);
       const err = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(409)).body.error;
       expect(err).toMatchObject({ code: 'PACKAGE_UNAVAILABLE', unavailable: [djSvc] });
+    });
+
+    it('every change is in the audit log with its before and after', async () => {
+      const { decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      const pkg = (await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201)).body;
+      await as(admin).patch(`/v1/admin/packages/${pkg.id}`, { discountPercent: 25 }).expect(200);
+      await as(admin).delete(`/v1/admin/packages/${pkg.id}`).expect(204);
+
+      const log = (await as(admin).get('/v1/admin/audit?targetType=package').expect(200)).body.items;
+      expect(log.map((l: { action: string }) => l.action)).toEqual(['package.update', 'package.update', 'package.create']);
+      // Newest first: the hide, then the discount change, then the creation.
+      expect(log[0]).toMatchObject({ targetId: pkg.id, before: { isActive: true }, after: { isActive: false } });
+      expect(log[1]).toMatchObject({ before: { discountPercent: 10 }, after: { discountPercent: 25 } });
+      expect(log[2]).toMatchObject({ before: null, after: { name: 'Full wedding' } });
+    });
+
+    it('a package pointing at a service that no longer exists still answers, greyed out', async () => {
+      const { decorSvc, djSvc } = await parts();
+      const admin = await t.adminLogin('super');
+      await as(admin).post('/v1/admin/packages', pkgBody(decorSvc, djSvc)).expect(201);
+
+      // Nothing deletes services today, but the row is not protected from it either; a package
+      // left pointing at nothing must grey out, not break the catalogue for everyone.
+      await t.db.query(`UPDATE service_bundles SET items = '[{"serviceId":"00000000-0000-0000-0000-000000000000","mandatory":true}]'::jsonb WHERE vendor_id IS NULL`);
+
+      const list = (await t.http().get('/v1/packages').expect(200)).body;
+      expect(list.items).toHaveLength(1);
+      expect(list.items[0].services).toEqual([]); // a list, never null
+      expect(list.items[0].available).toBe(false);
     });
 
     it('hiding one takes it off the app but leaves the bookings made from it', async () => {

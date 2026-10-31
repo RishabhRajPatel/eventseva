@@ -356,3 +356,60 @@ export interface CommissionDue {
   createdAt: string;
   settledAt: string | null;
 }
+
+/** GET /v1/admin/settings: the money rules a super admin changes without a deploy. */
+export interface PlatformSettings {
+  advancePercent: number;
+  commissionPercent: number;
+  cashDuesLimitPaise: number;
+  cancellation: { customer: { minDays: number; percent: number }[]; vendorPercent: number };
+  platform: { name: string; address: string | null; gstin: string | null };
+}
+
+export interface SettingsResponse {
+  settings: PlatformSettings;
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+/** GET /v1/admin/overdue-returns: rentals and vehicles that should already be back. */
+export interface OverdueReturn {
+  id: string;
+  bookingType: 'rental' | 'transport';
+  fulfilment: string;
+  returnDueAt: string;
+  daysLate: number;
+  depositPaise: number;
+  remindedAt: string | null;
+  vendorId: string;
+  vendorName: string;
+  customerName: string | null;
+  customerPhone: string;
+}
+
+/** One service inside an EventSeva package, as the admin list returns it. */
+export interface PackageService {
+  serviceId: string;
+  title: string;
+  vendorId: string;
+  vendorName: string;
+  pricePaise: number;
+  /** False when the service was switched off or its vendor is no longer approved. */
+  live: boolean;
+}
+
+/** GET /v1/admin/packages: EventSeva's own packages, which may span several vendors. */
+export interface AdminPackage {
+  id: string;
+  name: string;
+  nameHi: string;
+  description: string | null;
+  descriptionHi: string | null;
+  eventType: string;
+  discountPercent: number;
+  items: { serviceId: string; mandatory: boolean }[];
+  services: PackageService[] | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+}

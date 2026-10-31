@@ -507,8 +507,9 @@ A booking's snapshot keeps `plan`, `eventType` and `questions: {version, fields}
 | `PATCH /v1/admin/categories/:id` | super | `{nameEn?, nameHi?, icon?, defaultUnit?, isActive?}`; hide instead of delete |
 | `PUT /v1/admin/categories/order` | super | `{ids}`: the order shown in the apps |
 | `GET /v1/admin/packages` | super | every EventSeva package, hidden ones too, each with its services and whether each is still live |
+| `GET /v1/admin/packages/services?q=` | super | the picker in the package editor: up to 50 live services from approved vendors, searched by service or vendor name |
 | `POST /v1/admin/packages` | super | `{name, nameHi, eventType, description?, descriptionHi?, discountPercent?, sortOrder?, items: [{serviceId, mandatory}]}`. 2–10 services, at least one `mandatory`. `PACKAGE_UNAVAILABLE` 409 when a service is not live or its vendor is not approved |
-| `PATCH /v1/admin/packages/:id` · `DELETE /v1/admin/packages/:id` | super | same fields, all optional; DELETE hides it (bookings made from it stay) |
+| `PATCH /v1/admin/packages/:id` · `DELETE /v1/admin/packages/:id` | super | same fields, all optional; DELETE hides it (bookings made from it stay). Create, change and hide are all written to the audit log (`package.create` / `package.update`) with before and after |
 
 ## Running locally
 

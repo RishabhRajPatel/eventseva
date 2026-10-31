@@ -133,7 +133,11 @@
     "featuredBody": "Get featured: show at the top of search with a Featured badge.",
     "featuredActive": "Featured until {{day}}",
     "featuredCta": "Get featured",
-    "keepCalendar": "Keep your calendar up to date"
+    "keepCalendar": "Keep your calendar up to date",
+    "overdueTitle_one": "{{count}} return is late",
+    "overdueTitle_other": "{{count}} returns are late",
+    "overdueBody": "Collect the items and close the booking, so the stock is free again and the customer gets their deposit back.",
+    "overdueCta": "See them"
   },
   "requests": {
     "title": "Bookings",
@@ -835,7 +839,9 @@
     "cashNotInCart": "The cart is paid online. Book this item on its own to pay in cash.",
     "dueClosed": "This commission is already settled.",
     "serviceDisabled": "EventSeva took this service off the app. Contact support.",
-    "duringBreak": "You take a break then. Pick a time before or after it."
+    "duringBreak": "You take a break then. Pick a time before or after it.",
+    "packageUnavailable": "Part of this package is not available right now.",
+    "commissionOverAdvance": "The commission cannot be larger than the advance it comes out of."
   },
   "deleteAccount": {
     "menu": "Delete account",

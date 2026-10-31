@@ -13,7 +13,7 @@ import { c, radius, space } from '../../lib/theme';
 import { useCategories, useNotificationsBadge, useOffers } from '../../hooks/useCatalog';
 import { useLayout } from '../../hooks/useLayout';
 import { AppText } from '../../components/AppText';
-import { Pill, SectionTitle } from '../../components/Bits';
+import { Card, Pill, SectionTitle } from '../../components/Bits';
 import { Button, IconButton } from '../../components/Button';
 import { CategoryTile, useCategoryLabel } from '../../components/CategoryTile';
 import { OfferBanners } from '../../components/OfferBanners';
@@ -140,6 +140,17 @@ export default function HomeScreen() {
             </View>
           )}
 
+          {/* EventSeva's own packages: several vendors booked in one go. */}
+          <View style={styles.section}>
+            <SectionTitle title={t('packages.homeEntry')} action={t('home.seeAll')} onAction={() => router.push('/packages')} />
+            <Card style={styles.packageCard} onPress={() => router.push('/packages')} label={t('packages.homeEntry')}>
+              <Icon name="star" size={20} color={c.royal} />
+              <AppText size="sm" style={styles.flex}>
+                {t('packages.homeEntrySub')}
+              </AppText>
+            </Card>
+          </View>
+
           <View style={styles.section}>
             <SectionTitle title={t('home.topVendors')} action={t('home.seeAll')} onAction={() => openSearch()} />
             {top.isPending ? (
@@ -174,6 +185,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
+  packageCard: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md },
   flex: { flex: 1 },
   scroll: { paddingBottom: space.xxxl },
   header: { backgroundColor: c.royal, paddingTop: space.xxl, paddingBottom: space.xxl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl, gap: space.lg },

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import type { EventType } from '@eventseva/app-shared';
 import { useTranslation } from 'react-i18next';
 import { api } from '../lib/api';
 import { keys } from '../lib/queryClient';
@@ -18,4 +19,14 @@ export function useNotificationsBadge() {
 export function useOffers() {
   const { i18n } = useTranslation();
   return useQuery({ queryKey: [...keys.offers, i18n.language], queryFn: api.offers, staleTime: 10 * 60_000 });
+}
+
+/** EventSeva's packages for one occasion. Catalogue, so it is cached like the rest of it. */
+export function usePackages(eventType?: EventType) {
+  const { i18n } = useTranslation();
+  return useQuery({
+    queryKey: [...keys.packages, eventType ?? 'all', i18n.language],
+    queryFn: () => api.packages(eventType),
+    staleTime: 10 * 60_000,
+  });
 }

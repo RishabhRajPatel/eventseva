@@ -154,7 +154,9 @@ export class AdminOpsController {
     const { rows } = await this.db.query(
       `SELECT b.id, b.booking_type AS "bookingType", b.fulfilment, b.return_due_at AS "returnDueAt",
               b.deposit_paise AS "depositPaise", b.overdue_reminded_at AS "remindedAt",
-              (EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int AS "daysLate",
+              -- Whole days, counted the same way the reminder counts them, and never 0: a booking
+              -- in this list is already late, so "0 days late" would read as a mistake.
+              GREATEST(1, floor(EXTRACT(epoch FROM now() - b.return_due_at) / 86400)::int) AS "daysLate",
               v.id AS "vendorId", v.business_name AS "vendorName",
               cu.name AS "customerName", cu.phone AS "customerPhone"
          FROM bookings b JOIN vendors v ON v.id = b.vendor_id JOIN users cu ON cu.id = b.customer_id

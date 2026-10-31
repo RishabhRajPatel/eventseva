@@ -17,6 +17,10 @@ class PackageQuery {
   @IsOptional() @IsIn(EVENT_TYPES) eventType?: string;
 }
 
+class ServiceSearchQuery {
+  @IsOptional() @IsString() @MaxLength(60) q?: string;
+}
+
 class PackageDto {
   @IsString() @Length(2, 80) name: string;
   @IsString() @Length(2, 80) nameHi: string;
@@ -56,21 +60,27 @@ export class AdminPackagesController {
     return this.checkout.adminPackages();
   }
 
+  /** The picker in the package editor: live services from approved vendors, by name or vendor. */
+  @Get('services')
+  services(@Query() query: ServiceSearchQuery) {
+    return this.checkout.packageableServices(query.q);
+  }
+
   @Post()
   create(@Admin() admin: AdminContext, @Body() body: PackageDto) {
     return this.checkout.createPackage(admin.adminId, body);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() body: UpdatePackageDto) {
-    return this.checkout.updatePackage(id, body);
+  update(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string, @Body() body: UpdatePackageDto) {
+    return this.checkout.updatePackage(admin.adminId, id, body);
   }
 
   /** Hidden rather than deleted: bookings made from it point at it. */
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id', ParseUUIDPipe) id: string) {
-    await this.checkout.updatePackage(id, { isActive: false });
+  async remove(@Admin() admin: AdminContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.checkout.updatePackage(admin.adminId, id, { isActive: false });
   }
 }
 

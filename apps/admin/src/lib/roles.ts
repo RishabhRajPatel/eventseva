@@ -32,6 +32,9 @@ export type Section =
   | 'featured'
   | 'categories'
   | 'cities'
+  | 'packages'
+  | 'settings'
+  | 'overdue'
   | 'audit'
   | 'security';
 
@@ -59,6 +62,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'payments', href: '/payment-events', label: 'Payment events', badge: 'paymentProblems' },
   // Commission on cash bookings that vendors still owe.
   { section: 'dues', href: '/commission-dues', label: 'Commission dues' },
+  // Rentals and vehicles that should already be back; support chases these by hand.
+  { section: 'overdue', href: '/overdue-returns', label: 'Overdue returns' },
   { section: 'reports', href: '/reports', label: 'Reports' },
   { section: 'complaints', href: '/complaints', label: 'Complaints', badge: 'openComplaints' },
   { section: 'users', href: '/users', label: 'Users' },
@@ -66,6 +71,10 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { section: 'featured', href: '/featured', label: 'Featured' },
   // Super admins only: categories and cities change both apps at once.
   { section: 'categories', href: '/categories', label: 'Categories' },
+  // EventSeva's own packages, which may span several vendors.
+  { section: 'packages', href: '/packages', label: 'Packages' },
+  // Commission, advance, GST and the default cancellation policy.
+  { section: 'settings', href: '/settings', label: 'Settings' },
   { section: 'cities', href: '/cities', label: 'Cities' },
   { section: 'audit', href: '/audit', label: 'Audit log' },
   // Every admin: their own 2FA recovery codes.
@@ -74,8 +83,8 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 const SECTIONS: Record<Exclude<AdminRole, 'super'>, readonly Section[]> = {
   verifier: ['dashboard', 'vendors', 'photos', 'checks', 'security'],
-  support: ['dashboard', 'vendors', 'bookings', 'disputes', 'reports', 'complaints', 'users', 'security'],
-  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'payments', 'dues', 'reports', 'coupons', 'featured', 'security'],
+  support: ['dashboard', 'vendors', 'bookings', 'disputes', 'reports', 'complaints', 'users', 'overdue', 'security'],
+  finance: ['dashboard', 'bookings', 'payouts', 'disputes', 'refunds', 'payments', 'dues', 'reports', 'coupons', 'featured', 'overdue', 'security'],
 };
 
 export function canView(role: AdminRole, section: Section): boolean {

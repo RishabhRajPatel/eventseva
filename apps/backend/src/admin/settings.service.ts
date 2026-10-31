@@ -44,6 +44,8 @@ export class SettingsService {
   private readAt = 0;
   /** One in-flight read shared by every caller, so a cold cache cannot start a thundering herd. */
   private reading?: Promise<PlatformSettings>;
+  /** Bumped by every save, so a read that started before it cannot repopulate the stale value. */
+  private generation = 0;
 
   constructor(
     private readonly db: Db,
@@ -70,8 +72,12 @@ export class SettingsService {
   }
 
   private async read(): Promise<PlatformSettings> {
+    // A save can land while this read is in flight. Remember which generation it belongs to, so a
+    // read that started before the save does not put the old values back with a fresh timestamp —
+    // that would serve the settings the admin just replaced for another full TTL.
+    const generation = this.generation;
     const row = await this.db.one<Row>(this.db, `SELECT ${SELECT} FROM platform_settings WHERE id = 1`);
-    this.cached = row
+    const settings: PlatformSettings = row
       ? {
           advancePercent: row.advancePercent,
           commissionPercent: row.commissionPercent,
@@ -80,8 +86,11 @@ export class SettingsService {
           platform: { name: row.name, address: row.address, gstin: row.gstin },
         }
       : this.fromEnv();
-    this.readAt = Date.now();
-    return this.cached;
+    if (generation === this.generation) {
+      this.cached = settings;
+      this.readAt = Date.now();
+    }
+    return settings;
   }
 
   /**
@@ -102,6 +111,7 @@ export class SettingsService {
 
   /** Drops this server's copy after a save, so the admin sees the new value straight away. */
   invalidate() {
+    this.generation++;
     this.cached = undefined;
     this.readAt = 0;
   }

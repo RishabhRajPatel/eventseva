@@ -15,6 +15,7 @@ import {
   type Me,
   type Message,
   type Offer,
+  type CuratedPackage,
   type Paged,
   type PaymentOrder,
   type Quote,
@@ -219,6 +220,9 @@ export const api = {
   // ---- coupons & offers ----
   /** Public coupons (no login), in the app language. */
   offers: () => client.get<{ items: Offer[] }>('/v1/offers', undefined, { auth: false }),
+  /** EventSeva's own packages, for the event's occasion. No login: this is catalogue. */
+  packages: (eventType?: EventType) =>
+    client.get<{ items: CuratedPackage[] }>('/v1/packages', { eventType }, { auth: false }),
   /** Only before paying; the server checks the code and returns the booking with the new pay-now amount. */
   applyCoupon: (id: string, code: string) => client.post<Booking>(`/v1/bookings/${id}/coupon`, { code }),
   removeCoupon: (id: string) => client.delete<Booking>(`/v1/bookings/${id}/coupon`),

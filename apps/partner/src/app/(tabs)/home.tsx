@@ -16,6 +16,7 @@ import { IconButton, LinkButton } from '../../components/Button';
 import { Card, Row, Section } from '../../components/Card';
 import { Pill } from '../../components/Chip';
 import { Icon, type IconName } from '../../components/Icon';
+import { Notice } from '../../components/Notice';
 import { EmptyInline, QueryView } from '../../components/States';
 import { Txt } from '../../components/Txt';
 
@@ -50,10 +51,24 @@ export default function Home() {
           refreshControl={<RefreshControl refreshing={dashboard.isRefetching} onRefresh={refresh} colors={[c.royal]} />}
         >
           <HomeHeader d={d} name={vendor.data?.businessName ?? ''} unread={notifications.data?.unreadCount ?? 0} />
+          {/* Items still out past their return time: the stock is stuck and so is the deposit. */}
+          {d.overdueReturns > 0 ? <OverdueBanner count={d.overdueReturns} /> : null}
           <HomeBody d={d} featuredUntil={vendor.data?.featuredUntil ?? null} />
         </ScrollView>
       )}
     </QueryView>
+  );
+}
+
+function OverdueBanner({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.overdue}>
+      <Notice tone="warning" icon="clock" title={t('home.overdueTitle', { count })}>
+        <Txt size="sm">{t('home.overdueBody')}</Txt>
+        <LinkButton label={t('home.overdueCta')} onPress={() => router.navigate('/bookings')} />
+      </Notice>
+    </View>
   );
 }
 
@@ -216,6 +231,7 @@ function FeaturedCard({ until }: { until: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  overdue: { paddingHorizontal: space.lg, paddingTop: space.lg },
   header: { backgroundColor: c.indigo, paddingHorizontal: space.xl, paddingBottom: space.xxl, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl, gap: space.lg },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, width: '100%', maxWidth: 760, alignSelf: 'center' },
   tiles: { flexDirection: 'row', gap: space.sm, width: '100%', maxWidth: 760, alignSelf: 'center' },

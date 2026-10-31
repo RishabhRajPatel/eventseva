@@ -500,6 +500,8 @@ export interface PartnerDashboard {
   ratingCount: number;
   newRequests: number;
   awaitingPayment: number;
+  /** Rentals and vehicles past their return time that the vendor has not closed. */
+  overdueReturns: number;
   monthBookings: number;
   monthEarningsPaise: number;
   pendingPayoutPaise: number;
@@ -541,6 +543,35 @@ export interface BankAccount {
 }
 
 // ---- offers and coupons ----
+
+/** One service inside an EventSeva package (not a vendor's own `Package`, which is a price list). */
+export interface CuratedPackageService {
+  serviceId: string;
+  title: string;
+  /** Needed to open this service's booking screen: a package may span vendors. */
+  vendorId: string;
+  vendorName: string;
+  pricePaise: number;
+  unit: PricingUnit;
+  /** Required: leaving it out is refused at checkout. */
+  mandatory: boolean;
+}
+
+/**
+ * GET /v1/packages: an EventSeva package, which may span several vendors. Booking one sends every
+ * service as a checkout line with this package's id, and makes all the bookings or none.
+ */
+export interface CuratedPackage {
+  id: string;
+  /** In the request language. */
+  name: string;
+  description: string | null;
+  eventType: EventType;
+  discountPercent: number;
+  services: CuratedPackageService[];
+  /** False when one of the services is switched off or its vendor is not approved — do not offer it. */
+  available: boolean;
+}
 
 /** GET /v1/offers: public coupons for the home banner and the payment screen. */
 export interface Offer {

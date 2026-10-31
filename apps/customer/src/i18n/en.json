@@ -541,7 +541,7 @@
     "CLOSED_THAT_DAY": "The vendor does not work on this day of the week. Try another day.",
     "DAY_FULL": "The vendor is fully booked for this on that day. Try another day.",
     "DURING_BREAK": "The vendor takes a break then. Pick a time before or after it.",
-    "NOTHING_TO_PAY": "Nothing here is waiting for payment right now.",
+    "NOTHING_TO_PAY": "This is already paid.",
     "COUPON_NOT_ALLOWED": "Coupons can only be changed before you pay.",
     "OTP_LIMIT_UNTIL": "Too many codes for this number. You can try again after {{time}}.",
     "ACCOUNT_HAS_ACTIVE_BOOKINGS_one": "You still have {{count}} open booking. Finish or cancel your open bookings first, then delete your account.",
@@ -575,7 +575,6 @@
     "OUTSIDE_EVENT_DATES": "Pick dates within a week of your event.",
     "BOOKING_IN_PROGRESS": "Your items are already on the way, so this can't be cancelled in the app. Please contact help.",
     "CHARGE_ALREADY_ANSWERED": "You have already answered this charge.",
-    "NOTHING_TO_PAY": "This is already paid.",
     "SERVICE_NOT_FOUND": "This service is not offered any more. Pick another one.",
     "USE_SLOT_BOOKING": "This service is booked by date and slot. Go back and tap Book on the vendor page.",
     "SERVICE_NOT_CONFIGURED": "The vendor has not finished setting this up. Try again later or chat with them.",
@@ -599,7 +598,9 @@
     "CASH_BOOKING": "This booking is paid in cash to the vendor, not in the app.",
     "CASH_NOT_ACCEPTED": "The vendor takes only online payment for this. Choose online.",
     "CASH_NOT_AVAILABLE": "Cash is not available for this vendor right now. Choose online payment.",
-    "CASH_NOT_IN_CART": "The cart is paid online. Book this on its own to pay in cash."
+    "CASH_NOT_IN_CART": "The cart is paid online. Book this on its own to pay in cash.",
+    "PACKAGE_UNAVAILABLE": "Part of this package is not available right now. Please pick the services yourself.",
+    "COMMISSION_OVER_ADVANCE": "Something is wrong with the price settings. Please try again later."
   },
   "deleteAccount": {
     "menu": "Delete account",
@@ -1121,5 +1122,21 @@
       "deposit_return": "Deposit returned",
       "refund": "Refund"
     }
+  },
+  "packages": {
+    "title": "EventSeva packages",
+    "subtitle": "Services from vendors we trust, booked together in one go",
+    "discount": "{{percent}}% off",
+    "included": "Always included",
+    "optional": "Optional",
+    "total": "About {{amount}} together",
+    "unavailableBody": "One of the vendors in this package is not taking bookings at the moment.",
+    "book": "Book this package",
+    "emptyTitle": "No packages yet",
+    "emptyBody": "We are putting these together. Meanwhile you can pick vendors yourself.",
+    "browse": "Browse vendors",
+    "cardLabel": "{{name}}. {{count}} services. {{price}}",
+    "homeEntry": "EventSeva packages",
+    "homeEntrySub": "Tent, DJ and catering booked together"
   }
 }
