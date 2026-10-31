@@ -278,6 +278,41 @@ describe('checkout payment and price protection', () => {
       expect(await closedOnce('messages')).toBe(1);
     });
 
+    it('a step that keeps failing does not hold up the rest of the sweep', async () => {
+      // One cart, two bookings: the DJ's is about to expire, the decorator's is already over and
+      // should be completed and paid out by a later step of the same sweep.
+      const { djBooking, decorBooking } = await cart();
+      await t.db.query(`UPDATE bookings SET respond_by = now() - interval '1 second' WHERE id = $1`, [djBooking]);
+      // These are engine bookings, so the payout step looks at ends_at, not the slot day.
+      await t.db.query(
+        `UPDATE bookings SET status = 'confirmed', state = 'confirmed', day = $2,
+                starts_at = now() - interval '2 days', ends_at = now() - interval '1 day'
+          WHERE id = $1`,
+        [decorBooking, inDays(-1)],
+      );
+
+      try {
+        // Break only the push that expiring a booking sends, so exactly one step fails. (Breaking
+        // every notification would take the payout step down too, and prove nothing about order.)
+        await t.db.query(`CREATE OR REPLACE FUNCTION sweep_step_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'notify is down'; END $$`);
+        await t.db.query(
+          `CREATE TRIGGER sweep_step_halt BEFORE INSERT ON notifications FOR EACH ROW
+             WHEN (NEW.kind = 'booking_expired') EXECUTE FUNCTION sweep_step_fail()`,
+        );
+        // The run still counts as failed, and says which step it was.
+        await expect(bookings.sweep()).rejects.toThrow(/expire-unanswered/);
+      } finally {
+        await t.db.query('DROP TRIGGER IF EXISTS sweep_step_halt ON notifications');
+        await t.db.query('DROP FUNCTION IF EXISTS sweep_step_fail()');
+      }
+
+      // The expiry rolled back, as it should.
+      expect(await statusOf(djBooking)).toBe('requested');
+      // The payout step still ran: before this, one bad row stopped everything behind it.
+      expect(await statusOf(decorBooking)).toBe('completed');
+      expect((await t.db.query('SELECT 1 FROM payouts WHERE booking_id = $1', [decorBooking])).rowCount).toBe(1);
+    });
+
     it('two customers taking the last use of a coupon at the same moment: one gets it', async () => {
       const finance = await t.adminLogin('finance');
       await as(finance).post('/v1/admin/coupons', {

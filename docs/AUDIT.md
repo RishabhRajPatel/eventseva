@@ -1,6 +1,8 @@
 # EventSeva: audit against the master prompt
 
-Date: 27 Oct 2026. Branch state: commit `c60619f` plus `test/concurrency.spec.ts` (new).
+First written 27 Oct 2026 against the master prompt; the gap tables below are that snapshot.
+**Brought up to date 31 Oct 2026** — see "Phase 3: what shipped since" and "Still open" at the end,
+which are what to read for the current state. 59 tables, 34 migrations, 29 controllers.
 Stack (kept as it is):
 - **Backend:** NestJS 11 API, PostgreSQL 16 with plain SQL, dbmate-style migrations in `database/migrations`.
 - **Apps:** two Expo SDK 58 apps (customer, Partner) and a Next.js 16 admin panel, in one pnpm monorepo.
@@ -19,7 +21,7 @@ Checks run on 27 Oct 2026, all passing:
 | admin | 68 | eslint + tsc, Next build |
 | app-shared | 14 | |
 
-### Data model (31 tables, `database/tables.md`)
+### Data model (31 tables at the time; 59 now — see `database/tables.md`)
 
 | Area | Tables | Notes |
 |---|---|---|
@@ -48,7 +50,7 @@ Side exits: `rejected`, `expired`, `cancelled_by_customer`, `cancelled_by_vendor
   - deadlines never cross the event day;
   - IDOR on every :id route returns 404.
 
-### API (121 routes in 19 controllers, `docs/API.md`)
+### API (121 routes in 19 controllers at the time; 186 routes in 29 controllers now, `docs/API.md`)
 
 - **Customer:** catalogue, vendor search (distance), events, bookings, coupons, payment (Razorpay checkout + verify +
   webhook), cancel, reviews, chat, notifications, complaints, account deletion.
@@ -64,7 +66,7 @@ Side exits: `rejected`, `expired`, `cancelled_by_customer`, `cancelled_by_vendor
 - **No deployment configuration:** no Dockerfile and no CI. Hosting is still undecided (README, "Before going live").
 - **No SMS provider adapter yet:** OTP goes to the console in development.
 
-## Phase 2: gaps against the master prompt
+## Phase 2: gaps against the master prompt *(as of 27 Oct — most are now closed; see the end)*
 
 Legend: **missing** = nothing exists; **partial** = something exists but does not meet the requirement.
 
@@ -125,27 +127,55 @@ Legend: **missing** = nothing exists; **partial** = something exists but does no
 | Booking / revenue / utilisation analytics | **partial**: dashboard counts and CSV only |
 | Reminders for overdue returns and balance due | **missing**; event reminders exist |
 
-### Bugs and risks found
-1. **No deployment or CI config**, so nothing runs the checks automatically. *(Out of scope until hosting is chosen.)*
-2. **Refunds count as done once Razorpay accepts the call.** Razorpay can still fail a refund later.
-   **Fix:** handle the `refund.processed` and `refund.failed` webhooks (Phase 5).
-3. **Changing the refund tiers in code would apply to bookings already confirmed.**
-   **Fix:** snapshot the policy on each booking (Phase 3A).
-4. **Commission and advance % come from `.env`.** Changing them needs a restart and is not audited.
-   **Fix:** platform settings with an audit log (Phase 3A).
-5. **No concurrency tests existed** for accept races, duplicate webhooks or payment vs expiry. Added today; all pass.
+### Risks found then, and where they stand
 
-## Plan (incremental, existing architecture)
+1. **No deployment or CI config.** *Done:* `.github/workflows/ci.yml` typechecks and tests every push
+   and pull request against a real Postgres, and `apps/backend/Dockerfile` + `docker-compose.yml`
+   bring the API, the panel and the database up together.
+2. **Refunds counted as done once Razorpay accepted the call.** *Done:* the `refund.processed` and
+   `refund.failed` webhooks are handled and reconciled.
+3. **Changing the refund tiers in code would have applied to bookings already confirmed.** *Done:*
+   every booking snapshots its cancellation policy when it is made.
+4. **Commission and advance came from `.env`.** *Done:* `platform_settings`, edited by a super admin
+   with a fresh 2FA code and written to the audit log.
+5. **No concurrency tests.** *Done:* accept races, duplicate webhooks and payment-vs-expiry are
+   covered, along with two sweeps racing on the same booking.
 
-| Phase | What | Migration risk |
-|---|---|---|
-| **3A** (this round) | Full catalogue + category groups; category attributes on services; platform settings (commission, advance, GST, cancellation policy) editable by super admins with step-up + audit; booking snapshots of price, commission, advance and cancellation policy; `paymentStatus` on bookings; GST + numbered invoices (receipts) | Additive only: new columns with defaults, new tables, `INSERT … ON CONFLICT DO NOTHING` for categories. Existing bookings get a snapshot equal to today's rules, so their refunds do not change |
-| 3B | Time-range scheduling (start/end, buffers, cross-midnight) with a database exclusion constraint against overlaps; rescheduling | Adds `starts_at` / `ends_at` to bookings and availability, back-filled from day + slot. Existing slots keep working; needs `btree_gist` |
-| 3C | Rental inventory: stock per item, quantity holds per time range, dispatch / return / damage / missing movements | New tables only |
-| 3D | Vehicles: fleet, driver or self-drive, km/hour allowances, overtime, handover / return inspection, deposits | New tables only |
-| 3E | Cart checkout for several services; admin multi-vendor wedding packages with mandatory items | New tables; existing single bookings unchanged |
-| 5 | Balance and deposit payments; refund webhooks and reconciliation; return / overdue / balance reminders; disputes | New payment types; webhook additions |
-| 4 / 6 | UI in the three apps for each slice, as it lands, with tests and builds each time | — |
+## Phase 3: what shipped since
 
-The project is **not production-ready**. Hosting, the SMS provider, the Firebase and Razorpay live keys, CI and a
-device test are still open, as are the gaps above.
+Everything the plan below listed as 3A–3E and 5 is in, except where "still open" says otherwise.
+
+| Slice | State |
+|---|---|
+| 3A catalogue, settings, booking snapshots, GST invoices | ✓ |
+| 3B time ranges, buffers, cross-midnight, rescheduling | ✓ (`starts_at`/`ends_at`, `booking_changes`) |
+| 3C rental inventory, stock holds, dispatch/return/damage | ✓ (`inventory_items`, `inventory_movements`, `booking_lines`) |
+| 3D vehicles, licences, handover and return inspection, deposits | ✓ (`customer_licences`, `handover_codes`, `booking_inspections`) |
+| 3E cart checkout; EventSeva packages across vendors | ✓ (`checkouts`, `payment_orders`; packages are `service_bundles` with no vendor) |
+| 5 balance and deposit payments, refund webhooks, overdue reminders | ✓ |
+| 4/6 UI in the three apps | ✓ for the above |
+
+Reliability work done alongside it:
+
+- the sweep claims its rows and does their side effects in **one transaction**, so a crash rolls the
+  claim back instead of leaving a booking expired with its capacity still held and nobody told;
+- each sweep step is **isolated**: a row the database keeps refusing no longer stops the payouts and
+  reminders behind it, and the run still reports as failed, naming the step;
+- the background jobs **finish before shutdown** and never stack two runs;
+- three list endpoints read in **index order** again (a bare `ORDER BY id` had been binding to a cast
+  of the same name, so chat read every message it ever had on each page);
+- message and notification ids are no longer cast to `int`, which would have started failing outright
+  past 2,147,483,647.
+
+## Still open
+
+| | |
+|---|---|
+| **SMS provider** | An `OtpSender` interface with a console sender and an MSG91 one; the provider is **not decided yet**, so no account or DLT templates exist. Nothing sends a real code until one is chosen. |
+| **Hosting** | Undecided. CI runs the checks but deploys nothing. |
+| **Live keys** | Firebase (push) and Razorpay (payments) both still run in development mode. |
+| **Device test** | `docs/PHONE_TEST.md` has not been run against a real phone for the newest screens. |
+| **Analytics** | Dashboard counts and CSV exports only; no booking/revenue/utilisation reporting beyond that. |
+
+The project is **not production-ready**: the five rows above are what stands between here and a
+launch. The gaps in the tables above this section are closed.

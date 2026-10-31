@@ -937,6 +937,25 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
   // ---------- background job ----------
 
   /**
+   * Runs one step of the sweep on its own. A booking the database keeps refusing must not stop the
+   * payouts, the coupon releases and the reminders that come after it — before this, one bad row
+   * held up every later step on every run, for as long as it stayed bad.
+   *
+   * Nothing is swallowed: each failure is logged with the step that raised it, and `sweep` throws a
+   * summary at the end so the run is still visibly a failure.
+   */
+  private async step<T>(failures: string[], name: string, work: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await work();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`sweep step "${name}" failed: ${err instanceof Error ? (err.stack ?? message) : message}`);
+      failures.push(`${name}: ${message}`);
+      return fallback;
+    }
+  }
+
+  /**
    * Claims a batch of rows and runs their side effects in the same transaction, over and over
    * until nothing is left. Rows are taken with SKIP LOCKED, so a second server (or a second sweep)
    * steps over what this one is holding instead of waiting behind it.
@@ -967,8 +986,12 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
    * nobody told, and nothing would ever retry it: the claim no longer matches.
    */
   async sweep(now = new Date()): Promise<{ expired: number; completed: number; reminded: number; overdue: number }> {
+    // Every step runs whatever the one before it did, so a row the database keeps refusing cannot
+    // hold up the payouts and reminders behind it. What failed is collected and thrown at the end.
+    const failures: string[] = [];
+
     // Requests the vendor never answered.
-    let expired = await this.drain<{ id: string; customer_id: string; vendor_id: string; day: string }>(
+    let expired = await this.step(failures, 'expire-unanswered', () => this.drain<{ id: string; customer_id: string; vendor_id: string; day: string }>(
       (client, limit) =>
         client.query(
           `UPDATE bookings SET status = 'expired', updated_at = now()
@@ -985,10 +1008,10 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           hi: { title: 'वेंडर ने जवाब नहीं दिया', body: `वेंडर ने समय पर जवाब नहीं दिया। ${niceDay(b.day, 'hi')} के लिए दूसरा वेंडर चुनें।` },
         }, { bookingId: b.id }, 'customer');
       },
-    );
+    ), 0);
 
     // Accepted, but the advance never arrived: the date goes back on the vendor's calendar.
-    expired += await this.drain<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; day: string }>(
+    expired += await this.step(failures, 'expire-unpaid', () => this.drain<{ id: string; customer_id: string; vendor_id: string; vendor_user_id: string; day: string }>(
       (client, limit) =>
         client.query(
           `WITH e AS (
@@ -1012,22 +1035,22 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
           hi: { title: 'तारीख़ फिर खाली', body: `ग्राहक ने ${niceDay(b.day, 'hi')} का भुगतान नहीं किया, इसलिए तारीख़ फिर खाली है।` },
         }, { bookingId: b.id }, 'partner');
       },
-    );
+    ), 0);
 
     // Rentals: once the event is over, the vendor collects the items (return pending).
-    await this.db.query(
+    await this.step(failures, 'rentals-due-back', () => this.db.query(
       `UPDATE bookings SET fulfilment = 'return_pending', updated_at = now()
         WHERE booking_type = 'rental' AND status = 'confirmed' AND fulfilment = 'delivered' AND ends_at < now()`,
-    );
+    ), undefined);
     // Returned rentals: charges agreed (or unanswered for 48 h) come off the deposit, the rest goes back.
-    await this.fulfilment.settle();
+    await this.step(failures, 'settle-deposits', () => this.fulfilment.settle(), 0);
     // Payout = advance − commission. Newer vendors are paid 3 days after the event (time for
     // complaints), regular vendors the next day, at 10 am India time.
     //
     // One transaction, and deliberately not batched like the two above: the 3-days-or-1-day choice
     // counts the vendor's completed bookings *other than the ones completing right here*, so
     // splitting a run into batches would let an earlier batch change a later batch's answer.
-    const completed = await this.db.tx(async (client) => {
+    const completed = await this.step(failures, 'complete-and-pay-out', () => this.db.tx(async (client) => {
       const done = await client.query<{ id: string; vendor_user_id: string; payout_paise: number; release_after: Date }>(
         `WITH c AS (
            UPDATE bookings SET status = 'completed', updated_at = now()
@@ -1068,21 +1091,24 @@ export class BookingsService implements OnModuleInit, OnModuleDestroy {
         }, { bookingId: b.id }, 'partner');
       }
       return done.rows.length;
-    });
+    }), 0);
     // Commission owed on cash bookings comes off the vendor's payouts that are not sent yet.
-    await this.cash.applyDuesToPayouts();
+    await this.step(failures, 'apply-cash-dues', () => this.cash.applyDuesToPayouts(), undefined);
     // Coupons held by bookings that ended unpaid (expired above) can be used again.
-    await this.db.query(
+    await this.step(failures, 'release-coupons', () => this.db.query(
       `WITH r AS (
          UPDATE coupon_redemptions cr SET status = 'released' FROM bookings b
           WHERE cr.booking_id = b.id AND cr.status = 'applied' AND b.status NOT IN ('requested', 'accepted')
           RETURNING cr.booking_id
        )
        UPDATE bookings SET discount_paise = 0 WHERE id IN (SELECT booking_id FROM r)`,
-    );
-    await this.trips.remindUnassigned();
-    const reminded = await this.sendReminders(now);
-    const overdue = await this.remindOverdueReturns();
+    ), undefined);
+    await this.step(failures, 'remind-unassigned-trips', () => this.trips.remindUnassigned(), 0);
+    const reminded = await this.step(failures, 'event-reminders', () => this.sendReminders(now), 0);
+    const overdue = await this.step(failures, 'overdue-return-reminders', () => this.remindOverdueReturns(), 0);
+
+    // Each failure was already logged with its step; this makes the whole run count as failed.
+    if (failures.length) throw new Error(`sweep: ${failures.length} step(s) failed — ${failures.join('; ')}`);
     return { expired, completed, reminded, overdue };
   }
 
